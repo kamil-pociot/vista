@@ -1,0 +1,4 @@
+/target
+.claude/worktrees/
+.DS_Store
+.scratch/
