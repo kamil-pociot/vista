@@ -1,0 +1,53 @@
+---
+source: crates/vista-tui/tests/render_m0.rs
+expression: "snapshot(&buf, &app.theme)"
+---
+ sample-project                                          Ctrl-P Go to File   Ctrl-F Find in Files
+ 1: Project                 │
+                            │
+                            │
+                            │
+                            │
+                            │
+                            │
+                            │
+                            │                             No file open
+                            │
+                            │                          Ctrl-P  Go to File
+                            │                          Ctrl-F  Find in Files
+                            │                           Alt-1  Project
+                            │                           Alt-0  Commit
+                            │                               ?  Help
+                            │
+                            │
+                            │
+                            │
+                            │
+                            │
+                            │
+ 1: Project   0: Commit   3: Find   ?: Help                                         Darcula Classic
+--- styles ---
+  0: [0..15 fg=ui.text.strong bg=ui.panel +bold] [15..57 fg=ui.text bg=ui.panel] [57..63 fg=ui.dim bg=ui.panel] [63..77 fg=ui.text bg=ui.panel] [77..83 fg=ui.dim bg=ui.panel] [83..100 fg=ui.text bg=ui.panel]
+  1: [0..11 fg=ui.text.strong bg=ui.selection.inactive +bold] [11..28 fg=ui.text bg=ui.selection.inactive] [28..29 fg=ui.border bg=ui.bg] [29..100 fg=ui.text bg=ui.panel]
+  2: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  3: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  4: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  5: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  6: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  7: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  8: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+  9: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 10: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 11: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [49..63 fg=ui.border.focused bg=ui.bg] [63..79 fg=ui.dim bg=ui.bg]
+ 12: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [49..63 fg=ui.border.focused bg=ui.bg] [63..79 fg=ui.dim bg=ui.bg]
+ 13: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [49..63 fg=ui.border.focused bg=ui.bg] [63..79 fg=ui.dim bg=ui.bg]
+ 14: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [49..63 fg=ui.border.focused bg=ui.bg] [63..79 fg=ui.dim bg=ui.bg]
+ 15: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [49..63 fg=ui.border.focused bg=ui.bg] [63..79 fg=ui.dim bg=ui.bg]
+ 16: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 17: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 18: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 19: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 20: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 21: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 22: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
+ 23: [0..13 fg=ui.text.strong bg=ui.panel +bold] [13..45 fg=ui.header bg=ui.panel] [45..84 fg=ui.text bg=ui.panel] [84..100 fg=ui.dim bg=ui.panel]

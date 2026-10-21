@@ -1,0 +1,13 @@
+[package]
+name = "vista-e2e"
+description = "Playwright-style end-to-end test harness for vista: real binary in a PTY"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+vista-theme.workspace = true
+portable-pty.workspace = true
+vt100.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/kamilpociot/vista"
+
+[workspace.dependencies]
+vista-core = { path = "crates/vista-core" }
+vista-theme = { path = "crates/vista-theme" }
+vista-e2e = { path = "crates/vista-e2e" }
+
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+ratatui = "0.30"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+portable-pty = "0.9"
+vt100 = "0.18"
+tempfile = "3"
+insta = "1"
+proptest = "1"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

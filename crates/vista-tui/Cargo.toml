@@ -1,0 +1,24 @@
+[package]
+name = "vista-tui"
+description = "vista: a lean, IntelliJ-style terminal file browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vista"
+path = "src/main.rs"
+
+[dependencies]
+vista-core.workspace = true
+vista-theme.workspace = true
+anyhow.workspace = true
+ratatui.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+unicode-width = "0.2"
+
+[dev-dependencies]
+vista-e2e.workspace = true
+insta.workspace = true
+tempfile.workspace = true

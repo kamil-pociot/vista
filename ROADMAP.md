@@ -132,7 +132,7 @@ Building a pure Neovim *client* was rejected: the tree, git colours, search, com
 vista/                         (cargo workspace)
 ├── crates/
 │   ├── vista-core/     workspace model, file tree, fs watcher, config, events
-│   ├── vista-theme/    theme + chrome model, loading, built-in looks
+│   ├── vista-theme/    theme + chrome model, loading, built-in looks (themes/*.toml)
 │   ├── vista-git/      status, HEAD blobs, change list, write ops via git CLI
 │   ├── vista-diff/     line + word diff, side-by-side alignment, hunk ids
 │   ├── vista-search/   fuzzy file finder (nucleo), Find in Files engine (grep-*)
@@ -141,7 +141,6 @@ vista/                         (cargo workspace)
 │   ├── vista-nvim/     embedded Neovim: RPC, linegrid model, theme sync
 │   ├── vista-tui/      ratatui front-end (binary: `vista`)
 │   └── vista-e2e/      PTY test harness + git fixtures (dev-only)
-├── themes/             darcula.toml (A), quiet.toml (B), paper.toml (C)…
 └── ROADMAP.md
 ```
 
@@ -262,15 +261,15 @@ A later upgrade could swap `vt100` for **libghostty-vt**, Ghostty's own parser, 
 
 Each milestone ends in something usable. Design A is built first; B and C come in M8.
 
-### M0 — Foundations
-- [ ] Install Rust + Neovim; cargo workspace with the crates above.
-- [ ] App shell: alternate screen, event loop, panic hook restoring the terminal, `tracing` to a log file.
-- [ ] **Theme engine** (`vista-theme`): semantic tokens, chrome options, TOML loading, `inherits`, hot reload; `darcula.toml` built in.
-- [ ] Pane/focus model, configurable keymap (avoiding `Ctrl-b`), status bar, help overlay (`?`).
-- [ ] Config at `~/.config/vista/config.toml`.
-- [ ] **Terminal spike:** kitty graphics + kitty keyboard detection inside herdr and plain Ghostty; record results here.
-- [ ] CI: `fmt`, `clippy`, tests, "no colour literals in widgets" check.
-- [ ] **Test infrastructure:** evaluate tui-test / termlens / ratatui-testlib, then build or adopt the `vista-e2e` harness (PTY, emulator, locators, auto-wait, HTML traces). Add the git `Fixture` builder, `insta` snapshot setup, and `nextest` config.
+### M0 — Foundations ✅
+- [x] Install Rust + Neovim; cargo workspace with the crates above.
+- [x] App shell: alternate screen, event loop, panic hook restoring the terminal, `tracing` to a log file.
+- [x] **Theme engine** (`vista-theme`): semantic tokens, chrome options, TOML loading, `inherits`, hot reload; `darcula.toml` built in.
+- [x] Pane/focus model, configurable keymap (avoiding `Ctrl-b`), status bar, help overlay (`?`).
+- [x] Config at `~/.config/vista/config.toml`.
+- [x] **Terminal spike:** `vista --probe` (and `--probe-image`, which draws a test gradient) reports kitty graphics, kitty keyboard and cell size. **To record:** results from running it in herdr and in plain Ghostty.
+- [x] CI: `fmt`, `clippy`, tests, "no colour literals in widgets" check (`.github/workflows/ci.yml`, live once the repo has a remote).
+- [x] **Test infrastructure:** own `vista-e2e` harness (`portable-pty` + `vt100`, locators, auto-wait, HTML traces in `target/e2e-traces/`), repository `Fixture` builder, `insta` snapshots with colours as theme tokens. Plain `cargo test` runs everything, so nextest isn't required.
 
 **Done when:** `vista [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
 **Tests:** e2e: launch → first frame shows the layout → `q` quits and restores the terminal; resize redraws. Snapshot: empty layout in darcula. Unit: theme loading, `inherits`, invalid theme errors.
