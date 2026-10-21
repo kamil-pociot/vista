@@ -80,6 +80,26 @@ pub fn panel(f: &mut Frame, area: Rect, title: &str, focused: bool, bg: &str, t:
     }
 }
 
+/// A titleless box around an area (looks with boxed panels); returns the inside.
+pub fn frame(f: &mut Frame, area: Rect, focused: bool, t: &Theme) -> Rect {
+    if t.chrome.borders == Borders::None || area.width < 3 || area.height < 3 {
+        return area;
+    }
+    let border_style = if focused {
+        t.fg("ui.border.focused")
+    } else {
+        t.fg("ui.border")
+    };
+    let block = Block::new()
+        .style(t.bg("ui.bg"))
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_set(border_set(t.chrome.borders))
+        .border_style(border_style);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    inner
+}
+
 /// The gap between the left tool window and the main area.
 pub fn separator(f: &mut Frame, area: Rect, t: &Theme) {
     let ch = if t.chrome.borders == Borders::None || t.chrome.panel_headers == PanelHeaders::BorderTitle {

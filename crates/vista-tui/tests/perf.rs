@@ -10,6 +10,28 @@ use vista_e2e::Vista;
 
 const BIN: &str = env!("CARGO_BIN_EXE_vista");
 
+/// Resident memory of a process in KiB (macOS/Linux `ps`).
+fn rss_kib(pid: u32) -> Option<u64> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+#[test]
+#[ignore = "perf baseline"]
+fn startup_baseline_on_an_empty_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), "x").unwrap();
+    for _ in 0..3 {
+        let start = Instant::now();
+        let mut vista = Vista::launch_dir(BIN, dir.path()).start();
+        vista.expect_text("1: Project");
+        println!("empty folder first frame: {:?}", start.elapsed());
+    }
+}
+
 #[test]
 #[ignore = "needs VISTA_PERF_REPO"]
 fn tree_and_status_are_fast_on_a_real_repo() {
@@ -25,6 +47,13 @@ fn tree_and_status_are_fast_on_a_real_repo() {
     vista.expect_text("⎇");
     let status = start.elapsed();
     println!("first frame: {first_frame:?}, branch+status: {status:?}");
+    for l in vista.log().lines().filter(|l| l.contains(" in ")) {
+        println!("  log: {}", l.split(": ").last().unwrap_or(l));
+    }
+    vista.settle(std::time::Duration::from_millis(500));
+    if let Some(kib) = vista.pid().and_then(rss_kib) {
+        println!("memory after start: {:.1} MiB", kib as f64 / 1024.0);
+    }
     assert!(first_frame.as_millis() < 1500, "first frame took {first_frame:?}");
     assert!(status.as_millis() < 3000, "status took {status:?}");
 

@@ -1,0 +1,57 @@
+---
+source: crates/vista-tui/tests/render_m8_looks.rs
+expression: "commit_with_diff(&repo, look)"
+---
+ <root>                                                               Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+ 0: commit                           Δ diff.rs
+ ␣ tick  r rollback  a add  g group  diff.rs  crates/fb-git/src                                          ⇧F7 ◂ change 1 of 1 ▸ F7
+ ▾ [x] Changes  4 files              HEAD · c22c251 (read-only)                      Working tree
+   [x] Cargo.lock                     1 pub fn diff() {}                          ▶   1 pub fn diff() -> usize { 0 }
+   [x] ROADMAP.md
+   [x] diff.rs    crates/fb-git/src
+   [x] status.rs  crates/fb-git/src
+ ▾ [ ] Unversioned Files  2 files
+   [ ] watch.rs   crates/fb-git/src
+   [ ] screenshot.png
+
+
+
+
+
+
+
+
+ ┌ Commit message ────────────────┐
+ │Tab to write a message          │
+ │                                │
+ │                                │
+ │                                │
+ │                                │
+ └────────────────────────────────┘
+ [ ] Amend   4 of 6 files
+  Commit ^K    Commit & Push (P)     u unified  w whitespace  z collapse  J/K fside-by-side · whitespace: compare · collapse: off
+ VIEW                                                                                      4 changed · 2 unversioned   1:1   Diff
+ Ctrl-P files    Ctrl-F find in files    Alt-0 changes    Tab focus    ? help
+--- styles ---
+  0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.header bg=ui.panel] [86..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.header bg=ui.panel] [106..123 fg=ui.text bg=ui.panel] [123..125 fg=ui.header bg=ui.panel] [125..130 fg=ui.text bg=ui.panel]
+  1: [0..10 fg=ui.header bg=ui.bg] [36..47 fg=ui.border.focused bg=ui.bg +bold]
+  2: [0..36 fg=ui.header bg=ui.bg] [36..44 fg=ui.text.strong bg=ui.panel +bold] [44..63 fg=ui.header bg=ui.panel] [63..130 fg=ui.text bg=ui.panel]
+  3: [0..3 fg=ui.header bg=ui.selection.inactive] [3..7 fg=ui.text bg=ui.selection.inactive] [7..14 fg=ui.header bg=ui.selection.inactive +bold] [14..23 fg=ui.header bg=ui.selection.inactive] [23..36 fg=ui.text bg=ui.selection.inactive] [36..82 fg=ui.header bg=ui.bg] [84..130 fg=ui.header bg=ui.bg]
+  4: [7..17 fg=ui.border.focused bg=ui.bg] [36..40 fg=ui.text.strong bg=ui.bg] [40..43 fg=syntax.keyword bg=diff.modified] [43..44 fg=ui.text bg=diff.modified] [44..46 fg=syntax.keyword bg=diff.modified] [46..47 fg=ui.text bg=diff.modified] [47..51 fg=ui.border.focused bg=diff.modified] [51..53 fg=syntax.punctuation bg=diff.modified] [53..54 fg=ui.text bg=diff.modified] [54..56 fg=syntax.punctuation bg=diff.modified] [56..82 fg=ui.text bg=diff.modified] [82..84 fg=ui.text.strong bg=gutter.modified] [84..88 fg=ui.text.strong bg=ui.bg] [88..91 fg=syntax.keyword bg=diff.modified] [91..92 fg=ui.text bg=diff.modified] [92..94 fg=syntax.keyword bg=diff.modified] [94..95 fg=ui.text bg=diff.modified] [95..99 fg=ui.border.focused bg=diff.modified] [99..101 fg=syntax.punctuation bg=diff.modified] [101..102 fg=ui.text bg=diff.modified] [102..104 fg=syntax.punctuation bg=diff.word.modified] [104..105 fg=ui.text bg=diff.modified] [105..110 fg=syntax.keyword bg=diff.word.modified] [110..111 fg=ui.text bg=diff.modified] [111..112 fg=syntax.punctuation bg=diff.modified] [112..113 fg=ui.text bg=diff.modified] [113..114 fg=syntax.number bg=diff.word.modified] [114..115 fg=ui.text bg=diff.modified] [115..116 fg=syntax.punctuation bg=diff.modified] [116..130 fg=ui.text bg=diff.modified]
+  5: [7..17 fg=ui.success bg=ui.bg]
+  6: [7..14 fg=ui.border.focused bg=ui.bg] [18..35 fg=ui.header bg=ui.bg]
+  7: [7..16 fg=ui.border.focused bg=ui.bg] [18..35 fg=ui.header bg=ui.bg]
+  8: [0..3 fg=ui.header bg=ui.bg] [7..24 fg=ui.header bg=ui.bg +bold] [24..33 fg=ui.header bg=ui.bg]
+  9: [7..15 fg=ui.warning bg=ui.bg] [18..35 fg=ui.header bg=ui.bg]
+ 10: [7..21 fg=ui.warning bg=ui.bg]
+ 19: [1..2 fg=ui.border bg=ui.panel] [2..18 fg=ui.header bg=ui.panel] [18..35 fg=ui.border bg=ui.panel]
+ 20: [1..2 fg=ui.border bg=ui.panel] [2..24 fg=ui.header bg=ui.panel] [24..34 fg=ui.text bg=ui.panel] [34..35 fg=ui.border bg=ui.panel]
+ 21: [1..2 fg=ui.border bg=ui.panel] [2..34 fg=ui.text bg=ui.panel] [34..35 fg=ui.border bg=ui.panel]
+ 22: [1..2 fg=ui.border bg=ui.panel] [2..34 fg=ui.text bg=ui.panel] [34..35 fg=ui.border bg=ui.panel]
+ 23: [1..2 fg=ui.border bg=ui.panel] [2..34 fg=ui.text bg=ui.panel] [34..35 fg=ui.border bg=ui.panel]
+ 24: [1..2 fg=ui.border bg=ui.panel] [2..34 fg=ui.text bg=ui.panel] [34..35 fg=ui.border bg=ui.panel]
+ 25: [1..35 fg=ui.border bg=ui.panel]
+ 26: [10..25 fg=ui.header bg=ui.bg]
+ 27: [1..12 fg=ui.bg bg=ui.border.focused +bold] [14..33 fg=ui.text bg=ui.panel] [36..130 fg=ui.header bg=ui.panel]
+ 28: [0..6 fg=ui.bg bg=ui.border.focused +bold] [6..91 fg=ui.text bg=ui.panel] [91..100 fg=ui.border.focused bg=ui.panel] [100..103 fg=ui.header bg=ui.panel] [103..116 fg=ui.warning bg=ui.panel] [116..125 fg=ui.text bg=ui.panel] [125..130 fg=ui.header bg=ui.panel]
+ 29: [1..7 fg=ui.warning bg=ui.bg] [7..17 fg=ui.header bg=ui.bg] [17..23 fg=ui.warning bg=ui.bg] [23..41 fg=ui.header bg=ui.bg] [41..46 fg=ui.warning bg=ui.bg] [46..58 fg=ui.header bg=ui.bg] [58..61 fg=ui.warning bg=ui.bg] [61..71 fg=ui.header bg=ui.bg] [71..72 fg=ui.warning bg=ui.bg] [72..81 fg=ui.header bg=ui.bg]

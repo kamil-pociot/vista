@@ -172,8 +172,12 @@ impl App {
         let theme_stamp = stamp(theme_loader.user_path(&theme.id).as_deref());
         let (keymap, warnings) = Keymap::with_overrides(&opts.config.keys);
         let (tx, rx) = mpsc::channel();
+        let t = Instant::now();
         let project = ProjectView::new(&root, opts.config.tree.show_ignored);
+        tracing::info!("tree read in {:?}", t.elapsed());
+        let t = Instant::now();
         let git = Git::discover(&root).ok();
+        tracing::info!("repository discovered in {:?}", t.elapsed());
         let recent = Recent::load(&opts.paths.cache_dir, &root);
         let picker = default_picker(opts.config.images.protocol);
         let find_history = crate::find::load_history(&opts.paths.cache_dir);
@@ -249,11 +253,15 @@ impl App {
             vista_search::find::search(&root, &opts, &std::sync::atomic::AtomicBool::new(false), &|_| {});
         });
         if std::env::var_os("VISTA_NO_WATCH").is_none() {
+            let started = Instant::now();
             let tx = self.tx.clone();
             match Watcher::new(&self.root, Duration::from_millis(120), move |c| {
                 let _ = tx.send(AppEvent::Fs(c));
             }) {
-                Ok(w) => self.watcher = Some(w),
+                Ok(w) => {
+                    tracing::info!("file watcher ready in {:?}", started.elapsed());
+                    self.watcher = Some(w);
+                }
                 Err(e) => self.notify(format!("file watching unavailable: {e}"), MsgKind::Error),
             }
         }

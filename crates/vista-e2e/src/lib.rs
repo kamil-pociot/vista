@@ -290,6 +290,11 @@ impl Vista {
         }
     }
 
+    /// Process id of the running vista.
+    pub fn pid(&self) -> Option<u32> {
+        self.child.process_id()
+    }
+
     pub fn theme(&self) -> &Theme {
         &self.theme
     }

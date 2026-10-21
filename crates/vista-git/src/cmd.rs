@@ -22,8 +22,20 @@ pub struct Git {
 }
 
 impl Git {
-    /// Finds the repository containing `dir`.
+    /// Finds the repository containing `dir`: the nearest ancestor with a
+    /// `.git` entry (directory, or file for worktrees and submodules). This
+    /// avoids spawning git at startup; with `GIT_DIR` set, git decides.
     pub fn discover(dir: &Path) -> Result<Git, GitError> {
+        if std::env::var_os("GIT_DIR").is_none() {
+            let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+            return dir
+                .ancestors()
+                .find(|a| a.join(".git").exists())
+                .map(|top| Git {
+                    toplevel: top.to_path_buf(),
+                })
+                .ok_or_else(|| GitError::NotARepo(dir.clone()));
+        }
         let out = Command::new("git")
             .current_dir(dir)
             .args(["rev-parse", "--show-toplevel"])

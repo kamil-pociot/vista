@@ -104,10 +104,11 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                     let o = orig.strip_prefix(&app.root).unwrap_or(orig);
                     spans.push(Span::styled(format!(" ← {}", o.display()), t.fg("ui.dim")));
                 }
-                if !cv.by_dir && !dir.is_empty() {
-                    let used: usize = spans.iter().map(|s| s.content.width()).sum();
+                let used: usize = spans.iter().map(|s| s.content.width()).sum();
+                // The folder goes right-aligned when it fits.
+                if !cv.by_dir && !dir.is_empty() && used + dir.width() + 3 <= list.width as usize {
                     let pad = (list.width as usize).saturating_sub(used + dir.width() + 1);
-                    spans.push(Span::raw(" ".repeat(pad.max(2))));
+                    spans.push(Span::raw(" ".repeat(pad)));
                     spans.push(Span::styled(dir, t.fg("ui.dim")));
                 }
             }

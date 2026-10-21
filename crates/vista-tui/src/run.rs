@@ -18,7 +18,9 @@ const TICK: Duration = Duration::from_millis(500);
 const POLL: Duration = Duration::from_millis(250);
 
 pub fn run(mut app: App) -> Result<()> {
+    let t = std::time::Instant::now();
     let (mut term, _guard) = terminal::setup(&format!("vista — {}", app.project_name))?;
+    tracing::info!("terminal ready in {:?}", t.elapsed());
     if app.config.images.protocol == vista_core::ImageProtocol::Auto {
         // Must run before the input thread starts reading stdin.
         match ratatui_image::picker::Picker::from_query_stdio() {
@@ -31,6 +33,10 @@ pub fn run(mut app: App) -> Result<()> {
     }
     let paused = Arc::new(AtomicBool::new(false));
     spawn_input_thread(app.tx.clone(), paused.clone());
+    // Show the first frame before starting watchers and background jobs.
+    let t = std::time::Instant::now();
+    term.draw(|f| ui::draw(f, &mut app))?;
+    tracing::info!("first frame drawn in {:?}", t.elapsed());
     app.on_start();
     loop {
         term.draw(|f| ui::draw(f, &mut app))?;

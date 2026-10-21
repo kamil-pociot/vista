@@ -40,6 +40,7 @@ fn real_main() -> Result<()> {
         }
         Command::Run => {}
     }
+    let started = std::time::Instant::now();
     init_logging(&paths);
     let config = Config::load(&paths)?;
     let path = args.path.unwrap_or_else(|| PathBuf::from("."));
@@ -61,6 +62,7 @@ fn real_main() -> Result<()> {
     if let Some(f) = file {
         app.open_file(&f);
     }
+    tracing::info!("app ready in {:?}", started.elapsed());
     run::run(app)
 }
 

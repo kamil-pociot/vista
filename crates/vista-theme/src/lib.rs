@@ -229,6 +229,28 @@ pub struct Theme {
     palette: BTreeMap<String, Rgb>,
 }
 
+impl Rgb {
+    /// WCAG relative luminance.
+    pub fn luminance(self) -> f64 {
+        let lin = |c: u8| {
+            let c = f64::from(c) / 255.0;
+            if c <= 0.03928 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(self.0) + 0.7152 * lin(self.1) + 0.0722 * lin(self.2)
+    }
+
+    /// WCAG contrast ratio between two colours (1.0 – 21.0).
+    pub fn contrast(self, other: Rgb) -> f64 {
+        let (a, b) = (self.luminance(), other.luminance());
+        let (hi, lo) = if a > b { (a, b) } else { (b, a) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+}
+
 /// Returned for tokens a theme doesn't define, so a bug is visible instead of invisible.
 pub const MISSING_COLOUR: Rgb = Rgb(0xFF, 0x00, 0xFF);
 
@@ -295,7 +317,11 @@ pub enum ThemeError {
 }
 
 /// Built-in looks, embedded in the binary.
-pub const BUILTIN: &[(&str, &str)] = &[("darcula", include_str!("../themes/darcula.toml"))];
+pub const BUILTIN: &[(&str, &str)] = &[
+    ("darcula", include_str!("../themes/darcula.toml")),
+    ("quiet", include_str!("../themes/quiet.toml")),
+    ("paper", include_str!("../themes/paper.toml")),
+];
 
 /// Finds and resolves looks from the built-in set and an optional user directory.
 /// A user file with the same id as a built-in look replaces it.
@@ -444,6 +470,56 @@ mod tests {
                 assert!(theme.try_color(token).is_some(), "{id} lacks {token}");
             }
         }
+    }
+
+    /// Text must stay readable in every built-in look (WCAG AA for body text,
+    /// 3:1 for secondary text, status colours and syntax).
+    #[test]
+    fn builtin_looks_have_readable_contrast() {
+        let loader = ThemeLoader::new(None);
+        for (id, _) in BUILTIN {
+            let t = loader.load(id).unwrap();
+            let check = |fg: &str, bg: &str, min: f64| {
+                let c = t.color(fg).contrast(t.color(bg));
+                assert!(c >= min, "{id}: {fg} on {bg} = {c:.2} < {min}");
+            };
+            check("ui.text", "ui.bg", 4.5);
+            check("syntax.text", "ui.bg", 4.5);
+            check("ui.text", "ui.panel", 4.5);
+            check("ui.dim", "ui.bg", 3.0);
+            check("ui.linenr", "ui.bg", 3.0);
+            check("ui.text", "ui.selection", 4.5);
+            check("ui.button.text", "ui.button", 4.5);
+            check("ui.match.text", "ui.match", 4.5);
+            for g in ["git.modified", "git.added", "git.unversioned", "git.conflict"] {
+                check(g, "ui.panel.alt", 3.0);
+                check(g, "ui.bg", 3.0);
+            }
+            for s in [
+                "syntax.keyword",
+                "syntax.string",
+                "syntax.function",
+                "syntax.type",
+                "syntax.comment",
+                "syntax.number",
+            ] {
+                check(s, "ui.bg", 3.0);
+            }
+            for d in ["diff.inserted", "diff.modified", "diff.deleted"] {
+                check("syntax.text", d, 4.5);
+            }
+            // Word highlights must stand out from the block colour, so they
+            // only need 3:1 (they mark short spans).
+            for d in ["diff.word.inserted", "diff.word.modified", "diff.word.deleted"] {
+                check("syntax.text", d, 3.0);
+            }
+        }
+    }
+
+    #[test]
+    fn contrast_math() {
+        assert!((Rgb(0, 0, 0).contrast(Rgb(255, 255, 255)) - 21.0).abs() < 0.01);
+        assert!((Rgb(10, 10, 10).contrast(Rgb(10, 10, 10)) - 1.0).abs() < 0.001);
     }
 
     #[test]

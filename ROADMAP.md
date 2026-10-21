@@ -350,10 +350,10 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 **Done when:** reviewing changes is as comfortable as in IntelliJ.
 **Tests:** proptest: aligned rows reconstruct both sides exactly, applying all hunks yields the new text, folding never loses rows. Snapshot: the mockup-A diff (`status.rs`) as a golden screen. E2e: `F7` / `Shift-F7` navigation, word highlights, unified/whitespace/collapse toggles, new/deleted/image files, next file, live update, open at line.
 
-### M8 — Polish, more looks, distribution
-- [ ] Ship looks **B "Quiet Modal"** and **C "Paper Light"** as theme files, proving §2.1. Any gap found in the chrome options gets fixed here.
-- [ ] Performance pass (startup, memory, status refresh).
-- [ ] Release binaries, Homebrew tap, `cargo install`.
+### M8 — Polish, more looks, distribution ✅
+- [x] Looks **B "Quiet Modal"** and **C "Paper Light"** ship as theme files only, proving §2.1. Gap found and fixed: boxed looks now frame the editor area too. A contrast test (WCAG) guards every built-in look (it caught Darcula's selection colour, now fixed).
+- [x] Performance pass on `lms-context` (release): ready to draw ~2 ms after `main` (repository discovery no longer spawns git: 68 ms → 0.05 ms), first frame drawn in ~1 ms, git status and branch right after, ~17 MiB resident. Find in Files first results 22–32 ms.
+- [x] Release binaries via `.github/workflows/release.yml` (macOS arm64/x86_64, Linux x86_64 on `v*` tags), Homebrew formula template in `packaging/homebrew/`, `cargo install --path crates/vista-tui` (crates.io name `vista-tui`; `vista` is taken). README with keys, config and looks.
 
 ### M9 — Partial commits
 - [ ] Per-hunk (then per-line) checkboxes in the diff gutter, IntelliJ-style.

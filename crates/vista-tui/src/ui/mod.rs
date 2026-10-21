@@ -245,7 +245,13 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
 }
 
 fn main_area(f: &mut Frame, area: Rect, app: &mut App) {
-    viewer::draw(f, area, app);
+    // Looks with boxed panels frame the editor area too.
+    let inner = if app.theme.chrome.panel_headers == PanelHeaders::BorderTitle {
+        chrome::frame(f, area, app.focus == Focus::Main, &app.theme)
+    } else {
+        area
+    };
+    viewer::draw(f, inner, app);
 }
 
 pub(crate) fn empty_state(f: &mut Frame, area: Rect, app: &App) {
