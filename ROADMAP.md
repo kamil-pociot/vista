@@ -1,16 +1,32 @@
-# file-browser — Research & Roadmap
+# fb — Research & Roadmap
 
-A lean, keyboard-driven, **read-only** replacement for the parts of IntelliJ IDEA that are actually used day to day:
+A lean, keyboard-driven replacement for the parts of IntelliJ IDEA that are actually used day to day:
 
 1. **Project view** — file tree with expandable folders, file names coloured by git status.
 2. **Viewer** — images, rendered Markdown, source code with syntax highlighting.
-3. **Find file** — IntelliJ-style "Go to File" (type a few letters, fuzzy / camel-hump matching).
-4. **Find in Path** — full-text search across the project.
-5. **Commit view** — changed files (tracked + unversioned) with an IntelliJ-like side-by-side diff against `HEAD`.
+3. **Editing** — through an embedded Neovim, when needed.
+4. **Find file** — IntelliJ-style "Go to File" (type a few letters, fuzzy / camel-hump matching).
+5. **Find in Path** — full-text search across the project.
+6. **Commit view** — changed files (tracked + unversioned) with an IntelliJ-like side-by-side diff against `HEAD`, and committing.
 
-Non-goals: text editing, language intelligence (LSP), run configurations, plugins, debugger.
+Non-goals: language intelligence (LSP) beyond what your Neovim config brings, run configurations, plugins, debugger.
 
-> Status: **proposal — awaiting approval.** Nothing below is implemented yet. UI design options are published separately for review (see §4).
+> Status: **approved direction, decisions recorded in §0.** Implementation has not started.
+> Design mockups: <https://claude.ai/artifact/UJ6tw99LFSzjDsXjW276Dr> (A was chosen).
+
+---
+
+## 0. Decisions (2026-10-21)
+
+| # | Topic | Decision |
+|---|---|---|
+| 1 | UI design | **Design A — Darcula Classic** is the default look. The theming system must make further looks (B "Quiet Modal" and C "Paper Light" from the mockups, or new ones) cheap to add: see §2.1. |
+| 2 | Editing | **Embedded Neovim** is part of the core plan (M3), not an optional extra. |
+| 3 | Terminal | **Ghostty**, usually inside **herdr**; plain Ghostty is fine where herdr gets in the way. Target: kitty graphics + kitty keyboard protocols. See §1.6. |
+| 4 | Commits | The commit view **makes commits** (commit, amend; push as an option). |
+| 5 | Partial commits | Not now, but **planned** (M9). The diff model keeps stable hunk identities from day one so it's an add-on, not a rewrite. |
+| 6 | Repo size | Reference repo `lms-context`: **~4,000 files** (4,004 tracked, 4,083 not ignored, 4,266 total, 203 MB). At that size a live ripgrep-engine search takes tens of milliseconds, so **no persistent index** is planned. |
+| 7 | Name | `fb` for now. Alternatives in §4. |
 
 ---
 
@@ -23,201 +39,245 @@ Non-goals: text editing, language intelligence (LSP), run configurations, plugin
 | Requirement | Terminal feasibility | Notes |
 |---|---|---|
 | File tree, expand/collapse, mouse | ✅ Full | Standard TUI territory (yazi, gitui, lazygit prove it). |
-| Git-status colours | ✅ Full | Truecolor is supported by every modern terminal. |
+| Git-status colours | ✅ Full | Truecolor everywhere. |
 | Code highlighting | ✅ Full | Same TextMate/Sublime grammars that `bat` and `delta` use. |
-| Images | ✅ Good, **terminal-dependent** | Kitty graphics protocol (kitty, Ghostty, WezTerm), iTerm2 inline images, Sixel. Falls back to coloured half-blocks elsewhere. Inside **tmux** it needs `allow-passthrough on` and is less reliable. |
-| Rendered Markdown | 🟡 Good, not "browser-pretty" | Bold/italic/colour, highlighted code blocks, tables, lists, links and inline images are all possible. **Not possible:** proportional fonts, real heading sizes (except kitty's new text-sizing protocol), HTML blocks, Mermaid diagrams. |
-| IntelliJ-like diff | 🟡 Very close | Side-by-side with aligned blocks, word-level highlights, change markers in the gutter, next/prev change: all doable (delta does most of this). **Not possible:** the curved "connector" ribbons between the two panes. They can be approximated with a coloured centre gutter. |
-| Full-text search, fuzzy find | ✅ Full | These are backend concerns. The UI is just lists and previews. |
-| Keybindings | 🟡 Mostly | macOS terminals usually swallow `Cmd`, so bindings use `Ctrl`/`Alt`. "Double-Shift" needs the kitty keyboard protocol (kitty, Ghostty, WezTerm), so we provide an alternative binding too. |
+| Images | ✅ Good in Ghostty | Kitty graphics protocol. Inside herdr: works, with known rough edges (§1.6). Half-block fallback elsewhere. |
+| Rendered Markdown | 🟡 Good, not "browser-pretty" | Bold/italic/colour, highlighted code blocks, tables, lists, links, inline images. **Not possible:** proportional fonts, real heading sizes, HTML blocks, Mermaid. |
+| IntelliJ-like diff | 🟡 Very close | Aligned side-by-side, word-level highlights, gutter markers, next/prev change. **Not possible:** the curved connector ribbons, which are approximated by a coloured centre gutter (see mockup A). |
+| Editing | ✅ Full | Embedded Neovim (§1.5). |
+| Full-text search, fuzzy find | ✅ Full | Backend concerns; UI is lists + previews. |
+| Keybindings | 🟡 Mostly | `Cmd` isn't available; we use `Ctrl`/`Alt`. Must not clash with herdr's prefix `Ctrl-b`. |
 
-When a desktop app (Tauri / GPUI / egui) would be worth it: if pixel-perfect Markdown (GitHub-style rendering, Mermaid) or the exact IntelliJ diff look matters more than leanness. The architecture below keeps that door open: all logic lives in UI-agnostic crates, so a desktop front-end could be added later without a rewrite.
+The architecture keeps a desktop front-end possible later: all logic lives in UI-agnostic crates.
 
-### 1.2 Language choice
+### 1.2 Language: Rust + Ratatui
 
 | Option | Verdict | Why |
 |---|---|---|
-| **Rust + Ratatui** | ✅ **Recommended** | Best ecosystem for *exactly* this app (see below). Single static binary, ~instant startup, low memory, true parallelism for search/indexing. |
-| Go + Bubble Tea | Good runner-up | Pleasant TUI framework (lazygit-style apps). Weaker image support, and syntax highlighting (chroma) is less accurate than syntect. No equivalent of the ripgrep library crates. |
-| TypeScript (Bun) + OpenTUI/Ink | Possible | Fast to prototype, but heavier runtime and startup. Image and diff tooling is thinner. |
-| Python + Textual | Not recommended | Lovely widgets, but slow startup and high memory for large repos. Search/indexing would need native extensions anyway. |
-
-**The Rust building blocks, all mature and used in production tools:**
+| **Rust + Ratatui** | ✅ **Chosen** | Best ecosystem for exactly this app. Single static binary, instant startup, low memory, real parallelism. |
+| Go + Bubble Tea | Runner-up | Nice TUI framework. Weaker image support and highlighting, and no ripgrep-library equivalent. |
+| TypeScript (Bun) + OpenTUI/Ink | Possible | Heavier runtime and startup; thinner image and diff tooling. |
+| Python + Textual | No | Slow startup, high memory on large repos. |
 
 | Concern | Crate | Proven in |
 |---|---|---|
-| TUI framework | `ratatui` + `crossterm` | gitui, yazi, television, many more |
-| Images in terminal | `ratatui-image` (kitty / iTerm2 / Sixel / half-block auto-detect) | — |
-| Syntax highlighting | `syntect` + `two-face` (bat's extra grammars) | bat, delta |
+| TUI framework | `ratatui` + `crossterm` | gitui, yazi, television |
+| Images in terminal | `ratatui-image` (kitty / Sixel / iTerm2 / half-block) | — |
+| Syntax highlighting | `syntect` + `two-face` | bat, delta |
 | Markdown parsing | `pulldown-cmark` | mdBook, rustdoc |
-| Fuzzy matching | `nucleo` | Helix editor, television |
+| Fuzzy matching | `nucleo` | Helix, television |
 | Directory walking / `.gitignore` | `ignore` | ripgrep, fd |
 | Full-text search | `grep-searcher` + `grep-regex` | ripgrep |
-| Persistent index (optional) | trigram index (custom, or `tantivy` with an n-gram tokenizer) | Zed, zoekt, IntelliJ's own index |
-| Git (read: status, blobs, HEAD tree) | `gix` (gitoxide) | gitui (partially), cargo, Helix |
-| Git (write: stage, commit, rollback) | `git` CLI subprocess | Keeps hooks, GPG/SSH signing and credential helpers working with no extra effort |
-| Line/word diff | `imara-diff` (histogram algorithm) + `similar` for intra-line | gix, Helix |
+| Git reads (status, blobs, HEAD tree) | `gix` (gitoxide) | cargo, Helix, gitui |
+| Git writes (stage, commit, rollback, push) | `git` CLI subprocess | Keeps hooks, signing and credential helpers working |
+| Line/word diff | `imara-diff` + `similar` (intra-line) | gix, Helix |
 | File watching | `notify` (+ debouncer) | Zed, watchexec |
+| Neovim RPC | `nvim-rs` (msgpack-RPC, tokio) | Neovim GUI clients |
+| Themes / config | `serde` + `toml` | — |
 
 ### 1.3 Full-text search strategy
 
-IntelliJ's "Find in Path" is backed by a trigram index. For a lean tool we go in two steps:
-
-1. **v1: no index.** A parallel ripgrep-library search, streamed into the UI as results arrive. ripgrep searches typical repos (≤100k files) in well under a second once the OS page cache is warm. Zero startup cost, zero disk usage, always up to date.
-2. **v2 (only if needed): persistent trigram index.** Kept in a cache dir, built in the background, updated incrementally by the file watcher. Regex queries are narrowed to candidate files via trigrams, then verified with the ripgrep engine. We build this only if v1 is measurably too slow on your real repos.
+Parallel, streaming search with the ripgrep engine, respecting `.gitignore`; cancelled and restarted per keystroke (debounced). At ~4k files (§0.6) this finishes in tens of milliseconds once the page cache is warm, so there's **no index to build, store or keep fresh**. A trigram index stays a documented escape hatch if repos grow by 50×+, not a planned item.
 
 ### 1.4 Prerequisites on this machine
 
-- Rust toolchain is **not installed**. It's needed first: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` (or `brew install rustup`).
-- Already present: git 2.54, ripgrep, fd.
+- **Rust toolchain:** not installed. Run `brew install rustup && rustup-init` (or the rustup.rs script).
+- **Neovim:** not installed. Run `brew install neovim` (≥ 0.10 needed for the UI protocol features we use).
+- Already present: git 2.54, ripgrep, fd, Homebrew, herdr 0.9.5.
 
-### 1.5 Why not build a Neovim client?
+### 1.5 Editing: embedded Neovim
 
-Neovim can run headless (`nvim --embed` / `nvim --listen`) and talks msgpack-RPC. Its UI protocol is what GUIs like Neovide and VimR use. It could fit in three ways:
+Building a pure Neovim *client* was rejected: the tree, git colours, search, commit view and diff aren't part of Neovim's protocol, so they'd still be our code. Instead, **Neovim is embedded as the editor inside fb's viewer pane**:
 
-| Approach | What you get | What it costs |
-|---|---|---|
-| Our app *is* a Neovim UI client (like Neovide) | An editor, for free | Little else. The tree, git colours, fuzzy finder, search, commit view and diff are **not** part of Neovim's protocol. They'd be Lua plugins inside Neovim, or our own code anyway. On top of that we'd re-implement Neovim's grid rendering. |
-| Don't build; curate a Neovim config (neo-tree, snacks/telescope picker, gitsigns, diffview.nvim, render-markdown, snacks.image) | Roughly 80% of the list, in an afternoon | Vim modal editing everywhere. Feels like Vim, not IntelliJ. The commit view is fugitive/neogit-style rather than IntelliJ's. Plugin config to maintain. |
-| **Recommended:** our own app, with Neovim **embedded in the viewer pane** later | Our IntelliJ-like UI everywhere; real Neovim editing when you want it | ~1–2k lines: an `nvim-rs` RPC client, render Neovim's grid into a ratatui pane, forward keys. Optional milestone **M8**. |
+- One headless `nvim --embed` process per fb session, attached over msgpack-RPC with the **`ext_linegrid`** UI extension. Without `ext_multigrid`, Neovim composites floating windows (completion, telescope, etc.) into a single grid itself, so fb only renders one grid: cells, highlight attributes, cursor, mode.
+- Files open as Neovim buffers (`:edit`), so undo history survives switching files.
+- **Theme sync:** fb pushes its theme into Neovim (`nvim_set_hl`) so the editor matches Darcula exactly; or it keeps your colourscheme (config option).
+- **Events:** an autocmd → `rpcnotify` on `BufWritePost` makes fb refresh git status, tree colours and gutter markers immediately.
+- **Config:** uses your `init.lua` by default; `--clean`-style minimal profile available (`[editor] config = "user" | "minimal"`).
+- **Focus model:** Viewer is read-only and instant (and renders images/Markdown). `e` (or `Enter` on a code file, configurable) hands the pane to Neovim; `Ctrl-\ Ctrl-n`-style escape chord or a configurable key returns focus to fb's tree/panels.
+- **Fallback:** if `nvim` isn't on `PATH`, `e` opens `$EDITOR` full-screen (suspend/resume).
 
-**Conclusion.** Being a Neovim client doesn't make the hard parts easier, because the hard parts are exactly what Neovim doesn't provide. The viewer pane sits behind a trait, so an `nvim --embed` pane can replace it later without touching the rest. Until then, M7's "open in `$EDITOR`" covers occasional edits.
+### 1.6 Ghostty + herdr
 
-Worth a 1-hour experiment before we start: if you're happy living in Neovim, a LazyVim setup with `diffview.nvim` may already be enough. If it isn't, this project is the answer.
+- **Ghostty** supports the kitty graphics protocol and the kitty keyboard protocol: both are first-class targets.
+- **herdr** (0.9.5 installed) is a tmux-style multiplexer with its own terminal emulation. It implements kitty graphics, but its tracker shows open issues: images missing after re-attach (#5408), slow large images (#5442), and an unanswered case where the support query says OK but nothing renders (#5468).
+- **Plan:** a protocol spike in M0 runs inside herdr *and* plain Ghostty. fb auto-detects support; `[images] protocol = "auto" | "kitty" | "halfblocks" | "off"` lets you force a mode. If herdr misbehaves, images degrade to half-blocks there and stay pixel-perfect in plain Ghostty. Everything else (colours, mouse, keys) is unaffected by herdr.
+- fb never binds `Ctrl-b` (herdr's prefix).
 
 ---
 
 ## 2. Architecture
 
 ```
-file-browser/              (cargo workspace)
+fb/                         (cargo workspace)
 ├── crates/
 │   ├── fb-core/     workspace model, file tree, fs watcher, config, events
+│   ├── fb-theme/    theme + chrome model, loading, built-in looks
 │   ├── fb-git/      status, HEAD blobs, change list, write ops via git CLI
-│   ├── fb-diff/     line + word diff, side-by-side alignment model
-│   ├── fb-search/   fuzzy file finder (nucleo), full-text search (grep-*), index (later)
+│   ├── fb-diff/     line + word diff, side-by-side alignment, hunk ids
+│   ├── fb-search/   fuzzy file finder (nucleo), full-text search (grep-*)
 │   ├── fb-render/   syntax highlighting, markdown → styled lines, image decoding
+│   ├── fb-nvim/     embedded Neovim: RPC, linegrid model, theme sync
 │   └── fb-tui/      ratatui front-end (binary: `fb`)
+├── themes/          darcula.toml (A), quiet.toml (B), paper.toml (C)…
 └── ROADMAP.md
 ```
 
-- **UI-agnostic core.** `fb-tui` only consumes view-models (tree rows, styled lines, diff rows). A future desktop front-end would reuse every other crate.
-- **Never block the UI thread.** Git status, search, highlighting and image decoding run on worker threads and post results through a channel. The UI renders whatever is ready.
-- **Swappable viewer.** The viewer pane is a trait (code / markdown / image / diff implementations), so an embedded Neovim editor can be added as one more implementation (M8).
-- **Lazy everything.** Tree nodes load on expand. Highlighting covers only the visible viewport (plus a margin). Large and binary files are detected and handled safely.
+- **UI-agnostic core.** `fb-tui` consumes view-models (tree rows, styled lines, diff rows), never git or fs directly.
+- **Never block the UI thread.** Status, search, highlighting, image decoding and Neovim RPC run on workers and post results through channels.
+- **Swappable viewer.** The viewer pane is a trait with implementations: code, markdown, image, diff, Neovim editor.
+- **Lazy everything.** Tree nodes load on expand; highlighting covers the viewport (+ margin); big/binary files are detected.
 
-### Git status colours (IntelliJ defaults, configurable)
+### 2.1 Theming: making new designs cheap
+
+The three mockups differ in two independent ways, and the system mirrors that split:
+
+1. **Palette (theme)**: every colour in the UI is a *semantic token*, never a literal in widget code:
+   `ui.bg`, `ui.panel`, `ui.border`, `ui.text`, `ui.dim`, `ui.selection`, `ui.accent`;
+   `git.modified`, `git.added`, `git.unversioned`, `git.deleted`, `git.ignored`, `git.conflict`;
+   `syntax.keyword`, `syntax.string`, `syntax.function`, `syntax.type`, `syntax.comment`, …;
+   `diff.inserted`, `diff.modified`, `diff.deleted`, `diff.word.*`, `diff.filler`, `gutter.*`.
+   Syntax scopes from syntect map onto these tokens, so **one file styles both the chrome and the code**; Neovim gets the same palette via theme sync.
+2. **Chrome (layout & decoration)**: border style (`plain` / `rounded` / `none`), panel headers (`titled-bar` / `inline` / `none`), tab style (`underline` / `pill` / `text`), status-bar layout and segments, key-hint line on/off, tool-window strip (`bottom-bar` / `icon-rail` / `none`), git indicators (`colour` / `colour+letter`), tree glyphs, spacing (`compact` / `comfortable`).
+
+A **look** = one TOML file with `[palette]` + `[chrome]` (+ optional `inherits = "darcula"`). Adding a design means writing a TOML file, not touching widget code. Built-in looks are embedded in the binary; user looks live in `~/.config/fb/themes/`. Hot reload while editing a theme file; `fb --theme quiet` or `:theme` to switch. A CI check fails if a widget uses a colour literal.
+
+```toml
+# themes/darcula.toml (excerpt)
+name = "Darcula Classic"
+[palette]
+"ui.bg" = "#2B2B2B"
+"ui.panel" = "#3C3F41"
+"ui.border" = "#4A4D50"
+"git.modified" = "#72A0C4"
+"git.added" = "#6FAA61"
+"git.unversioned" = "#E07B6E"
+"syntax.keyword" = "#D58840"
+"diff.modified" = "#2C3E55"
+"diff.word.modified" = "#44679A"
+
+[chrome]
+borders = "plain"
+panel_headers = "titled-bar"
+tabs = "underline"
+tool_windows = "bottom-bar"
+git_indicator = "colour"
+keyhints = false
+```
+
+### 2.2 Git status colours (design A defaults)
 
 | Status | Colour |
 |---|---|
-| Modified | blue |
-| Added (staged new) | green |
-| Unversioned (untracked) | red / brown |
+| Modified / Renamed | blue `#72A0C4` |
+| Added | green `#6FAA61` |
+| Unversioned | red `#E07B6E` |
 | Deleted | grey |
-| Ignored | olive / dimmed |
+| Ignored | olive `#9C9D2C` |
 | Conflicted | bright red |
-| Renamed | blue (shows "→ old name") |
 
-Folders inherit a colour when they contain changes (optional, as in IntelliJ).
+Folders inherit a colour when they contain changes (toggleable).
 
 ---
 
 ## 3. Roadmap
 
-Each milestone ends in something usable. **Part 1 = M0–M4, Part 2 = M5–M6.**
+Each milestone ends in something usable. Design A is built first; B and C come in M8.
 
 ### M0 — Foundations
-- [ ] Install Rust toolchain; create cargo workspace with the crates above.
-- [ ] App shell: crossterm alternate screen, event loop, panic hook that restores the terminal, logging to file (`tracing`).
-- [ ] Focus/pane model, keymap layer (configurable), status bar, help overlay (`?`).
-- [ ] Config file (`~/.config/file-browser/config.toml`): theme, keymap, ignore rules.
-- [ ] CI: `cargo fmt`, `clippy`, tests.
+- [ ] Install Rust + Neovim; cargo workspace with the crates above.
+- [ ] App shell: alternate screen, event loop, panic hook restoring the terminal, `tracing` to a log file.
+- [ ] **Theme engine** (`fb-theme`): semantic tokens, chrome options, TOML loading, `inherits`, hot reload; `darcula.toml` built in.
+- [ ] Pane/focus model, configurable keymap (avoiding `Ctrl-b`), status bar, help overlay (`?`).
+- [ ] Config at `~/.config/fb/config.toml`.
+- [ ] **Terminal spike:** kitty graphics + kitty keyboard detection inside herdr and plain Ghostty; record results here.
+- [ ] CI: `fmt`, `clippy`, tests, "no colour literals in widgets" check.
 
-**Done when:** `fb [path]` opens a split layout and quits cleanly.
+**Done when:** `fb [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
 
 ### M1 — Project tree with git colours
-- [ ] Lazy-loaded tree (expand/collapse, `←/→`, `Enter`, mouse click & scroll).
-- [ ] `.gitignore`-aware: ignored files shown dimmed (toggleable), `.git` hidden.
-- [ ] Sorting: folders first, natural sort.
-- [ ] Git status via `gix`: per-file colours, folder roll-up colours.
-- [ ] File watcher: tree and status refresh automatically on disk changes (debounced).
-- [ ] "Reveal current file in tree", collapse all.
+- [ ] Lazy tree, keyboard + mouse; folders first, natural sort.
+- [ ] `.gitignore`-aware, ignored shown dimmed/olive (toggle), `.git` hidden.
+- [ ] Git status via `gix`: file colours + folder roll-up.
+- [ ] File watcher: tree and status refresh on disk changes (debounced).
+- [ ] Reveal current file, collapse all.
 
-**Done when:** browsing a large repo (e.g. 50k files) is instant and colours match `git status`.
+**Done when:** `lms-context` browses instantly and colours match `git status`.
 
 ### M2 — Viewer (code / Markdown / images)
-- [ ] Code: syntect highlighting, line numbers, scrolling, go-to-line, soft-wrap toggle.
-- [ ] Git change markers in the gutter (added / modified / deleted lines vs HEAD).
-- [ ] Large-file safety (size cap, lazy viewport highlighting), binary detection with hex/info fallback.
-- [ ] Markdown: rendered view (headings, emphasis, lists, tables, quotes, highlighted fenced code, links, inline images), plus a raw/rendered toggle.
-- [ ] Images: png/jpg/gif/webp/svg(rasterised) via `ratatui-image`, fit-to-pane, protocol auto-detect.
-- [ ] Tabs or "recent files" switcher (`Ctrl-E` IntelliJ-style).
-- [ ] Search within the open file (`/` or `Ctrl-F`), next/previous match.
+- [ ] Code: syntect via theme tokens, line numbers, scroll, go-to-line, wrap toggle.
+- [ ] Git change markers in the gutter.
+- [ ] Large/binary file safety.
+- [ ] Markdown rendered view + raw toggle.
+- [ ] Images via `ratatui-image` (kitty → half-block fallback), fit-to-pane.
+- [ ] Tabs + recent files (`Ctrl-E`), find in file.
 
 **Done when:** opening any file in the tree shows the right view.
 
-### M3 — Go to File (fuzzy)
-- [ ] Popup with live results, using `nucleo` over all non-ignored paths (gathered in the background, kept fresh by the watcher).
-- [ ] IntelliJ-like ranking: boosts for camel-hump/word-start hits (`FoBaCo` → `FooBarController`), filename over directory matches, recent files first.
-- [ ] `path/segments` and `:line` suffix support (`main.rs:42`).
-- [ ] Preview of the highlighted result.
+### M3 — Editing with embedded Neovim
+- [ ] `fb-nvim`: spawn `nvim --embed`, attach with `ext_linegrid`, model the grid (cells, hl attrs, cursor, mode, resize).
+- [ ] Render the grid in the viewer pane; forward keys/mouse while focused; focus-return chord.
+- [ ] Open/switch buffers from tree, tabs, finder; unsaved-changes indicator in tabs and tree.
+- [ ] Theme sync (`nvim_set_hl` from the active look) or keep the user colourscheme.
+- [ ] `BufWritePost` → refresh status, tree colours, gutter, commit view.
+- [ ] Config modes `user` / `minimal`; `$EDITOR` fallback when `nvim` is missing.
 
-**Done when:** any file in a large repo is a few keystrokes away, with results updating per keystroke in under 16 ms.
+**Done when:** a file can be opened, edited, saved, and its tree colour flips to "modified" right away.
 
-### M4 — Find in Path (full-text)
-- [ ] Popup/panel: query, toggles for **case**, **whole word**, **regex**, file mask (`*.rs`), scope (project / directory).
-- [ ] Parallel streaming search via `grep-searcher`, respecting `.gitignore`. Results grouped by file, with highlighted match context.
-- [ ] Preview pane; `Enter` opens the file at the line.
-- [ ] Cancellation on each keystroke (debounced).
-- [ ] *(Conditional)* trigram index if v1 is too slow on real repos. Benchmark first.
+### M4 — Go to File (fuzzy)
+- [ ] Popup per mockup A: tabs `All / Files / Text / Recent`, `nucleo` over non-ignored paths kept fresh by the watcher.
+- [ ] IntelliJ-like ranking: camel-hump/word-start boosts, filename over directory, recent first.
+- [ ] `name:42` jumps to a line; open in viewer or straight into Neovim.
 
-**Done when:** searching a large repo feels instant and results are correct vs `rg`.
+**Done when:** any file is a few keystrokes away, each keystroke under 16 ms.
 
-### M5 — Commit view (changes list)
-- [ ] Dedicated view/tab (IntelliJ `Alt-0` / `Cmd-0` equivalent).
-- [ ] Groups: **Changes** (tracked: modified/added/deleted/renamed, staged or not) and **Unversioned Files**.
-- [ ] Flat list or grouped by directory; file counts; status colours.
-- [ ] Checkboxes for inclusion; commit message box; **Commit** / **Amend** (via `git` CLI, so hooks and signing work).
-- [ ] Actions: Rollback (with confirmation), Add unversioned to VCS, Refresh.
-- [ ] *(Open question)* hunk/line-level partial commits.
+### M5 — Find in Path (full-text)
+- [ ] The `Text` tab of the same popup, or a docked panel: case / whole word / regex toggles, file mask, scope.
+- [ ] Streaming parallel search, grouped by file, highlighted context, preview; `Enter` opens at the line.
 
-**Done when:** a normal commit workflow can be done without leaving the app.
+**Done when:** results match `rg` and feel instant on `lms-context`.
 
-### M6 — IntelliJ-style diff viewer
-- [ ] Side-by-side: HEAD (left, read-only) vs working tree (right), with scrolling synchronised and **blocks aligned**: filler lines inserted so unchanged regions line up.
-- [ ] Block backgrounds: green (inserted), blue (modified), grey (deleted). **Word-level highlights** inside modified blocks.
-- [ ] Centre gutter showing change markers (stand-in for IntelliJ's connector ribbons).
-- [ ] Syntax highlighting on both sides.
-- [ ] Next/previous change (`F7` / `Shift-F7`), next/previous file in the change list.
-- [ ] Toggle unified view; toggle "ignore whitespace"; collapse unchanged regions.
-- [ ] Unversioned/new files shown as all-added; deleted files as all-removed; binary/image diff = side-by-side images.
+### M6 — Commit view
+- [ ] `0: Commit` tool window: **Changes** and **Unversioned Files** groups, flat or by directory.
+- [ ] File-level checkboxes, commit message editor (single-line fast path; full editor via Neovim), **Commit**, **Amend**, optional **Commit & Push**. All writes go through the `git` CLI.
+- [ ] Rollback (confirm), add unversioned to VCS, refresh.
 
-**Done when:** reviewing changes before a commit is as comfortable as in IntelliJ.
+**Done when:** a normal commit workflow happens without leaving fb.
 
-### M7 — Polish & distribution
-- [ ] Themes (Darcula-like default, light theme).
-- [ ] Performance pass on a big monorepo (startup time, memory, status refresh).
-- [ ] "Open in `$EDITOR`" escape hatch for the occasional edit.
-- [ ] Release binaries + Homebrew tap; `cargo install`.
+### M7 — IntelliJ-style diff viewer
+- [ ] Side-by-side HEAD ⇄ working tree, synced scroll, aligned blocks with hatched filler.
+- [ ] Block colours (inserted / modified / deleted) and word-level highlights from theme tokens; centre gutter.
+- [ ] Syntax highlighting both sides; `F7`/`Shift-F7` change navigation; next/prev file.
+- [ ] Unified toggle, ignore-whitespace toggle, collapse unchanged.
+- [ ] New/deleted/binary/image files handled.
+- [ ] Hunks carry stable ids (groundwork for M9).
 
-### M8 — Embedded Neovim editor *(optional)*
-- [ ] `nvim --embed` per open file via `nvim-rs`; render Neovim's line grid inside the viewer pane, with its highlights.
-- [ ] Toggle read-only viewer ⇄ Neovim editor (`e`); forward keys while it has focus; `:w` triggers the usual tree/status refresh.
-- [ ] Uses your own `init.lua`, or a minimal profile with a flag.
+**Done when:** reviewing changes is as comfortable as in IntelliJ.
 
-### Later / ideas (not committed)
-- Git log & per-file history, blame ("Annotate"), branch switcher.
-- Compare two arbitrary files/revisions.
-- Desktop front-end (Tauri or GPUI) reusing the core crates, if terminal limits start to hurt.
+### M8 — Polish, more looks, distribution
+- [ ] Ship looks **B "Quiet Modal"** and **C "Paper Light"** as theme files, proving §2.1. Any gap found in the chrome options gets fixed here.
+- [ ] Performance pass (startup, memory, status refresh).
+- [ ] Release binaries, Homebrew tap, `cargo install`.
+
+### M9 — Partial commits
+- [ ] Per-hunk (then per-line) checkboxes in the diff gutter, IntelliJ-style.
+- [ ] Commit only the selected hunks: build a patch and `git apply --cached`, then commit; working tree untouched.
+
+### Later / ideas
+- Git log & file history, blame ("Annotate"), branch switcher.
+- Compare two files/revisions; edit the right side of a diff via Neovim.
+- Desktop front-end reusing the core crates.
 
 ---
 
-## 4. Open questions for approval
+## 4. Remaining open questions
 
-1. **UI design:** pick one of the three directions in the [design mockups](https://claude.ai/artifact/UJ6tw99LFSzjDsXjW276Dr), or mix elements from several: **A** Darcula Classic, **B** Quiet Modal, **C** Paper Light.
-2. **Neovim:** agree with §1.5 (own app now, embedded Neovim as optional M8)? Or try a curated Neovim setup first?
-3. **Terminal emulator:** which one do you use (Ghostty / iTerm2 / kitty / WezTerm / Terminal.app)? And do you run inside **tmux**? This decides how good image previews will be. Terminal.app has no image protocol.
-4. **Committing:** should the commit view *perform* commits (M5 checkboxes + message + commit), or only *show* changes and diffs?
-5. **Partial commits:** are hunk/line-level checkboxes (IntelliJ's per-change checkboxes in the diff) needed, or is file-level enough?
-6. **Repo sizes:** roughly how many files are in your biggest repo? This decides whether the trigram index (M4) is needed at all.
-7. **Name:** working name `file-browser`, binary `fb`. Happy with that?
+1. **Name:** keep `fb`, or pick one of:
+   - **`perch`**: sitting above the project, looking down at it.
+   - **`loupe`**: a jeweller's magnifier for close reading (a GNOME image viewer shares the name, on Linux only).
+   - **`keel`**: the steady backbone under the work; short to type.
+   - **`vista`**: an overview of the whole project.
+   - **`prism`**: one view split into tree, code and diffs.
+
+   None of these collide with a command on this machine. A crates.io/Homebrew name check happens before renaming.
+2. **Editor entry key:** should `Enter` on a code file open the read-only viewer (fast, default) or go straight into Neovim?
