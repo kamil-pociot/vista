@@ -329,13 +329,13 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 **Done when:** it feels like IntelliJ's Find in Files and results match `rg` on `lms-context`. Measured on `lms-context` (release): first results on screen in 22–32 ms, complete in 53–118 ms; engine alone ~30 ms per search (ripgrep CLI: 38 ms).
 **Tests:** integration: results vs `git grep` (standalone ripgrep isn't installed everywhere; `git grep` is an independent implementation) across literal / case / word / regex / mask / directory-scope combinations, plus engine unit tests for scopes, cancellation and the result cap. E2e: popup, toggles, mask, regex errors, scopes, preview, open at line, Find tool window, `Ctrl-Alt-↓`, history, hand-over from Go to File. Latency: opt-in perf test on `lms-context`.
 
-### M6 — Commit view
-- [ ] `0: Commit` tool window: **Changes** and **Unversioned Files** groups, flat or by directory.
-- [ ] File-level checkboxes, commit message editor (single-line fast path; full editor via Neovim), **Commit**, **Amend**, optional **Commit & Push**. All writes go through the `git` CLI.
-- [ ] Rollback (confirm), add unversioned to VCS, refresh.
+### M6 — Commit view ✅
+- [x] `0: Commit` tool window (`Alt-0`, `Ctrl-K` from anywhere): **Changes** and **Unversioned Files** groups with counts, flat or by directory (`g`), collapsible.
+- [x] File/folder/group checkboxes (`Space`, click; tracked changes ticked by default, unversioned not), commit message editor (`Tab`), **Commit** (`Ctrl-K`), **Amend** (`m`, prefills the last message), **Commit & Push** (`P`). Writes go through the `git` CLI, built in a temporary index so only ticked files go in and unticked staged files stay staged.
+- [x] Rollback (`r`, with confirmation; added files are unstaged and kept), add unversioned to VCS (`a`), refresh. Hook output and errors are shown in the window.
 
 **Done when:** a normal commit workflow happens without leaving vista.
-**Tests:** e2e: groups and counts; untick a file → commit → `git log` and `git status` confirm only the ticked files went in; amend; failing pre-commit hook shows its output; rollback asks for confirmation.
+**Tests:** e2e: groups and counts; untick a file → commit → `git log` and `git status` confirm only the ticked files went in; amend; failing pre-commit hook shows its output; rollback asks for confirmation; add to VCS; empty-message guard; commit & push to a remote. Integration: commit subsets, deletions, renames, partial content, amend, first commit, hooks, rollback, add, push.
 
 ### M7 — IntelliJ-style diff viewer
 - [ ] Side-by-side HEAD ⇄ working tree, synced scroll, aligned blocks with hatched filler.

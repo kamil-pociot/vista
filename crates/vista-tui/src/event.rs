@@ -35,6 +35,13 @@ pub enum AppEvent {
         generation: u64,
         event: vista_search::FindEvent,
     },
+    /// A commit finished (or failed with git's / the hooks' output).
+    CommitDone {
+        result: Box<Result<vista_git::write::CommitResult, String>>,
+        files: usize,
+        push: bool,
+    },
+    PushDone(Result<String, String>),
     /// Something from the embedded Neovim.
     Nvim(vista_nvim::NvimEvent),
     /// An image referenced from Markdown finished decoding.

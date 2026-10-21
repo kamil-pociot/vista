@@ -7,6 +7,7 @@
 
 pub mod cmd;
 pub mod status;
+pub mod write;
 
 pub use cmd::{Git, GitError};
 pub use status::{BranchInfo, Change, FileStatus, StatusSnapshot};

@@ -1,6 +1,7 @@
 //! Drawing. Every colour comes from the theme via [`crate::style::ThemeStyle`].
 
 pub mod chrome;
+pub mod commit;
 pub mod find;
 pub mod goto;
 pub mod help;
@@ -35,6 +36,8 @@ pub struct Areas {
     pub panel_bottom: Option<Rect>,
     pub find_list: Option<Rect>,
     pub find_window: Option<Rect>,
+    pub commit_list: Option<Rect>,
+    pub commit_message: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -88,6 +91,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             panel_bottom: bottom_panel,
             find_list: None,
             find_window: None,
+            commit_list: None,
+            commit_message: None,
             main: body,
             bottom,
             keyhints,
@@ -122,6 +127,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         panel_bottom: bottom_panel,
         find_list: None,
         find_window: None,
+        commit_list: None,
+        commit_message: None,
         main,
         bottom,
         keyhints,
@@ -132,6 +139,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     f.render_widget(Block::new().style(app.theme.base()), area);
     let mut areas = compute_areas(area, app);
+    // Regions recorded while drawing (cleared first, kept at the end).
+    app.areas.commit_list = None;
+    app.areas.commit_message = None;
 
     top_bar(f, areas.top, app);
     if let Some(rail) = areas.rail {
@@ -165,17 +175,23 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.find.is_some() {
         find::draw_popup(f, area, app);
     }
+    if app.confirm.is_some() {
+        commit::draw_confirm(f, area, app);
+    }
     if app.show_help {
         help::draw(f, area, app);
     }
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
+    let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
         goto_list,
         find_list,
         find_window,
+        commit_list,
+        commit_message,
         ..areas
     };
 }
@@ -219,8 +235,10 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
         _ => ("1: Project", "ui.panel.alt"),
     };
     let inner = chrome::panel(f, area, title, focused, bg, &app.theme);
-    if app.left == Some(LeftPanel::Project) {
-        project::draw(f, inner, app);
+    match app.left {
+        Some(LeftPanel::Project) => project::draw(f, inner, app),
+        Some(LeftPanel::Commit) => commit::draw(f, inner, app),
+        None => {}
     }
     inner
 }

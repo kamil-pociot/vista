@@ -11,6 +11,7 @@ use vista_core::{Config, FsChange, Paths, Watcher};
 use vista_git::{Git, StatusSnapshot};
 use vista_theme::{Theme, ThemeLoader};
 
+use crate::commit::{CommitOutcome, CommitView};
 use crate::editor;
 use crate::event::AppEvent;
 use crate::find::{FindOutcome, FindPopup, FindWindow, ResultTab};
@@ -24,6 +25,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use vista_core::ImageProtocol;
+use vista_git::Change;
+use vista_git::write::{CommitFile, CommitResult};
 use vista_nvim::{Grid, Nvim, NvimEvent};
 use vista_search::FileIndex;
 
@@ -56,6 +59,19 @@ pub struct StatusMsg {
     pub text: String,
     pub kind: MsgKind,
     pub at: Instant,
+}
+
+/// What a confirmed dialog does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmAction {
+    Rollback(Vec<Change>),
+}
+
+/// A yes/no question shown over everything else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Confirm {
+    pub text: String,
+    pub action: ConfirmAction,
 }
 
 pub struct AppOptions {
@@ -124,6 +140,8 @@ pub struct App {
     pub find_history: Vec<String>,
     find_generation: u64,
     find_pending: bool,
+    pub commit: CommitView,
+    pub confirm: Option<Confirm>,
     last_tick: Instant,
 }
 
@@ -201,6 +219,8 @@ impl App {
             find_history,
             find_generation: 0,
             find_pending: false,
+            commit: CommitView::default(),
+            confirm: None,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -422,6 +442,7 @@ impl App {
         let head_moved = s.branch.oid != self.status.branch.oid;
         self.status = s;
         self.project.rebuild(&self.status);
+        self.commit.rebuild(&self.status, &self.root);
         if head_moved {
             // Gutter markers compare with HEAD; recompute them.
             let ctx = self.load_ctx();
@@ -631,6 +652,144 @@ impl App {
         }
     }
 
+    // ----- commit ----------------------------------------------------------
+
+    fn commit_key(&mut self, key: &KeyEvent) -> bool {
+        let root = self.root.clone();
+        match self.commit.handle_key(key, &self.status, &root) {
+            CommitOutcome::Unhandled => return false,
+            CommitOutcome::Handled => {}
+            CommitOutcome::Commit { push } => self.do_commit(push),
+            CommitOutcome::Show(change) => {
+                if change.path.exists() {
+                    self.open_file(&change.path);
+                } else {
+                    self.notify("The file was deleted", MsgKind::Info);
+                }
+            }
+            CommitOutcome::Rollback(files) => {
+                let n = files.len();
+                self.confirm = Some(Confirm {
+                    text: format!(
+                        "Rollback {n} file{}? Local changes will be lost.",
+                        if n == 1 { "" } else { "s" }
+                    ),
+                    action: ConfirmAction::Rollback(files),
+                });
+            }
+            CommitOutcome::Add(paths) => {
+                if let Some(git) = &self.git {
+                    match git.add(&paths) {
+                        Ok(()) => self.notify(format!("Added {} file(s) to VCS", paths.len()), MsgKind::Info),
+                        Err(e) => self.notify(e.to_string(), MsgKind::Error),
+                    }
+                }
+                self.request_status();
+            }
+            CommitOutcome::AmendToggled => {
+                if self.commit.amend
+                    && self.commit.message.text.trim().is_empty()
+                    && let Some(m) = self.git.as_ref().and_then(|g| g.last_message())
+                {
+                    self.commit.message.set(&m);
+                }
+            }
+        }
+        true
+    }
+
+    /// Commits the ticked files with the message (in the background).
+    pub fn do_commit(&mut self, push: bool) {
+        let Some(git) = self.git.clone() else {
+            self.notify("Not a git repository", MsgKind::Error);
+            return;
+        };
+        if self.commit.busy {
+            return;
+        }
+        let message = self.commit.message.text.trim().to_string();
+        let files: Vec<CommitFile> = self
+            .commit
+            .included_changes(&self.status)
+            .iter()
+            .map(CommitFile::whole)
+            .collect();
+        let amend = self.commit.amend;
+        if message.is_empty() {
+            self.commit.output = Some((false, "Commit message is empty".into()));
+            self.commit.editing_message = true;
+            return;
+        }
+        if files.is_empty() && !amend {
+            self.commit.output = Some((false, "No files are ticked for the commit".into()));
+            return;
+        }
+        self.commit.busy = true;
+        self.commit.output = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let n = files.len();
+            let result = git.commit(&files, &message, amend).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::CommitDone {
+                result: Box::new(result),
+                files: n,
+                push,
+            });
+        });
+    }
+
+    fn on_commit_done(&mut self, result: Result<CommitResult, String>, files: usize, push: bool) {
+        self.commit.busy = false;
+        match result {
+            Ok(r) => {
+                let text = format!(
+                    "Committed {files} file{}: {} {}",
+                    if files == 1 { "" } else { "s" },
+                    r.id,
+                    r.subject
+                );
+                self.notify(text.clone(), MsgKind::Info);
+                self.commit.output = Some((true, text));
+                self.commit.message.set("");
+                self.commit.amend = false;
+                self.commit.editing_message = false;
+                if push && let Some(git) = self.git.clone() {
+                    self.commit.busy = true;
+                    let tx = self.tx.clone();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(AppEvent::PushDone(git.push().map_err(|e| e.to_string())));
+                    });
+                }
+            }
+            Err(e) => {
+                self.notify("Commit failed", MsgKind::Error);
+                // Show what the hooks said, without the command prefix.
+                let text = e.split_once(" failed: ").map(|(_, rest)| rest.to_string()).unwrap_or(e);
+                self.commit.output = Some((false, text));
+            }
+        }
+        self.request_status();
+    }
+
+    fn run_confirmed(&mut self, action: ConfirmAction) {
+        match action {
+            ConfirmAction::Rollback(files) => {
+                if let Some(git) = &self.git {
+                    match git.rollback(&files) {
+                        Ok(()) => self.notify(format!("Rolled back {} file(s)", files.len()), MsgKind::Info),
+                        Err(e) => self.notify(e.to_string(), MsgKind::Error),
+                    }
+                }
+                let paths: Vec<PathBuf> = files.iter().map(|c| c.path.clone()).collect();
+                self.project.tree.refresh(&paths);
+                self.project.rebuild(&self.status);
+                let ctx = self.load_ctx();
+                self.viewer.reload_paths(&paths, &ctx);
+                self.request_status();
+            }
+        }
+    }
+
     fn on_fs_change(&mut self, change: FsChange) {
         if !change.paths.is_empty() {
             self.index_dirty = true;
@@ -683,6 +842,18 @@ impl App {
             }
             AppEvent::Term(_) => {}
             AppEvent::Nvim(e) => self.on_nvim(e),
+            AppEvent::CommitDone { result, files, push } => self.on_commit_done(*result, files, push),
+            AppEvent::PushDone(res) => {
+                self.commit.busy = false;
+                match res {
+                    Ok(_) => self.notify("Pushed to remote", MsgKind::Info),
+                    Err(e) => {
+                        self.notify("Push failed", MsgKind::Error);
+                        self.commit.output = Some((false, e));
+                    }
+                }
+                self.request_status();
+            }
             AppEvent::Find { generation, event } => {
                 if let Some(p) = self.find.as_mut()
                     && p.generation == generation
@@ -778,6 +949,15 @@ impl App {
             self.show_help = false;
             return;
         }
+        if let Some(c) = self.confirm.take() {
+            use ratatui::crossterm::event::KeyCode;
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => self.run_confirmed(c.action),
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {}
+                _ => self.confirm = Some(c),
+            }
+            return;
+        }
         if self.goto.is_some() {
             self.goto_key(&key);
             return;
@@ -831,6 +1011,9 @@ impl App {
                 ViewerOutcome::Unhandled => {}
             }
         }
+        if self.focus == Focus::Left && self.left == Some(LeftPanel::Commit) && self.commit_key(&key) {
+            return;
+        }
         if self.focus == Focus::Left && self.left == Some(LeftPanel::Project) {
             match self.project.handle_key(&key, &self.status) {
                 Outcome::Handled => return,
@@ -851,6 +1034,33 @@ impl App {
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
+        if let Some(r) = self
+            .areas
+            .commit_list
+            .filter(|r| r.contains(pos) && self.left == Some(LeftPanel::Commit))
+        {
+            if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                self.focus = Focus::Left;
+                let row = (m.row - r.y) as usize;
+                let col = (m.column - r.x) as usize;
+                let i = self.commit.scroll + row;
+                let checkbox_at = match self.commit.rows.get(i) {
+                    Some(crate::commit::Row::File { depth, .. }) => 1 + depth * 2,
+                    Some(_) => 3,
+                    None => usize::MAX,
+                };
+                let on_box = (checkbox_at..checkbox_at + 3).contains(&col);
+                self.commit.click(row, &self.status, on_box);
+            }
+            return;
+        }
+        if self.areas.commit_message.is_some_and(|r| r.contains(pos)) && self.left == Some(LeftPanel::Commit) {
+            if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                self.focus = Focus::Left;
+                self.commit.editing_message = true;
+            }
+            return;
+        }
         if let Some(p) = self.find.as_mut() {
             if let Some(r) = self.areas.find_list.filter(|r| r.contains(pos)) {
                 match m.kind {
@@ -975,6 +1185,11 @@ impl App {
                 }
             }
             Action::Edit => self.edit_action(),
+            Action::Commit => {
+                self.left = Some(LeftPanel::Commit);
+                self.focus = Focus::Left;
+                self.commit.editing_message = true;
+            }
             Action::GotoFile => self.open_goto(GotoTab::Files),
             Action::FindInFiles => {
                 let q = self
@@ -1058,7 +1273,6 @@ impl App {
                     self.notify("No more changes", MsgKind::Info);
                 }
             }
-            _ => {}
         }
     }
 
