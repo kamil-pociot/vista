@@ -42,6 +42,12 @@ pub enum AppEvent {
         push: bool,
     },
     PushDone(Result<String, String>),
+    /// A diff tab finished loading.
+    DiffLoaded {
+        tab: u64,
+        generation: u64,
+        load: Box<crate::diffview::DiffLoad>,
+    },
     /// Something from the embedded Neovim.
     Nvim(vista_nvim::NvimEvent),
     /// An image referenced from Markdown finished decoding.

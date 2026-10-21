@@ -297,11 +297,13 @@ impl App {
                 .selected_row()
                 .filter(|r| !r.is_dir)
                 .map(|r| (r.path.clone(), None)),
-            _ => self
-                .viewer
-                .active_tab()
-                .filter(|t| !t.editing)
-                .map(|t| (t.path.clone(), t.has_cursor().then_some(t.cursor + 1))),
+            _ => self.viewer.active_tab().filter(|t| !t.editing).map(|t| {
+                let line = match &t.content {
+                    Content::Diff(d) => d.new_line_at(t.cursor).map(|l| l + 1),
+                    _ => t.has_cursor().then_some(t.cursor + 1),
+                };
+                (t.path.clone(), line)
+            }),
         };
         if let Some((path, line)) = target {
             self.start_editing(&path, line);
@@ -660,13 +662,7 @@ impl App {
             CommitOutcome::Unhandled => return false,
             CommitOutcome::Handled => {}
             CommitOutcome::Commit { push } => self.do_commit(push),
-            CommitOutcome::Show(change) => {
-                if change.path.exists() {
-                    self.open_file(&change.path);
-                } else {
-                    self.notify("The file was deleted", MsgKind::Info);
-                }
-            }
+            CommitOutcome::Show(change) => self.open_diff(&change),
             CommitOutcome::Rollback(files) => {
                 let n = files.len();
                 self.confirm = Some(Confirm {
@@ -771,6 +767,55 @@ impl App {
         self.request_status();
     }
 
+    /// Shows `change` as a diff against HEAD.
+    pub fn open_diff(&mut self, change: &Change) {
+        let ctx = self.load_ctx();
+        let spec = crate::diffview::DiffSpec {
+            orig_path: change.orig_path.clone(),
+        };
+        self.viewer.open_diff(&change.path, spec, &ctx);
+        self.focus = Focus::Main;
+    }
+
+    /// Shows the diff of the next/previous file in the Commit list.
+    fn step_diff_file(&mut self, forward: bool) {
+        let Some(cur) = self.viewer.active_tab().map(|t| t.path.clone()) else {
+            return;
+        };
+        let files: Vec<Change> = self
+            .commit
+            .rows
+            .iter()
+            .filter_map(|r| match r {
+                crate::commit::Row::File { change, .. } => Some(change.clone()),
+                _ => None,
+            })
+            .collect();
+        if files.is_empty() {
+            return;
+        }
+        let i = files.iter().position(|c| c.path == cur);
+        let next = match (i, forward) {
+            (Some(i), true) => (i + 1) % files.len(),
+            (Some(i), false) => (i + files.len() - 1) % files.len(),
+            (None, _) => 0,
+        };
+        let change = files[next].clone();
+        if let Some(row) = self
+            .commit
+            .rows
+            .iter()
+            .position(|r| matches!(r, crate::commit::Row::File { change: c, .. } if c.path == change.path))
+        {
+            self.commit.selected = row;
+        }
+        let ctx = self.load_ctx();
+        let spec = crate::diffview::DiffSpec {
+            orig_path: change.orig_path.clone(),
+        };
+        self.viewer.retarget_diff(&change.path, spec, &ctx);
+    }
+
     fn run_confirmed(&mut self, action: ConfirmAction) {
         match action {
             ConfirmAction::Rollback(files) => {
@@ -842,6 +887,48 @@ impl App {
             }
             AppEvent::Term(_) => {}
             AppEvent::Nvim(e) => self.on_nvim(e),
+            AppEvent::DiffLoaded { tab, generation, load } => {
+                let picker = self.picker.clone();
+                if let Some(t) = self.viewer.tab_by_id_mut(tab)
+                    && t.generation == generation
+                {
+                    let crate::diffview::DiffLoad { doc, images, error } = *load;
+                    match (doc, error) {
+                        (Some(mut d), _) => {
+                            if let (Some((old, new)), crate::diffview::DiffBody::Image { .. }) = (images, &d.body) {
+                                let to_state = |img: Option<Box<image::DynamicImage>>| match (&picker, img) {
+                                    (Some(p), Some(i)) => ImageState::Ready(Box::new(p.new_resize_protocol(*i))),
+                                    (None, _) => ImageState::Disabled,
+                                    (_, None) => ImageState::Failed("not present".into()),
+                                };
+                                d.body = crate::diffview::DiffBody::Image {
+                                    old: to_state(old),
+                                    new: to_state(new),
+                                };
+                            }
+                            // Keep the view options when a diff reloads; a fresh
+                            // diff opens on its first change, like IntelliJ.
+                            let fresh = !matches!(t.content, Content::Diff(_));
+                            if let Content::Diff(prev) = &t.content {
+                                d.unified = prev.unified;
+                                d.collapse = prev.collapse;
+                                d.opts = prev.opts;
+                                d.rebuild();
+                            }
+                            let n = d.len();
+                            let first = d.hunk_starts().first().copied();
+                            t.content = Content::Diff(Box::new(d));
+                            if let (true, Some(first)) = (fresh, first) {
+                                t.cursor = first;
+                                t.scroll = first.saturating_sub(3);
+                            }
+                            t.cursor = t.cursor.min(n.saturating_sub(1));
+                            t.scroll = t.scroll.min(n.saturating_sub(1));
+                        }
+                        (None, e) => t.content = Content::Error(e.unwrap_or_default()),
+                    }
+                }
+            }
             AppEvent::CommitDone { result, files, push } => self.on_commit_done(*result, files, push),
             AppEvent::PushDone(res) => {
                 self.commit.busy = false;
@@ -1001,6 +1088,27 @@ impl App {
         {
             match tab.handle_key(&key) {
                 ViewerOutcome::Handled => return,
+                ViewerOutcome::OpenAt(line) => {
+                    let path = tab.path.clone();
+                    self.open_at(&path, Some(line + 1), false);
+                    return;
+                }
+                ViewerOutcome::DiffFile(forward) => {
+                    self.step_diff_file(forward);
+                    return;
+                }
+                ViewerOutcome::ShowDiff => {
+                    let path = tab.path.clone();
+                    let change = self.status.change(&path).cloned().unwrap_or(Change {
+                        path,
+                        status: vista_git::FileStatus::Modified,
+                        orig_path: None,
+                        staged: false,
+                        unstaged: false,
+                    });
+                    self.open_diff(&change);
+                    return;
+                }
                 ViewerOutcome::GotoLinePrompt => {
                     self.prompt = Some(Prompt {
                         label: "Go to line",
@@ -1295,7 +1403,8 @@ impl App {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let w = unicode_width::UnicodeWidthStr::width(name.as_str()) + 2;
+            let prefix = if t.diff.is_some() { 2 } else { 0 };
+            let w = unicode_width::UnicodeWidthStr::width(name.as_str()) + 2 + prefix;
             if (col..col + w).contains(&(x as usize)) {
                 return Some(i);
             }

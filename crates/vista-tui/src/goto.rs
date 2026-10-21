@@ -77,6 +77,11 @@ impl GotoPopup {
 
     /// Recomputes results for the current query and tab.
     pub fn refresh(&mut self, index: Option<&FileIndex>, recent: &[String]) {
+        // Keep the selection on the same file when results are re-ranked
+        // (e.g. the background index finished).
+        let keep = (self.selected > 0)
+            .then(|| self.results.get(self.selected).map(|m| m.path.clone()))
+            .flatten();
         let q = self.parsed();
         self.results = match (self.tab, index) {
             (GotoTab::Recent, Some(idx)) => {
@@ -88,6 +93,11 @@ impl GotoPopup {
             }
             _ => Vec::new(),
         };
+        if let Some(p) = keep
+            && let Some(i) = self.results.iter().position(|m| m.path == p)
+        {
+            self.selected = i;
+        }
         self.selected = self.selected.min(self.results.len().saturating_sub(1));
         self.scroll_into_view();
     }

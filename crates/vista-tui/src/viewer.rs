@@ -15,6 +15,7 @@ use vista_render::markdown::MdLine;
 use vista_render::styled::line_text;
 use vista_render::{Highlighter, StyledLine};
 
+use crate::diffview::{DiffDoc, DiffKey, DiffSpec};
 use crate::event::AppEvent;
 
 /// At most this many tabs stay open; the least recently used one closes.
@@ -53,6 +54,9 @@ pub enum Content {
     TooLarge {
         size: u64,
     },
+    /// HEAD ⇄ working tree.
+    Diff(Box<DiffDoc>),
+    DiffLoading,
     Error(String),
 }
 
@@ -90,6 +94,8 @@ pub struct Tab {
     pub last_used: u64,
     /// Shown in the embedded editor instead of the read-only viewer.
     pub editing: bool,
+    /// This tab shows a diff of the file.
+    pub diff: Option<DiffSpec>,
 }
 
 /// What a key in the viewer asks the app to do.
@@ -99,6 +105,12 @@ pub enum ViewerOutcome {
     Unhandled,
     /// Ask for a line number.
     GotoLinePrompt,
+    /// Open the working file at a 0-based line (from a diff).
+    OpenAt(usize),
+    /// Show the diff of the next/previous changed file.
+    DiffFile(bool),
+    /// Show the diff of this file against HEAD.
+    ShowDiff,
 }
 
 /// Result of a background load.
@@ -131,6 +143,7 @@ pub fn line_count(content: &Content) -> usize {
         } => r.len(),
         Content::Markdown { lines, .. } => lines.len(),
         Content::Binary { dump, .. } => dump.len(),
+        Content::Diff(d) => d.len(),
         _ => 0,
     }
 }
@@ -157,8 +170,47 @@ impl Viewer {
         self.tabs.iter_mut().find(|t| t.id == id)
     }
 
+    /// The (non-diff) tab showing `path`.
     pub fn position(&self, path: &Path) -> Option<usize> {
-        self.tabs.iter().position(|t| t.path == path)
+        self.tabs.iter().position(|t| t.path == path && t.diff.is_none())
+    }
+
+    pub fn diff_position(&self, path: &Path) -> Option<usize> {
+        self.tabs.iter().position(|t| t.path == path && t.diff.is_some())
+    }
+
+    /// Opens (or reuses) the diff tab for `path`.
+    pub fn open_diff(&mut self, path: &Path, spec: DiffSpec, ctx: &LoadCtx) {
+        if let Some(i) = self.diff_position(path) {
+            self.activate(i);
+            let t = &mut self.tabs[i];
+            t.diff = Some(spec);
+            load(t, ctx);
+            return;
+        }
+        // Reuse the active diff tab when stepping between files, like
+        // IntelliJ's diff window.
+        let id = self.open(path, ctx);
+        if let Some(t) = self.tab_by_id_mut(id) {
+            t.diff = Some(spec);
+            t.scroll = 0;
+            t.cursor = 0;
+            load(t, ctx);
+        }
+    }
+
+    /// Points the active diff tab at another file.
+    pub fn retarget_diff(&mut self, path: &Path, spec: DiffSpec, ctx: &LoadCtx) {
+        match self.active_tab_mut() {
+            Some(t) if t.diff.is_some() => {
+                t.path = path.to_path_buf();
+                t.diff = Some(spec);
+                t.scroll = 0;
+                t.cursor = 0;
+                load(t, ctx);
+            }
+            _ => self.open_diff(path, spec, ctx),
+        }
     }
 
     pub fn activate(&mut self, i: usize) {
@@ -196,6 +248,8 @@ impl Viewer {
             self.activate(i);
             return self.tabs[i].id;
         }
+        // `open` is also used by `open_diff` for a fresh tab; the caller sets
+        // `diff` right after.
         if self.tabs.len() >= MAX_TABS
             && let Some(lru) = (0..self.tabs.len()).min_by_key(|i| self.tabs[*i].last_used)
         {
@@ -218,6 +272,7 @@ impl Viewer {
             view_width: 80,
             last_used: 0,
             editing: false,
+            diff: None,
         };
         load(&mut tab, ctx);
         self.tabs.push(tab);
@@ -238,7 +293,7 @@ impl Viewer {
     /// Recomputes gutter markers for all text tabs (HEAD moved).
     pub fn reload_all(&mut self, ctx: &LoadCtx) {
         for tab in &mut self.tabs {
-            if tab.content.is_textual() {
+            if tab.content.is_textual() || tab.diff.is_some() {
                 load(tab, ctx);
             }
         }
@@ -271,6 +326,28 @@ fn read_head(path: &Path, n: usize) -> std::io::Result<Vec<u8>> {
 pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
     tab.generation += 1;
     let path = tab.path.clone();
+    if let Some(spec) = tab.diff.clone() {
+        if !matches!(tab.content, Content::Diff(_)) {
+            tab.content = Content::DiffLoading;
+        }
+        tab.language = "Diff".into();
+        let (tx, git, id, generation, images) = (
+            ctx.tx.clone(),
+            ctx.git.clone(),
+            tab.id,
+            tab.generation,
+            ctx.images_enabled,
+        );
+        std::thread::spawn(move || {
+            let load = crate::diffview::load(git.as_ref(), &path, &spec, images);
+            let _ = tx.send(AppEvent::DiffLoaded {
+                tab: id,
+                generation,
+                load: Box::new(load),
+            });
+        });
+        return;
+    }
     let meta = match std::fs::metadata(&path) {
         Ok(m) => m,
         Err(e) => {
@@ -470,7 +547,7 @@ impl Tab {
     /// Markdown in rendered mode scrolls by rows and has no cursor.
     pub fn has_cursor(&self) -> bool {
         match &self.content {
-            Content::Text { .. } => true,
+            Content::Text { .. } | Content::Diff(_) => true,
             Content::Markdown { raw, .. } => *raw,
             _ => false,
         }
@@ -547,6 +624,23 @@ impl Tab {
 
     /// Jumps to the next/previous block of changed lines.
     pub fn jump_to_change(&mut self, forward: bool) -> bool {
+        if let Content::Diff(d) = &self.content {
+            let starts = d.hunk_starts();
+            let target = if forward {
+                starts.iter().copied().find(|s| *s > self.cursor)
+            } else {
+                starts.iter().rev().copied().find(|s| *s < self.cursor)
+            };
+            return match target {
+                Some(t) => {
+                    self.set_cursor(t);
+                    // Show some context above the change.
+                    self.scroll = t.saturating_sub(3);
+                    true
+                }
+                None => false,
+            };
+        }
         let markers = match &self.content {
             Content::Text { markers, .. } => markers,
             Content::Markdown { markers, raw: true, .. } => markers,
@@ -604,6 +698,24 @@ impl Tab {
     pub fn handle_key(&mut self, key: &KeyEvent) -> ViewerOutcome {
         if self.search.as_ref().is_some_and(|s| s.editing) {
             return self.search_key(key);
+        }
+        if let Content::Diff(d) = &mut self.content {
+            match crate::diffview::handle_key(d, key, self.cursor) {
+                DiffKey::Handled => {
+                    let n = d.len();
+                    self.cursor = self.cursor.min(n.saturating_sub(1));
+                    self.scroll = self.scroll.min(n.saturating_sub(1));
+                    return ViewerOutcome::Handled;
+                }
+                DiffKey::OpenAt(l) => return ViewerOutcome::OpenAt(l),
+                DiffKey::File(f) => return ViewerOutcome::DiffFile(f),
+                DiffKey::Unhandled => {}
+            }
+        } else if key.code == KeyCode::Char('d')
+            && key.modifiers.is_empty()
+            && matches!(self.content, Content::Text { .. } | Content::Markdown { .. })
+        {
+            return ViewerOutcome::ShowDiff;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if key.modifiers.contains(KeyModifiers::ALT) {

@@ -32,6 +32,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
+            let name = if t.diff.is_some() { format!("Δ {name}") } else { name };
             let token = app.status.file_status(&t.path).map(|s| s.token()).unwrap_or("ui.text");
             (name, token, app.dirty.contains(&t.path))
         })
@@ -105,6 +106,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     }
     let focused = app.focus == Focus::Main;
     let font = app.font_size();
+    let root = app.root.clone();
     // Split borrows: the tab is mutated (scroll, render cache) while the
     // theme and image cache are read.
     let App {
@@ -180,6 +182,8 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             "ui.dim",
             t,
         ),
+        Content::Diff(_) => crate::ui::diff::draw(f, area, tab, t, focused, &root),
+        Content::DiffLoading => message(f, area, "Loading diff…", "ui.dim", t),
         Content::Error(e) => message(f, area, e, "ui.error", t),
     }
 }

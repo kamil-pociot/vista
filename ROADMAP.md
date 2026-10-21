@@ -311,7 +311,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [x] IntelliJ-like ranking: camel-hump/word-start hits (nucleo bonuses), file-name matches over folder matches, exact names first, recent files boosted.
 - [x] `name:42` jumps to a line; `Enter` opens in the viewer, `Alt-Enter` (or Shift/Ctrl-Enter with the kitty keyboard protocol) straight in Neovim; matched characters highlighted; preview of the selected file; mouse click/wheel.
 
-**Done when:** any file is a few keystrokes away, each keystroke under 16 ms. Measured: ranking 50k paths < 16 ms (release unit test); keystroke-to-screen 2.3 ms worst case on a 50k-file project (e2e).
+**Done when:** any file is a few keystrokes away, each keystroke under 16 ms. Measured: ranking 50k paths < 16 ms (release unit test); keystroke → updated top result 22–27 ms through the PTY harness on a 50k-file project (the harness itself polls every 15 ms).
 **Tests:** unit: ranking table (`stat` → `status.rs` first, camel-hump cases). E2e: `Ctrl-P`, type, `Enter` opens; `name:42` lands on line 42; keystroke latency budget on the 50k-file fixture.
 
 ### M5 — Find in Files (IntelliJ-style) ✅
@@ -337,16 +337,18 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 **Done when:** a normal commit workflow happens without leaving vista.
 **Tests:** e2e: groups and counts; untick a file → commit → `git log` and `git status` confirm only the ticked files went in; amend; failing pre-commit hook shows its output; rollback asks for confirmation; add to VCS; empty-message guard; commit & push to a remote. Integration: commit subsets, deletions, renames, partial content, amend, first commit, hooks, rollback, add, push.
 
-### M7 — IntelliJ-style diff viewer
-- [ ] Side-by-side HEAD ⇄ working tree, synced scroll, aligned blocks with hatched filler.
-- [ ] Block colours (inserted / modified / deleted) and word-level highlights from theme tokens; centre gutter.
-- [ ] Syntax highlighting both sides; `F7`/`Shift-F7` change navigation; next/prev file.
-- [ ] Unified toggle, ignore-whitespace toggle, collapse unchanged.
-- [ ] New/deleted/binary/image files handled.
-- [ ] Hunks carry stable ids (groundwork for M9).
+### M7 — IntelliJ-style diff viewer ✅
+- [x] Side-by-side: HEAD (left, read-only) vs working tree (right), one scroll position, **blocks aligned** with hatched filler where one side has no lines.
+- [x] Block backgrounds: green (inserted), blue (modified), grey (deleted). **Word-level highlights** inside modified blocks (identifier-level tokens).
+- [x] Centre gutter coloured per change (stand-in for IntelliJ's connector ribbons), cursor marker.
+- [x] Syntax highlighting on both sides.
+- [x] `F7`/`Shift-F7` between changes (opens on the first change, "change k of n"), `J`/`K` next/previous file in the Commit list, `Enter` opens the file at the line, `e` edits there.
+- [x] Unified view (`u`), ignore whitespace (`w`), collapse unchanged regions (`z`).
+- [x] New/unversioned files as all-added; deleted files as all-removed; binaries as a size summary; images side by side. Renames compare against the old path. Diffs follow edits on disk.
+- [x] Hunks carry stable, content-based ids (groundwork for M9).
 
 **Done when:** reviewing changes is as comfortable as in IntelliJ.
-**Tests:** proptest: aligned rows reconstruct both sides exactly. Snapshots: the mockup-A diff (`status.rs`) as a golden screen. E2e: `F7` / `Shift-F7` navigation, unified toggle, whitespace toggle, new/deleted/binary files.
+**Tests:** proptest: aligned rows reconstruct both sides exactly, applying all hunks yields the new text, folding never loses rows. Snapshot: the mockup-A diff (`status.rs`) as a golden screen. E2e: `F7` / `Shift-F7` navigation, word highlights, unified/whitespace/collapse toggles, new/deleted/image files, next file, live update, open at line.
 
 ### M8 — Polish, more looks, distribution
 - [ ] Ship looks **B "Quiet Modal"** and **C "Paper Light"** as theme files, proving §2.1. Any gap found in the chrome options gets fixed here.

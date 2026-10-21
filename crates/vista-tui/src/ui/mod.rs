@@ -2,6 +2,7 @@
 
 pub mod chrome;
 pub mod commit;
+pub mod diff;
 pub mod find;
 pub mod goto;
 pub mod help;

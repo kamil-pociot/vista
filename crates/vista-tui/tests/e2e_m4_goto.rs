@@ -74,8 +74,10 @@ fn navigation_scopes_escape_and_mouse() {
     vista.expect_no_text("include ignored");
     // Mouse: click a result to select it, Enter opens it.
     vista.press("ctrl+p");
+    vista.expect_text("include ignored");
     vista.type_text("cargo");
-    vista.expect_text("Cargo.lock");
+    // Wait for the filtered list before clicking (not the unfiltered one).
+    vista.expect_text("⌕ cargo");
     vista.click_text("Cargo.lock");
     vista.expect_text("Cargo.lock").to_have_bg("ui.selection");
     vista.press("enter");
@@ -142,12 +144,27 @@ fn keystrokes_stay_fast_on_a_large_project() {
     vista.expect_text("of 50000 files");
     vista.type_text("file_4999");
     vista.expect_text("file_4999.txt");
-    // Each keystroke re-ranks 50k paths; measure keystroke → updated screen.
+    // Each keystroke re-ranks 50k paths; measure keystroke → updated top result.
+    fn top_is(want: &'static str) -> impl Fn(&vista_e2e::vt100::Screen) -> bool {
+        move |s| {
+            let text = s.contents();
+            let lines: Vec<&str> = text.lines().collect();
+            lines
+                .iter()
+                .position(|l| l.contains("⌕"))
+                .and_then(|i| lines.get(i + 1))
+                .is_some_and(|l| l.contains(want))
+        }
+    }
     let mut worst = Duration::ZERO;
-    for (q, expect) in [("2", "file_49992.txt"), ("1", "file_49991"), ("\x7f", "file_49992.txt")] {
+    for (q, want) in [
+        ("2", "file_49992.txt"),
+        ("\x7f", "file_4999.txt"),
+        ("1", "file_49991.txt"),
+    ] {
         let start = Instant::now();
         vista.type_text(q);
-        vista.expect_text(expect);
+        vista.wait_until(&format!("top result {want}"), top_is(want));
         worst = worst.max(start.elapsed());
     }
     eprintln!("worst keystroke-to-screen latency: {worst:?}");
