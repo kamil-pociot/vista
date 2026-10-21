@@ -111,6 +111,9 @@ pub enum ViewerOutcome {
     DiffFile(bool),
     /// Show the diff of this file against HEAD.
     ShowDiff,
+    /// Tick/untick a change of this file for the commit.
+    ToggleHunk(u64, Vec<u64>),
+    Info(&'static str),
 }
 
 /// Result of a background load.
@@ -709,6 +712,8 @@ impl Tab {
                 }
                 DiffKey::OpenAt(l) => return ViewerOutcome::OpenAt(l),
                 DiffKey::File(f) => return ViewerOutcome::DiffFile(f),
+                DiffKey::ToggleHunk(id, all) => return ViewerOutcome::ToggleHunk(id, all),
+                DiffKey::Info(m) => return ViewerOutcome::Info(m),
                 DiffKey::Unhandled => {}
             }
         } else if key.code == KeyCode::Char('d')

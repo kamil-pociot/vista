@@ -390,6 +390,42 @@ impl SideBySide {
     }
 }
 
+/// File content for a partial commit: `old` plus every hunk of `old → new`
+/// except the `excluded` ones (hunk ids from [`side_by_side`] with default
+/// options). Excluding nothing gives `new`; excluding everything gives `old`.
+pub fn partial_content(old: &str, new: &str, excluded: &HashSet<u64>) -> String {
+    let sbs = side_by_side(old, new, DiffOptions::default());
+    if excluded.is_empty() || sbs.hunks.iter().all(|h| !excluded.contains(&h.id)) {
+        return new.to_string();
+    }
+    if sbs.hunks.iter().all(|h| excluded.contains(&h.id)) {
+        return old.to_string();
+    }
+    let selected: HashSet<u64> = sbs
+        .hunks
+        .iter()
+        .map(|h| h.id)
+        .filter(|id| !excluded.contains(id))
+        .collect();
+    let lines = sbs.apply_hunks(&selected);
+    let mut out = lines.join("\n");
+    // A final newline follows the working-tree file unless the last change
+    // (the one that could add or drop it) is excluded.
+    let last_excluded = sbs
+        .hunks
+        .last()
+        .is_some_and(|h| excluded.contains(&h.id) && h.old.end == sbs.old_lines.len());
+    let trailing = if last_excluded {
+        old.ends_with('\n')
+    } else {
+        new.ends_with('\n')
+    };
+    if trailing && !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
 /// What the viewer shows: a row of the diff or a folded run of context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayRow {
@@ -598,6 +634,46 @@ mod tests {
             unified(&s, &d),
             vec![Unified::Both(0), Unified::Old(1), Unified::New(1), Unified::Both(2)]
         );
+    }
+
+    #[test]
+    fn partial_content_keeps_only_selected_hunks() {
+        let old = "a\nb\nc\nd\ne\nf\ng\n";
+        let new = "a\nB\nc\nd\nE\nf\nG\n";
+        let s = side_by_side(old, new, DiffOptions::default());
+        assert_eq!(s.hunks.len(), 3);
+        // Keep only the first change.
+        let excluded: HashSet<u64> = s.hunks[1..].iter().map(|h| h.id).collect();
+        assert_eq!(partial_content(old, new, &excluded), "a\nB\nc\nd\ne\nf\ng\n");
+        assert_eq!(partial_content(old, new, &HashSet::new()), new);
+        let all: HashSet<u64> = s.hunks.iter().map(|h| h.id).collect();
+        assert_eq!(partial_content(old, new, &all), old);
+    }
+
+    proptest! {
+        /// Excluding nothing commits the working file; excluding everything
+        /// commits HEAD; any mix lies line-wise between them.
+        #[test]
+        fn partial_content_extremes(
+            old in proptest::collection::vec("[ab]{0,3}", 0..20),
+            new in proptest::collection::vec("[ab]{0,3}", 0..20),
+            nl_old in any::<bool>(),
+            nl_new in any::<bool>(),
+            mask in any::<u32>(),
+        ) {
+            let o = old.join("\n") + if nl_old && !old.is_empty() { "\n" } else { "" };
+            let n = new.join("\n") + if nl_new && !new.is_empty() { "\n" } else { "" };
+            let s = side_by_side(&o, &n, DiffOptions::default());
+            prop_assert_eq!(partial_content(&o, &n, &HashSet::new()), n.clone());
+            let all: HashSet<u64> = s.hunks.iter().map(|h| h.id).collect();
+            prop_assert_eq!(partial_content(&o, &n, &all), o.clone());
+            let some: HashSet<u64> = s.hunks.iter().enumerate().filter(|(i, _)| mask & (1 << (i % 32)) != 0).map(|(_, h)| h.id).collect();
+            let mixed = partial_content(&o, &n, &some);
+            // Every line of the mix comes from one of the two versions.
+            for line in mixed.lines() {
+                prop_assert!(s.old_lines.iter().any(|l| l == line) || s.new_lines.iter().any(|l| l == line));
+            }
+        }
     }
 
     proptest! {

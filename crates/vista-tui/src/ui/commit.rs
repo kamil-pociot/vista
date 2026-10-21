@@ -92,9 +92,13 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 let dir = rel.parent().map(|d| d.display().to_string()).unwrap_or_default();
-                let ticked = cv.included.contains(&change.path);
+                let state = if cv.is_partial(&change.path) {
+                    None
+                } else {
+                    Some(cv.included.contains(&change.path))
+                };
                 spans.push(Span::raw(" ".repeat(1 + depth * 2)));
-                spans.push(Span::styled(checkbox(Some(ticked)), t.fg("ui.text")));
+                spans.push(Span::styled(checkbox(state), t.fg("ui.text")));
                 let mut name_style = t.fg(change.status.token());
                 if change.status == vista_git::FileStatus::Deleted {
                     name_style = name_style.add_modifier(Modifier::CROSSED_OUT);

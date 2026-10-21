@@ -122,6 +122,22 @@ impl DiffDoc {
         (n.max(1).min(starts.len()), starts.len())
     }
 
+    /// The change (hunk id) at a display row, or the next one below it.
+    pub fn hunk_at(&self, i: usize) -> Option<u64> {
+        let h = self.row_of(i).and_then(|r| self.sbs.rows[r].hunk).or_else(|| {
+            let starts = self.hunk_starts();
+            let next = starts.iter().find(|s| **s >= i).or(starts.last())?;
+            self.row_of(*next).and_then(|r| self.sbs.rows[r].hunk)
+        })?;
+        self.sbs.hunks.get(h).map(|x| x.id)
+    }
+
+    /// Display row index where the hunk `id` starts.
+    pub fn hunk_start(&self, id: u64) -> Option<usize> {
+        let idx = self.sbs.hunks.iter().position(|h| h.id == id)?;
+        (0..self.len()).find(|i| self.row_of(*i).and_then(|r| self.sbs.rows[r].hunk) == Some(idx))
+    }
+
     /// The working-tree line (0-based) for a display row, if any.
     pub fn new_line_at(&self, i: usize) -> Option<usize> {
         let r = self.row_of(i)?;
@@ -142,6 +158,10 @@ pub enum DiffKey {
     OpenAt(usize),
     /// Show the next (true) or previous file's diff.
     File(bool),
+    /// Tick/untick a change for the commit: (hunk id, all hunk ids).
+    ToggleHunk(u64, Vec<u64>),
+    /// Tell the user something.
+    Info(&'static str),
 }
 
 /// Keys specific to diff tabs (scrolling is shared with the viewer).
@@ -158,6 +178,15 @@ pub fn handle_key(doc: &mut DiffDoc, key: &KeyEvent, cursor: usize) -> DiffKey {
         KeyCode::Char('z') => {
             doc.collapse = !doc.collapse;
             doc.rebuild();
+        }
+        KeyCode::Char(' ') => {
+            if doc.opts.ignore_whitespace {
+                return DiffKey::Info("Turn off ignore-whitespace (w) to pick changes");
+            }
+            return match doc.hunk_at(cursor) {
+                Some(id) => DiffKey::ToggleHunk(id, doc.sbs.hunks.iter().map(|h| h.id).collect()),
+                None => DiffKey::Info("No change here"),
+            };
         }
         KeyCode::Char('J') => return DiffKey::File(true),
         KeyCode::Char('K') => return DiffKey::File(false),

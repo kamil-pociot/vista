@@ -712,19 +712,24 @@ impl App {
             return;
         }
         let message = self.commit.message.text.trim().to_string();
-        let files: Vec<CommitFile> = self
+        // (change, hunks left out) — partial commits are built on the worker.
+        let plan: Vec<(Change, std::collections::HashSet<u64>)> = self
             .commit
             .included_changes(&self.status)
-            .iter()
-            .map(CommitFile::whole)
+            .into_iter()
+            .map(|c| {
+                let ex = self.commit.excluded.get(&c.path).cloned().unwrap_or_default();
+                (c, ex)
+            })
             .collect();
+        let files = plan.clone();
         let amend = self.commit.amend;
         if message.is_empty() {
             self.commit.output = Some((false, "Commit message is empty".into()));
             self.commit.editing_message = true;
             return;
         }
-        if files.is_empty() && !amend {
+        if plan.is_empty() && !amend {
             self.commit.output = Some((false, "No files are ticked for the commit".into()));
             return;
         }
@@ -733,6 +738,29 @@ impl App {
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let n = files.len();
+            let files: Vec<CommitFile> = files
+                .iter()
+                .map(|(c, excluded)| {
+                    if excluded.is_empty() {
+                        return CommitFile::whole(c);
+                    }
+                    let head = c.orig_path.as_deref().unwrap_or(&c.path);
+                    let old = git
+                        .head_content(head)
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .unwrap_or_default();
+                    let new = std::fs::read(&c.path)
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .unwrap_or_default();
+                    CommitFile {
+                        path: c.path.clone(),
+                        orig_path: c.orig_path.clone(),
+                        content: vista_git::write::CommitContent::Blob(
+                            vista_diff::partial_content(&old, &new, excluded).into_bytes(),
+                        ),
+                    }
+                })
+                .collect();
             let result = git.commit(&files, &message, amend).map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::CommitDone {
                 result: Box::new(result),
@@ -756,6 +784,8 @@ impl App {
                 self.commit.output = Some((true, text));
                 self.commit.message.set("");
                 self.commit.amend = false;
+                // Hunk ids change once committed; start fresh.
+                self.commit.excluded.clear();
                 self.commit.editing_message = false;
                 if push && let Some(git) = self.git.clone() {
                     self.commit.busy = true;
@@ -1103,6 +1133,15 @@ impl App {
                 }
                 ViewerOutcome::DiffFile(forward) => {
                     self.step_diff_file(forward);
+                    return;
+                }
+                ViewerOutcome::ToggleHunk(id, all) => {
+                    let path = tab.path.clone();
+                    self.commit.toggle_hunk(&path, id, &all);
+                    return;
+                }
+                ViewerOutcome::Info(m) => {
+                    self.notify(m, MsgKind::Info);
                     return;
                 }
                 ViewerOutcome::ShowDiff => {

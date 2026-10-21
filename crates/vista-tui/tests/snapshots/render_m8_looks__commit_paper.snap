@@ -5,9 +5,9 @@ expression: "commit_with_diff(&repo, look)"
  <root>                                                               Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  ◫   ╭ 0: Commit ─────────────────────╮ ╭───────────────────────────────────────────────────────────────────────────────────────╮
      │ ␣ tick  r rollback  a add  g gr│ │ Δ diff.rs                                                                             │
- ⎇   │ ▾ [x] Changes  4 files         │ │ diff.rs  crates/fb-git/src                                   ⇧F7 ◂ change 1 of 1 ▸ F7 │
+ ⎇   │ ▾ [x] Changes  4 files         │ │ diff.rs  crates/fb-git/src            1 of 1 in commit (␣)   ⇧F7 ◂ change 1 of 1 ▸ F7 │
      │   [x] Cargo.lock               │ │ HEAD · c22c251 (read-only)                  Working tree                              │
- ⌕   │   [x] ROADMAP.md               │ │  1 pub fn diff() {}                      ▶   1 pub fn diff() -> usize { 0 }           │
+ ⌕   │   [x] ROADMAP.md               │ │  1 pub fn diff() {}                      ☑   1 pub fn diff() -> usize { 0 }           │
      │   [x] diff.rs                  │ │                                                                                       │
  ?   │   [x] status.rs                │ │                                                                                       │
      │ ▾ [ ] Unversioned Files  2 file│ │                                                                                       │

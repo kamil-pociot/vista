@@ -30,7 +30,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 | Go to File | type a few letters (`FoBaCo`, `stat`, `name:42`), `Enter` view, `Alt-Enter` edit, `Tab` scopes, `Alt-I` include ignored |
 | Find in Files | `Alt-C` case · `Alt-W` words · `Alt-X` regex · `Alt-S` scope · `Tab` file mask (`*.md, !archive/**`) · `Alt-↑↓` history · `Enter` open · `Alt-O` to the Find window · `Ctrl-Alt-↓/↑` next/previous result |
 | Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` diff |
-| Diff | `F7`/`Shift-F7` changes · `J`/`K` next/previous file · `u` unified · `w` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit |
+| Diff | `F7`/`Shift-F7` changes · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `u` unified · `w` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit |
 
 Every shortcut can be changed in the config.
 

@@ -115,8 +115,10 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
         md_images,
         picker,
         tx,
+        commit,
         ..
     } = app;
+    let commit = &*commit;
     let tab = &mut viewer.tabs[i];
     tab.view_height = area.height as usize;
     tab.view_width = area.width as usize;
@@ -182,7 +184,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             "ui.dim",
             t,
         ),
-        Content::Diff(_) => crate::ui::diff::draw(f, area, tab, t, focused, &root),
+        Content::Diff(_) => crate::ui::diff::draw(f, area, tab, t, focused, &root, commit),
         Content::DiffLoading => message(f, area, "Loading diff…", "ui.dim", t),
         Content::Error(e) => message(f, area, e, "ui.error", t),
     }

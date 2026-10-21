@@ -14,6 +14,7 @@ use vista_render::filetype::human_size;
 use vista_render::styled::{line_width, overlay, slice_cols};
 use vista_theme::Theme;
 
+use crate::commit::CommitView;
 use crate::diffview::{DiffBody, DiffDoc};
 use crate::style::{ThemeStyle, styled_line};
 use crate::viewer::{Content, ImageState, Tab};
@@ -74,7 +75,7 @@ fn fold_line(t: &Theme, len: usize, width: usize) -> Line<'static> {
     Line::from(vec![Span::raw(" ".repeat(pad)), Span::styled(text, t.fg("ui.dim"))]).style(t.bg("ui.panel.alt"))
 }
 
-pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, root: &Path) {
+pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, root: &Path, commit: &CommitView) {
     if area.height < 4 {
         return;
     }
@@ -97,10 +98,16 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         header,
     );
     let (k, n) = doc.hunk_position(tab.cursor);
+    let ticked = doc
+        .sbs
+        .hunks
+        .iter()
+        .filter(|h| commit.hunk_included(&tab.path, h.id))
+        .count();
     let position = if n == 0 {
         "no changes ".to_string()
     } else {
-        format!("⇧F7 ◂ change {k} of {n} ▸ F7 ")
+        format!("{ticked} of {n} in commit (␣)   ⇧F7 ◂ change {k} of {n} ▸ F7 ")
     };
     f.render_widget(
         Paragraph::new(Span::styled(position, t.fg("ui.text"))).right_aligned(),
@@ -177,9 +184,9 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         .len()
         .max(3);
     if doc.unified {
-        draw_unified(f, cols, body, tab, doc, t, ln_w, focused);
+        draw_unified(f, cols, body, tab, doc, t, ln_w, focused, commit);
     } else {
-        draw_side_by_side(f, cols, body, tab, doc, t, ln_w, focused);
+        draw_side_by_side(f, cols, body, tab, doc, t, ln_w, focused, commit);
     }
 }
 
@@ -193,7 +200,9 @@ fn draw_side_by_side(
     t: &Theme,
     ln_w: usize,
     focused: bool,
+    commit: &CommitView,
 ) {
+    let starts = hunk_start_rows(doc);
     let gutter = 2usize;
     let half = (body.width as usize).saturating_sub(gutter) / 2;
     let right_w = (body.width as usize).saturating_sub(gutter + half);
@@ -250,7 +259,18 @@ fn draw_side_by_side(
             .right
             .and_then(|i| doc.new_hl.get(i).map(|l| (i, l, has_tab(&doc.new_text, i))));
         let mut spans = cell(t, left, ln_w, half, lbg, &row.left_words, word_bg, cursor);
-        let g = if cursor { "▶ " } else { "  " };
+        // A checkbox where each change starts (partial commits), else the cursor.
+        let g = match starts.iter().find(|(r, _)| *r == di) {
+            Some((_, id)) if !doc.opts.ignore_whitespace => {
+                if commit.hunk_included(&tab.path, *id) {
+                    "☑ "
+                } else {
+                    "☐ "
+                }
+            }
+            _ if cursor => "▶ ",
+            _ => "  ",
+        };
         spans.push(match gutter_tok {
             Some(tok) => Span::styled(g, t.fg_bg("ui.text.strong", tok)),
             None => Span::styled(g, t.fg_bg("ui.text.strong", "ui.panel.alt")),
@@ -269,6 +289,15 @@ fn draw_side_by_side(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// (display row, hunk id) where each change starts.
+fn hunk_start_rows(doc: &DiffDoc) -> Vec<(usize, u64)> {
+    doc.hunk_starts()
+        .into_iter()
+        .filter_map(|r| doc.hunk_at(r).map(|id| (r, id)))
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw_unified(
     f: &mut Frame,
     cols: Rect,
@@ -278,7 +307,9 @@ fn draw_unified(
     t: &Theme,
     ln_w: usize,
     focused: bool,
+    commit: &CommitView,
 ) {
+    let starts = hunk_start_rows(doc);
     f.render_widget(
         Paragraph::new(Span::styled(
             format!(" HEAD · {} ⇄ working tree", doc.head),
@@ -354,7 +385,18 @@ fn draw_unified(
         } else {
             t.fg("ui.linenr")
         };
+        let tick = match starts.iter().find(|(r, _)| *r == di) {
+            Some((_, id)) if !doc.opts.ignore_whitespace => {
+                if commit.hunk_included(&tab.path, *id) {
+                    "☑ "
+                } else {
+                    "☐ "
+                }
+            }
+            _ => "  ",
+        };
         let mut spans = vec![
+            Span::styled(tick, t.fg("ui.text.strong")),
             Span::styled(format!("{} {} ", num(old_n), num(new_n)), num_style),
             Span::styled(
                 format!("{sign} "),
@@ -364,7 +406,7 @@ fn draw_unified(
                 },
             ),
         ];
-        let used = ln_w * 2 + 4;
+        let used = ln_w * 2 + 6;
         if let Some(styled) = text {
             let empty: StyledLine = Vec::new();
             let cell_spans = cell(

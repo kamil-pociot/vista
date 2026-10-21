@@ -1,6 +1,6 @@
 //! The Commit tool window: changes list with checkboxes, message, amend.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -177,6 +177,8 @@ pub struct CommitView {
     /// Last commit/push result: (success, text).
     pub output: Option<(bool, String)>,
     pub busy: bool,
+    /// Partial commits: hunk ids left out of the commit, per ticked file.
+    pub excluded: HashMap<PathBuf, HashSet<u64>>,
 }
 
 impl CommitView {
@@ -195,6 +197,7 @@ impl CommitView {
             }
         }
         self.included.retain(|p| present.contains(p));
+        self.excluded.retain(|p, _| present.contains(p));
         self.known.retain(|p| present.contains(p));
         let mut rows = Vec::new();
         for group in [Group::Changes, Group::Unversioned] {
@@ -279,23 +282,58 @@ impl CommitView {
         }
     }
 
+    /// Whether a file is partly in the commit (some changes left out).
+    pub fn is_partial(&self, path: &Path) -> bool {
+        self.included.contains(path) && self.excluded.get(path).is_some_and(|e| !e.is_empty())
+    }
+
     /// Checkbox state of a row: Some(true) all ticked, Some(false) none, None mixed.
     pub fn tick_state(&self, i: usize, all: &StatusSnapshot) -> Option<bool> {
         let files = self.files_of(i, all);
         let n = files.iter().filter(|c| self.included.contains(&c.path)).count();
+        let partial = files.iter().any(|c| self.is_partial(&c.path));
         if n == 0 {
             Some(false)
-        } else if n == files.len() {
+        } else if n == files.len() && !partial {
             Some(true)
         } else {
             None
         }
     }
 
+    /// Ticks or unticks one change of a file (IntelliJ's per-change
+    /// checkboxes). `all` are the file's hunk ids.
+    pub fn toggle_hunk(&mut self, path: &Path, id: u64, all: &[u64]) {
+        let p = path.to_path_buf();
+        if !self.included.contains(&p) {
+            // Ticking one change of an unticked file commits just that change.
+            self.included.insert(p.clone());
+            self.excluded
+                .insert(p, all.iter().copied().filter(|h| *h != id).collect());
+            return;
+        }
+        let ex = self.excluded.entry(p.clone()).or_default();
+        if !ex.remove(&id) {
+            ex.insert(id);
+        }
+        if all.iter().all(|h| ex.contains(h)) {
+            // Nothing left: the file is out of the commit.
+            self.included.remove(&p);
+            self.excluded.remove(&p);
+        }
+    }
+
+    /// Whether a change of `path` goes into the commit.
+    pub fn hunk_included(&self, path: &Path, id: u64) -> bool {
+        self.included.contains(path) && !self.excluded.get(path).is_some_and(|e| e.contains(&id))
+    }
+
     pub fn toggle(&mut self, i: usize, all: &StatusSnapshot) {
         let files = self.files_of(i, all);
         let tick = self.tick_state(i, all) != Some(true);
         for c in files {
+            // File-level ticks replace any per-change choice.
+            self.excluded.remove(&c.path);
             if tick {
                 self.included.insert(c.path);
             } else {
@@ -557,6 +595,38 @@ mod tests {
         assert_eq!(v.message.text, "Fix it\nbody");
         v.handle_key(&key(KeyCode::Esc), &st, Path::new("/r"));
         assert!(!v.editing_message);
+    }
+
+    #[test]
+    fn per_change_ticks_make_files_partial() {
+        let st = snap();
+        let mut v = CommitView::default();
+        v.rebuild(&st, Path::new("/r"));
+        let a = Path::new("/r/src/a.rs");
+        let all = [1u64, 2, 3];
+        v.toggle_hunk(a, 2, &all);
+        assert!(v.is_partial(a));
+        assert!(!v.hunk_included(a, 2) && v.hunk_included(a, 1));
+        let row = v
+            .rows
+            .iter()
+            .position(|r| matches!(r, Row::File { change, .. } if change.path == a))
+            .unwrap();
+        assert_eq!(v.tick_state(row, &st), None, "partial file shows [~]");
+        assert_eq!(v.tick_state(0, &st), None, "and so does its group");
+        // Unticking the remaining changes drops the file from the commit.
+        v.toggle_hunk(a, 1, &all);
+        v.toggle_hunk(a, 3, &all);
+        assert!(!v.included.contains(a));
+        assert!(!v.is_partial(a));
+        // Ticking one change of an unticked file commits only that change.
+        v.toggle_hunk(a, 3, &all);
+        assert!(v.hunk_included(a, 3) && !v.hunk_included(a, 1));
+        // A file-level tick on a partial file includes all of it.
+        v.toggle(row, &st);
+        assert!(v.included.contains(a) && !v.is_partial(a));
+        v.toggle(row, &st);
+        assert!(!v.included.contains(a));
     }
 
     #[test]

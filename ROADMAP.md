@@ -24,7 +24,7 @@ Non-goals: language intelligence (LSP) beyond what your Neovim config brings, ru
 | 2 | Editing | **Embedded Neovim** is part of the core plan (M3), not an optional extra. |
 | 3 | Terminal | **Ghostty**, usually inside **herdr**; plain Ghostty is fine where herdr gets in the way. Target: kitty graphics + kitty keyboard protocols. See §1.6. |
 | 4 | Commits | The commit view **makes commits** (commit, amend; push as an option). |
-| 5 | Partial commits | Not now, but **planned** (M9). The diff model keeps stable hunk identities from day one so it's an add-on, not a rewrite. |
+| 5 | Partial commits | Not now, but **planned** (M9, now done per change). The diff model keeps stable hunk identities from day one so it's an add-on, not a rewrite. |
 | 6 | Repo size | Reference repo `lms-context`: **~4,000 files** (4,004 tracked, 4,083 not ignored, 4,266 total, 203 MB; 3,881 of them Markdown, 25.7 MB of text). |
 | 7 | Name | **`vista`** (binary `vista`, crates `vista-*`, config `~/.config/vista/`). Not on Homebrew. On crates.io `vista` is taken, which only matters for `cargo install`, so we'd publish as `vista-tui`. |
 | 8 | Search in files | Works **like IntelliJ's Find in Files** (M5, §1.3). Measured on `lms-context`: a full scan takes **~38 ms** for literal, word, case-insensitive and regex queries, so v1 needs **no index**. The engine is pluggable, and a trigram index (M10) is **deferred**: built only if a repo outgrows scanning. |
@@ -355,10 +355,11 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Performance pass on `lms-context` (release): ready to draw ~2 ms after `main` (repository discovery no longer spawns git: 68 ms → 0.05 ms), first frame drawn in ~1 ms, git status and branch right after, ~17 MiB resident. Find in Files first results 22–32 ms.
 - [x] Release binaries via `.github/workflows/release.yml` (macOS arm64/x86_64, Linux x86_64 on `v*` tags), Homebrew formula template in `packaging/homebrew/`, `cargo install --path crates/vista-tui` (crates.io name `vista-tui`; `vista` is taken). README with keys, config and looks.
 
-### M9 — Partial commits
-- [ ] Per-hunk (then per-line) checkboxes in the diff gutter, IntelliJ-style.
-- [ ] Commit only the selected hunks: build a patch and `git apply --cached`, then commit; working tree untouched.
-- [ ] Tests: e2e: tick 1 of 3 hunks → commit → `git show` holds exactly that hunk; working tree still has the other two.
+### M9 — Partial commits ✅ (per change; per line still open)
+- [x] Per-change checkboxes in the diff gutter, IntelliJ-style: ☑/☐ at the start of every change (side-by-side and unified), `Space` ticks/unticks the change under the cursor, the header shows "2 of 3 in commit". The Commit list shows `[~]` for a partly included file. Ticking a change of an unticked file includes only that change; unticking every change leaves the file out. Picking is off while ignore-whitespace is on, because hunks differ then.
+- [ ] Per-line checkboxes inside a change: not done yet. The data model (excluded change ids per file) leaves room for it.
+- [x] Commit only the selected changes, working tree untouched. Instead of a patch and `apply --cached`, vista rebuilds the file from HEAD plus the ticked changes (`vista_diff::partial_content`), stores it with `hash-object -w` and puts that blob in the temporary commit index. No patch context can go stale or fail to apply. Exclusions are stable content-hash ids, so they survive edits elsewhere in the file, and they reset after a successful commit.
+- [x] Tests: proptest: no exclusions gives the new text, all excluded gives the old text, and excluding a change keeps exactly its old lines. E2e: tick 1 of 3 changes, commit, and `show HEAD:` holds exactly that change while the working tree still has all three and the diff shows "2 of 2". Also: tick a single change of an unticked file, and picking is blocked while ignoring whitespace.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

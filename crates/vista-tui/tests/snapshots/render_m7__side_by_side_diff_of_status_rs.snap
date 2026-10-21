@@ -4,11 +4,11 @@ expression: snap
 ---
  <root>                                                                                   Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  Δ status.rs
- status.rs  crates/fb-git/src                                                                                                ⇧F7 ◂ change 1 of 5 ▸ F7
+ status.rs  crates/fb-git/src                                                                         5 of 5 in commit (␣)   ⇧F7 ◂ change 1 of 5 ▸ F7
  HEAD · c22c251 (read-only)                                                  Working tree
   1 use std::path::{Path, PathBuf};                                           1 use std::path::{Path, PathBuf};
   2                                                                           2
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱▶   3 use anyhow::Context;
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑   3 use anyhow::Context;
   3 use gix::status::index_worktree::Item;                                    4 use gix::status::index_worktree::Item;
   4                                                                           5
   5 pub struct StatusMap {                                                    6 pub struct StatusMap {
@@ -18,20 +18,20 @@ expression: snap
   9                                                                          10
  10 impl StatusMap {                                                         11 impl StatusMap {
  11     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {        12     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {
- 12         let root = repo.work_dir().expect("bare repository");            13         let root = repo.workdir().context("bare repository")?;
+ 12         let root = repo.work_dir().expect("bare repository");         ☑  13         let root = repo.workdir().context("bare repository")?;
  13         let mut entries = HashMap::new();                                14         let mut entries = HashMap::new();
- 14         for item in repo.status()?.into_iter()? {                        15         for item in repo.status(gix::progress::Discard)?.into_iter(Non
+ 14         for item in repo.status()?.into_iter()? {                     ☑  15         for item in repo.status(gix::progress::Discard)?.into_iter(Non
  15             entries.insert(root.join(item.location()), classify(&item?   16             let item = item?;
 ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   17             entries.insert(root.join(item.location()), classify(&item)
  16         }                                                                18         }
  17         Ok(Self { root: root.to_owned(), entries })                      19         Ok(Self { root: root.to_owned(), entries })
  18     }                                                                    20     }
  19                                                                          21
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   22     /// Status of `path`, or `None` when the file is clean.
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  22     /// Status of `path`, or `None` when the file is clean.
  20     pub fn get(&self, path: &Path) -> Option<FileStatus> {               23     pub fn get(&self, path: &Path) -> Option<FileStatus> {
  21         self.entries.get(path).copied()                                  24         self.entries.get(path).copied()
  22     }                                                                    25     }
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   26
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  26
 ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   27     pub fn is_dirty(&self) -> bool {
 ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   28         !self.entries.is_empty()
 ╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   29     }
