@@ -178,6 +178,62 @@ keyhints = false
 
 Folders inherit a colour when they contain changes (toggleable).
 
+### 2.3 Testing strategy
+
+Terminal apps can be tested end to end much like Playwright tests a browser. The real `fb` binary runs inside a **pseudo-terminal (PTY)**, the test sends keystrokes, and a terminal-emulator library turns fb's output back into a grid of cells: text, colours, cursor. Assertions **auto-wait** for the screen to reach the expected state, like Playwright's `expect(...).toBeVisible()`. No sleeps, no flaky timing.
+
+Five layers, fastest first:
+
+| Layer | What it covers | Tools | When |
+|---|---|---|---|
+| 1. Unit | Pure logic: tree model, status mapping, fuzzy ranking, diff alignment, theme parsing, Neovim grid model | `cargo nextest`, `proptest` (e.g. "aligned diff rows always reconstruct both files") | every change, milliseconds |
+| 2. Render snapshots | Each widget drawn into an in-memory terminal (`ratatui::TestBackend`); text **and colours** snapshotted, for every built-in look | `insta` + `cargo insta review` | every change, milliseconds |
+| 3. Integration | Core crates against real git repos built by a fixture builder in a temp dir. Real `git status --porcelain=v2` and `rg --json` act as the **oracle**: our results must match theirs. | `tempfile`, `git`, `rg` | every change, seconds |
+| 4. End-to-end | Real `fb` binary in a PTY, driven by Playwright-style scripts | in-repo `fb-e2e` harness (`portable-pty` + `vt100`) | every change, seconds |
+| 5. Real-terminal smoke | Pixel images and keyboard protocol in Ghostty and Ghostty+herdr | short manual checklist | per release |
+
+**What an e2e test looks like:**
+
+```rust
+#[test]
+fn modified_file_turns_blue_and_commits() -> Result<()> {
+    let repo = Fixture::rust_project().modify("src/status.rs", "// edit\n").build()?;
+    let mut fb = Fb::launch(&repo).size(160, 45).theme("darcula").start()?;
+
+    fb.expect_text("status.rs").to_have_fg(token("git.modified"))?;
+    fb.press("alt+0")?;                                  // Commit tool window
+    fb.expect_text("Changes  1 file").visible()?;
+    fb.type_text("Fix status refresh")?;
+    fb.press("ctrl+k")?;
+    fb.expect_text("Committed 1 file").visible()?;
+
+    assert_eq!(repo.git(["log", "-1", "--format=%s"])?, "Fix status refresh");
+    Ok(())
+}
+```
+
+**Harness features (`crates/fb-e2e`):**
+- **Fixtures:** builder for git repos (files, commits, modifications, untracked, ignored, conflicts). Git runs hermetically (temp `HOME`, no global config, fixed author and dates), so screens are deterministic.
+- **Locators + auto-wait:** `expect_text`, `expect_row(n)`, `to_have_fg/bg(token(..))`. Colours are asserted by **theme token**, not hex, so tests survive palette changes.
+- **Input:** keys (including kitty-keyboard encoding), mouse clicks and scrolling at cells, paste, terminal resize.
+- **Whole-screen golden snapshots** via `insta`.
+- **Failure traces**, like Playwright's trace viewer: every step's screen is saved as a coloured HTML page with the action taken. Kept locally on failure and uploaded as a CI artifact.
+- **Images:** the harness records fb's raw output. Tests assert that a kitty graphics sequence (`ESC _ G …`) is sent with the right size and placement, and that `protocol = "halfblocks"` draws block characters instead. Whether the pixels look right is the terminal's job, which is why layer 5 exists.
+- **Neovim:** scenarios run with a pinned minimal profile (no user config) for determinism.
+- **Performance budgets:** on a generated 50k-file fixture, first frame < 150 ms and Go to File keystroke-to-frame < 16 ms are asserted in e2e. `criterion` benches cover the hot paths.
+
+**Why a small in-repo harness?** The low-level pieces are mature: `portable-pty` (from WezTerm) and the `vt100` emulator. The Playwright-like layer on top is a few hundred lines, and owning it lets us capture kitty graphics, assert theme tokens and produce HTML traces. Existing options get a look in M0 before we write our own:
+- Microsoft's **tui-test**: closest to Playwright's API, but TypeScript, so it adds a Node toolchain.
+- Rust crates **termlens**, **ratatui-testlib**, **testty**: young; we adopt one if it holds up.
+
+A later upgrade could swap `vt100` for **libghostty-vt**, Ghostty's own parser, so e2e tests see exactly what Ghostty sees, including kitty graphics state.
+
+**Rules**
+- Every milestone ships with tests at layers 1–4. Each milestone below lists its e2e scenarios.
+- Every bug fix starts with a failing test.
+- Snapshot changes are reviewed, never blindly accepted.
+- CI runs on macOS + Linux: `fmt`, `clippy`, `nextest`, snapshots, e2e, with traces uploaded on failure. The workflow file ships in M0 and goes live once the repo has a remote.
+
 ---
 
 ## 3. Roadmap
@@ -192,8 +248,10 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Config at `~/.config/fb/config.toml`.
 - [ ] **Terminal spike:** kitty graphics + kitty keyboard detection inside herdr and plain Ghostty; record results here.
 - [ ] CI: `fmt`, `clippy`, tests, "no colour literals in widgets" check.
+- [ ] **Test infrastructure:** evaluate tui-test / termlens / ratatui-testlib, then build or adopt the `fb-e2e` harness (PTY, emulator, locators, auto-wait, HTML traces). Add the git `Fixture` builder, `insta` snapshot setup, and `nextest` config.
 
 **Done when:** `fb [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
+**Tests:** e2e: launch → first frame shows the layout → `q` quits and restores the terminal; resize redraws. Snapshot: empty layout in darcula. Unit: theme loading, `inherits`, invalid theme errors.
 
 ### M1 — Project tree with git colours
 - [ ] Lazy tree, keyboard + mouse; folders first, natural sort.
@@ -203,6 +261,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Reveal current file, collapse all.
 
 **Done when:** `lms-context` browses instantly and colours match `git status`.
+**Tests:** integration: status of every fixture state vs `git status --porcelain=v2`. E2e: expand/collapse via keys and mouse; colours per status; an external file change shows up without a keypress; ignored toggle.
 
 ### M2 — Viewer (code / Markdown / images)
 - [ ] Code: syntect via theme tokens, line numbers, scroll, go-to-line, wrap toggle.
@@ -213,6 +272,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Tabs + recent files (`Ctrl-E`), find in file.
 
 **Done when:** opening any file in the tree shows the right view.
+**Tests:** snapshots: highlighted Rust/TS/JSON, rendered Markdown, gutter markers. E2e: open code / Markdown / image (kitty sequence emitted; half-blocks when forced) / binary / huge file.
 
 ### M3 — Editing with embedded Neovim
 - [ ] `fb-nvim`: spawn `nvim --embed`, attach with `ext_linegrid`, model the grid (cells, hl attrs, cursor, mode, resize).
@@ -223,6 +283,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Config modes `user` / `minimal`; `$EDITOR` fallback when `nvim` is missing.
 
 **Done when:** a file can be opened, edited, saved, and its tree colour flips to "modified" right away.
+**Tests:** unit: grid model fed recorded `redraw` events. E2e (real `nvim`): `e` → insert text → `:w` → file on disk changed, tree colour now `git.modified`; focus returns to tree; unsaved-changes marker; missing `nvim` falls back to `$EDITOR`.
 
 ### M4 — Go to File (fuzzy)
 - [ ] Popup per mockup A: tabs `All / Files / Text / Recent`, `nucleo` over non-ignored paths kept fresh by the watcher.
@@ -230,12 +291,14 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] `name:42` jumps to a line; open in viewer or straight into Neovim.
 
 **Done when:** any file is a few keystrokes away, each keystroke under 16 ms.
+**Tests:** unit: ranking table (`stat` → `status.rs` first, camel-hump cases). E2e: `Ctrl-P`, type, `Enter` opens; `name:42` lands on line 42; keystroke latency budget on the 50k-file fixture.
 
 ### M5 — Find in Path (full-text)
 - [ ] The `Text` tab of the same popup, or a docked panel: case / whole word / regex toggles, file mask, scope.
 - [ ] Streaming parallel search, grouped by file, highlighted context, preview; `Enter` opens at the line.
 
 **Done when:** results match `rg` and feel instant on `lms-context`.
+**Tests:** integration: results vs `rg --json` for literal, regex, case and whole-word queries. E2e: search → navigate results → `Enter` opens at the matching line; typing cancels the previous search.
 
 ### M6 — Commit view
 - [ ] `0: Commit` tool window: **Changes** and **Unversioned Files** groups, flat or by directory.
@@ -243,6 +306,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Rollback (confirm), add unversioned to VCS, refresh.
 
 **Done when:** a normal commit workflow happens without leaving fb.
+**Tests:** e2e: groups and counts; untick a file → commit → `git log` and `git status` confirm only the ticked files went in; amend; failing pre-commit hook shows its output; rollback asks for confirmation.
 
 ### M7 — IntelliJ-style diff viewer
 - [ ] Side-by-side HEAD ⇄ working tree, synced scroll, aligned blocks with hatched filler.
@@ -253,6 +317,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Hunks carry stable ids (groundwork for M9).
 
 **Done when:** reviewing changes is as comfortable as in IntelliJ.
+**Tests:** proptest: aligned rows reconstruct both sides exactly. Snapshots: the mockup-A diff (`status.rs`) as a golden screen. E2e: `F7` / `Shift-F7` navigation, unified toggle, whitespace toggle, new/deleted/binary files.
 
 ### M8 — Polish, more looks, distribution
 - [ ] Ship looks **B "Quiet Modal"** and **C "Paper Light"** as theme files, proving §2.1. Any gap found in the chrome options gets fixed here.
@@ -262,6 +327,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 ### M9 — Partial commits
 - [ ] Per-hunk (then per-line) checkboxes in the diff gutter, IntelliJ-style.
 - [ ] Commit only the selected hunks: build a patch and `git apply --cached`, then commit; working tree untouched.
+- [ ] Tests: e2e: tick 1 of 3 hunks → commit → `git show` holds exactly that hunk; working tree still has the other two.
 
 ### Later / ideas
 - Git log & file history, blame ("Annotate"), branch switcher.
