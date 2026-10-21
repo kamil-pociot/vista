@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 vista-core.workspace = true
 vista-theme.workspace = true
+vista-git.workspace = true
 anyhow.workspace = true
 ratatui.workspace = true
 tracing.workspace = true

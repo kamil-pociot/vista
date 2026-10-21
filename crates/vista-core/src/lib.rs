@@ -2,5 +2,9 @@
 //! file watching.
 
 pub mod config;
+pub mod tree;
+pub mod watch;
 
 pub use config::{Config, EditorConfigMode, ImageProtocol, Paths};
+pub use tree::{FileTree, Row};
+pub use watch::{FsChange, Watcher};

@@ -12,6 +12,7 @@ thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 dirs = "6"
+notify-debouncer-mini = "0.7"
 
 [dev-dependencies]
 tempfile.workspace = true

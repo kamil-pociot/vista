@@ -5,12 +5,15 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
-use ratatui::crossterm::event::{Event, KeyEvent, KeyEventKind, MouseEvent};
-use vista_core::{Config, Paths};
+use ratatui::crossterm::event::{Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
+use vista_core::{Config, FsChange, Paths, Watcher};
+use vista_git::{Git, StatusSnapshot};
 use vista_theme::{Theme, ThemeLoader};
 
 use crate::event::AppEvent;
 use crate::keymap::{Action, Keymap};
+use crate::project::{Outcome, ProjectView};
 
 /// Which panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +52,14 @@ pub struct AppOptions {
     pub theme: Option<String>,
 }
 
+/// Background `git status` runs: at most one at a time; requests that arrive
+/// meanwhile are coalesced into one follow-up run.
+#[derive(Debug, Default)]
+struct StatusJob {
+    running: bool,
+    pending: bool,
+}
+
 pub struct App {
     pub root: PathBuf,
     pub project_name: String,
@@ -62,11 +73,18 @@ pub struct App {
     pub left: Option<LeftPanel>,
     pub show_help: bool,
     pub should_quit: bool,
-    pub status: Option<StatusMsg>,
+    /// Transient message in the status bar.
+    pub message: Option<StatusMsg>,
     pub tx: Sender<AppEvent>,
     pub rx: Receiver<AppEvent>,
     /// Screen regions from the last draw (mouse hit-testing).
     pub areas: crate::ui::Areas,
+    pub project: ProjectView,
+    /// The repository, if the project is inside one.
+    pub git: Option<Git>,
+    pub status: StatusSnapshot,
+    status_job: StatusJob,
+    watcher: Option<Watcher>,
     last_tick: Instant,
 }
 
@@ -79,6 +97,7 @@ impl App {
             .root
             .canonicalize()
             .with_context(|| format!("cannot open {}", opts.root.display()))?;
+        anyhow::ensure!(root.is_dir(), "{} is not a directory", root.display());
         let project_name = root
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -96,6 +115,8 @@ impl App {
         let theme_stamp = stamp(theme_loader.user_path(&theme.id).as_deref());
         let (keymap, warnings) = Keymap::with_overrides(&opts.config.keys);
         let (tx, rx) = mpsc::channel();
+        let project = ProjectView::new(&root, opts.config.tree.show_ignored);
+        let git = Git::discover(&root).ok();
         let mut app = App {
             root,
             project_name,
@@ -109,10 +130,15 @@ impl App {
             left: Some(LeftPanel::Project),
             show_help: false,
             should_quit: false,
-            status: None,
+            message: None,
             tx,
             rx,
             areas: Default::default(),
+            project,
+            git,
+            status: StatusSnapshot::default(),
+            status_job: StatusJob::default(),
+            watcher: None,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -124,11 +150,25 @@ impl App {
         Ok(app)
     }
 
-    /// Called once the terminal is ready, before the first event.
-    pub fn on_start(&mut self) {}
+    /// Called once the terminal is ready, before the first event: starts the
+    /// file watcher and the first `git status`.
+    pub fn on_start(&mut self) {
+        if std::env::var_os("VISTA_NO_WATCH").is_none() {
+            let tx = self.tx.clone();
+            match Watcher::new(&self.root, Duration::from_millis(120), move |c| {
+                let _ = tx.send(AppEvent::Fs(c));
+            }) {
+                Ok(w) => self.watcher = Some(w),
+                Err(e) => self.notify(format!("file watching unavailable: {e}"), MsgKind::Error),
+            }
+        }
+        self.request_status();
+    }
 
     /// Called after the main loop ends, while the terminal is still set up.
-    pub fn on_exit(&mut self) {}
+    pub fn on_exit(&mut self) {
+        self.watcher = None;
+    }
 
     pub fn notify(&mut self, text: impl Into<String>, kind: MsgKind) {
         let text = text.into();
@@ -136,12 +176,53 @@ impl App {
             MsgKind::Error => tracing::warn!("{text}"),
             MsgKind::Info => tracing::info!("{text}"),
         }
-        self.status = Some(StatusMsg {
+        self.message = Some(StatusMsg {
             text,
             kind,
             at: Instant::now(),
         });
     }
+
+    // ----- git status ----------------------------------------------------
+
+    /// Asks for a fresh `git status` in the background.
+    pub fn request_status(&mut self) {
+        let Some(git) = self.git.clone() else { return };
+        if self.status_job.running {
+            self.status_job.pending = true;
+            return;
+        }
+        self.status_job.running = true;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = StatusSnapshot::load(&git).map(Box::new).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::GitStatus(res));
+        });
+    }
+
+    /// Loads status on the calling thread (tests and snapshots).
+    pub fn load_status_now(&mut self) {
+        if let Some(git) = &self.git
+            && let Ok(s) = StatusSnapshot::load(git)
+        {
+            self.set_status(s);
+        }
+    }
+
+    fn set_status(&mut self, s: StatusSnapshot) {
+        self.status = s;
+        self.project.rebuild(&self.status);
+    }
+
+    fn on_fs_change(&mut self, change: FsChange) {
+        if !change.paths.is_empty() {
+            self.project.tree.refresh(&change.paths);
+            self.project.rebuild(&self.status);
+        }
+        self.request_status();
+    }
+
+    // ----- events ----------------------------------------------------------
 
     pub fn handle_event(&mut self, ev: AppEvent) {
         match ev {
@@ -152,6 +233,17 @@ impl App {
             }
             AppEvent::Term(Event::Mouse(m)) => self.handle_mouse(m),
             AppEvent::Term(_) => {}
+            AppEvent::GitStatus(res) => {
+                self.status_job.running = false;
+                match res {
+                    Ok(s) => self.set_status(*s),
+                    Err(e) => self.notify(format!("git status failed: {e}"), MsgKind::Error),
+                }
+                if std::mem::take(&mut self.status_job.pending) {
+                    self.request_status();
+                }
+            }
+            AppEvent::Fs(change) => self.on_fs_change(change),
         }
     }
 
@@ -171,12 +263,47 @@ impl App {
             self.show_help = false;
             return;
         }
+        if self.focus == Focus::Left && self.left == Some(LeftPanel::Project) {
+            match self.project.handle_key(&key, &self.status) {
+                Outcome::Handled => return,
+                Outcome::Open(p) => {
+                    self.open_file(&p);
+                    return;
+                }
+                Outcome::Unhandled => {}
+            }
+        }
         if let Some(action) = self.keymap.action_for(&key) {
             self.handle_action(action);
         }
     }
 
-    pub fn handle_mouse(&mut self, _m: MouseEvent) {}
+    pub fn handle_mouse(&mut self, m: MouseEvent) {
+        let pos = Position::new(m.column, m.row);
+        let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
+        let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
+        match m.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if inside(tree) {
+                    let r = tree.expect("checked");
+                    self.focus = Focus::Left;
+                    let outcome = self
+                        .project
+                        .click((m.row - r.y) as usize, (m.column - r.x) as usize, &self.status);
+                    if let Outcome::Open(p) = outcome {
+                        self.open_file(&p);
+                    }
+                } else if inside(self.areas.left) {
+                    self.focus = Focus::Left;
+                } else if self.areas.main.contains(pos) {
+                    self.focus = Focus::Main;
+                }
+            }
+            MouseEventKind::ScrollDown if inside(tree) => self.project.scroll_by(3),
+            MouseEventKind::ScrollUp if inside(tree) => self.project.scroll_by(-3),
+            _ => {}
+        }
+    }
 
     pub fn handle_action(&mut self, action: Action) {
         match action {
@@ -186,8 +313,26 @@ impl App {
             Action::ToggleProject => self.toggle_left(LeftPanel::Project),
             Action::ToggleCommit => self.toggle_left(LeftPanel::Commit),
             Action::CycleTheme => self.cycle_theme(),
+            Action::ToggleIgnored => {
+                self.project.show_ignored = !self.project.show_ignored;
+                self.project.rebuild(&self.status);
+                let state = if self.project.show_ignored { "shown" } else { "hidden" };
+                self.notify(format!("Ignored files {state}"), MsgKind::Info);
+            }
+            Action::CollapseAll => self.project.collapse_all(&self.status),
+            Action::Refresh => {
+                self.project.tree.refresh_all();
+                self.project.rebuild(&self.status);
+                self.request_status();
+            }
             _ => {}
         }
+    }
+
+    /// Opens a file in the main area.
+    pub fn open_file(&mut self, path: &Path) {
+        let rel = path.strip_prefix(&self.root).unwrap_or(path);
+        self.notify(format!("Open {}", rel.display()), MsgKind::Info);
     }
 
     fn cycle_focus(&mut self) {
@@ -210,6 +355,8 @@ impl App {
         }
     }
 
+    // ----- looks -----------------------------------------------------------
+
     pub fn set_theme(&mut self, id: &str) -> Result<(), String> {
         let theme = self.theme_loader.load(id).map_err(|e| e.to_string())?;
         self.theme_stamp = stamp(self.theme_loader.user_path(id).as_deref());
@@ -231,8 +378,8 @@ impl App {
     pub fn tick(&mut self) {
         self.last_tick = Instant::now();
         self.reload_theme_if_changed();
-        if self.status.as_ref().is_some_and(|s| s.at.elapsed() > STATUS_TTL) {
-            self.status = None;
+        if self.message.as_ref().is_some_and(|s| s.at.elapsed() > STATUS_TTL) {
+            self.message = None;
         }
     }
 
@@ -327,8 +474,43 @@ mod tests {
     fn status_messages_expire() {
         let (_t, mut app) = app();
         app.notify("hello", MsgKind::Info);
-        app.status.as_mut().unwrap().at -= STATUS_TTL + Duration::from_secs(1);
+        app.message.as_mut().unwrap().at -= STATUS_TTL + Duration::from_secs(1);
         app.tick();
-        assert!(app.status.is_none());
+        assert!(app.message.is_none());
+    }
+
+    #[test]
+    fn status_requests_are_coalesced() {
+        let (_t, mut app) = app();
+        app.git = Some(Git {
+            toplevel: app.root.clone(),
+        });
+        app.request_status();
+        app.request_status();
+        app.request_status();
+        assert!(app.status_job.running && app.status_job.pending);
+        // First result arrives (git fails: not a repo) and triggers exactly one follow-up.
+        let ev = app.rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        app.handle_event(ev);
+        assert!(app.status_job.running && !app.status_job.pending);
+    }
+
+    #[test]
+    fn rejects_files_as_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let f = tmp.path().join("file.txt");
+        std::fs::write(&f, "").unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("c"),
+            cache_dir: tmp.path().join("cache"),
+            log_file: tmp.path().join("log"),
+        };
+        let res = App::new(AppOptions {
+            root: f,
+            config: Config::default(),
+            paths,
+            theme: None,
+        });
+        assert!(res.is_err());
     }
 }

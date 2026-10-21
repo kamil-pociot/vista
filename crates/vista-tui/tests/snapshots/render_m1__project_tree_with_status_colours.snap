@@ -1,0 +1,57 @@
+---
+source: crates/vista-tui/tests/render_m1.rs
+expression: snap
+---
+ <root>                       Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+ 1: Project              │
+ ▾ <root>      │
+   ▾ crates              │
+     ▸ fb-core           │
+     ▾ fb-git            │
+       ▾ src             │
+           diff.rs       │
+           lib.rs        │
+           status.rs     │
+           watch.rs      │                          No file open
+         Cargo.toml      │
+   ▸ docs                │                       Ctrl-P  Go to File
+   ▸ target              │                       Ctrl-F  Find in Files
+     .gitignore          │                        Alt-1  Project
+     build.log           │                        Alt-0  Commit
+     Cargo.lock          │                            ?  Help
+     Cargo.toml          │
+     README.md           │
+     ROADMAP.md          │
+     screenshot.png      │
+                         │
+                         │
+                         │
+                         │
+ 1: Project   0: Commit   3: Find   ?: Help   4 changed · 2 unversioned   Darcula Classic
+--- styles ---
+  0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..40 fg=ui.text bg=ui.panel] [40..46 fg=ui.dim bg=ui.panel] [46..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.dim bg=ui.panel] [66..83 fg=ui.text bg=ui.panel] [83..85 fg=ui.dim bg=ui.panel] [85..90 fg=ui.text bg=ui.panel]
+  1: [0..11 fg=ui.text.strong bg=ui.selection.inactive +bold] [11..25 fg=ui.text bg=ui.selection.inactive] [25..26 fg=ui.border bg=ui.bg] [26..90 fg=ui.text bg=ui.panel]
+  2: [0..3 fg=ui.dim bg=ui.panel.alt] [3..19 fg=git.modified bg=ui.panel.alt +bold] [19..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  3: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.modified bg=ui.panel.alt] [11..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  4: [0..7 fg=ui.dim bg=ui.panel.alt] [7..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  5: [0..7 fg=ui.dim bg=ui.panel.alt] [7..13 fg=git.modified bg=ui.panel.alt] [13..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  6: [0..9 fg=ui.dim bg=ui.panel.alt] [9..12 fg=git.modified bg=ui.panel.alt] [12..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  7: [0..11 fg=ui.dim bg=ui.panel.alt] [11..18 fg=git.modified bg=ui.panel.alt] [18..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  8: [0..11 fg=ui.dim bg=ui.panel.alt] [11..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+  9: [0..11 fg=ui.dim bg=ui.selection] [11..20 fg=git.modified bg=ui.selection] [20..25 fg=ui.text bg=ui.selection] [25..26 fg=ui.border bg=ui.bg]
+ 10: [0..11 fg=ui.dim bg=ui.panel.alt] [11..19 fg=git.unversioned bg=ui.panel.alt] [19..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 11: [0..9 fg=ui.dim bg=ui.panel.alt] [9..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 12: [0..5 fg=ui.dim bg=ui.panel.alt] [5..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg] [43..57 fg=ui.border.focused bg=ui.bg] [57..73 fg=ui.dim bg=ui.bg]
+ 13: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.ignored bg=ui.panel.alt +italic] [11..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg] [43..57 fg=ui.border.focused bg=ui.bg] [57..73 fg=ui.dim bg=ui.bg]
+ 14: [0..5 fg=ui.dim bg=ui.panel.alt] [5..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg] [43..57 fg=ui.border.focused bg=ui.bg] [57..73 fg=ui.dim bg=ui.bg]
+ 15: [0..5 fg=ui.dim bg=ui.panel.alt] [5..14 fg=git.ignored bg=ui.panel.alt +italic] [14..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg] [43..57 fg=ui.border.focused bg=ui.bg] [57..73 fg=ui.dim bg=ui.bg]
+ 16: [0..5 fg=ui.dim bg=ui.panel.alt] [5..15 fg=git.modified bg=ui.panel.alt] [15..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg] [43..57 fg=ui.border.focused bg=ui.bg] [57..73 fg=ui.dim bg=ui.bg]
+ 17: [0..5 fg=ui.dim bg=ui.panel.alt] [5..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 18: [0..5 fg=ui.dim bg=ui.panel.alt] [5..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 19: [0..5 fg=ui.dim bg=ui.panel.alt] [5..15 fg=ui.success bg=ui.panel.alt] [15..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 20: [0..5 fg=ui.dim bg=ui.panel.alt] [5..19 fg=git.unversioned bg=ui.panel.alt] [19..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 21: [0..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 22: [0..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 23: [0..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 24: [0..25 fg=ui.text bg=ui.panel.alt] [25..26 fg=ui.border bg=ui.bg]
+ 25: [0..13 fg=ui.text.strong bg=ui.panel +bold] [13..45 fg=ui.header bg=ui.panel] [45..46 fg=ui.text bg=ui.panel] [46..55 fg=git.modified bg=ui.panel] [55..58 fg=ui.dim bg=ui.panel] [58..71 fg=git.unversioned bg=ui.panel] [71..74 fg=ui.text bg=ui.panel] [74..90 fg=ui.dim bg=ui.panel]

@@ -70,7 +70,7 @@ The architecture keeps a desktop front-end possible later: all logic lives in UI
 | Fuzzy matching | `nucleo` | Helix, television |
 | Directory walking / `.gitignore` | `ignore` | ripgrep, fd |
 | Full-text search | `grep-searcher` + `grep-regex` | ripgrep |
-| Git reads (status, blobs, HEAD tree) | `gix` (gitoxide) | cargo, Helix, gitui |
+| Git reads (status, blobs, HEAD tree) | `git` CLI (`status --porcelain=v2 -z`, `cat-file`) | *Changed from `gix` during M1: one code path for reads and writes, no heavy dependency; status of `lms-context` takes well under 100 ms.* |
 | Git writes (stage, commit, rollback, push) | `git` CLI subprocess | Keeps hooks, signing and credential helpers working |
 | Line/word diff | `imara-diff` + `similar` (intra-line) | gix, Helix |
 | File watching | `notify` (+ debouncer) | Zed, watchexec |
@@ -274,15 +274,15 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Done when:** `vista [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
 **Tests:** e2e: launch → first frame shows the layout → `q` quits and restores the terminal; resize redraws. Snapshot: empty layout in darcula. Unit: theme loading, `inherits`, invalid theme errors.
 
-### M1 — Project tree with git colours
-- [ ] Lazy tree, keyboard + mouse; folders first, natural sort.
-- [ ] `.gitignore`-aware, ignored shown dimmed/olive (toggle), `.git` hidden.
-- [ ] Git status via `gix`: file colours + folder roll-up.
-- [ ] File watcher: tree and status refresh on disk changes (debounced).
-- [ ] Reveal current file, collapse all.
+### M1 — Project tree with git colours ✅
+- [x] Lazy tree, keyboard + mouse (click, arrow click, double-click, wheel); folders first, natural sort.
+- [x] `.gitignore`-aware, ignored shown dimmed/olive italic (toggle `i`, or `[tree] show_ignored`), `.git` hidden.
+- [x] Git status: file colours + folder roll-up; branch with ahead/behind in the top bar; change counts in the status bar.
+- [x] File watcher: tree and status refresh on disk changes, including commits made outside vista (debounced).
+- [x] Collapse all (`-`), refresh (`F5`/`Ctrl-R`). *(Reveal current file arrives with open files in M2.)*
 
-**Done when:** `lms-context` browses instantly and colours match `git status`.
-**Tests:** integration: status of every fixture state vs `git status --porcelain=v2`. E2e: expand/collapse via keys and mouse; colours per status; an external file change shows up without a keypress; ignored toggle.
+**Done when:** `lms-context` browses instantly and colours match `git status`. Measured: first frame and branch+status both under 0.4 s on `lms-context` (debug build, `tests/perf.rs`).
+**Tests:** integration: status of every fixture state vs `git status --porcelain=v1` (incl. 24 random edit sequences and merge conflicts). E2e: expand/collapse via keys and mouse; colours per status; an external file change shows up without a keypress; ignored toggle.
 
 ### M2 — Viewer (code / Markdown / images)
 - [ ] Code: syntect via theme tokens, line numbers, scroll, go-to-line, wrap toggle.

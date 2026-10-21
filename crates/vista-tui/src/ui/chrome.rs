@@ -164,7 +164,7 @@ fn tool_label(app: &App, key: &str, name: &str, active: bool) -> Span<'static> {
 
 fn status_spans(app: &App) -> Vec<Span<'static>> {
     let t = &app.theme;
-    match &app.status {
+    match &app.message {
         Some(s) => {
             let token = match s.kind {
                 MsgKind::Error => "ui.error",
@@ -172,7 +172,33 @@ fn status_spans(app: &App) -> Vec<Span<'static>> {
             };
             vec![Span::styled(format!("{} ", s.text), t.fg(token))]
         }
-        None => vec![Span::styled(format!("{} ", app.theme.name), t.fg("ui.dim"))],
+        None => {
+            let mut spans = Vec::new();
+            let unversioned = app
+                .status
+                .changes()
+                .iter()
+                .filter(|c| c.status == vista_git::FileStatus::Unversioned)
+                .count();
+            let changed = app.status.changes().len() - unversioned;
+            if changed > 0 {
+                spans.push(Span::styled(format!("{changed} changed"), t.fg("git.modified")));
+            }
+            if unversioned > 0 {
+                if changed > 0 {
+                    spans.push(Span::styled(" · ", t.fg("ui.dim")));
+                }
+                spans.push(Span::styled(
+                    format!("{unversioned} unversioned"),
+                    t.fg("git.unversioned"),
+                ));
+            }
+            if !spans.is_empty() {
+                spans.push(Span::raw("   "));
+            }
+            spans.push(Span::styled(format!("{} ", app.theme.name), t.fg("ui.dim")));
+            spans
+        }
     }
 }
 

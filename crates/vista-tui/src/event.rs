@@ -1,6 +1,8 @@
 //! Events flowing into the app's single event loop.
 
 use ratatui::crossterm::event::Event;
+use vista_core::FsChange;
+use vista_git::StatusSnapshot;
 
 /// Everything the main loop reacts to. Workers (git, search, highlighting,
 /// Neovim) post their results here so the UI thread never blocks.
@@ -8,4 +10,8 @@ use ratatui::crossterm::event::Event;
 pub enum AppEvent {
     /// Input or resize from the terminal.
     Term(Event),
+    /// A background `git status` finished.
+    GitStatus(Result<Box<StatusSnapshot>, String>),
+    /// Files changed on disk.
+    Fs(FsChange),
 }

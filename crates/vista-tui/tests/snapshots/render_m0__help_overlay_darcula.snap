@@ -4,7 +4,7 @@ expression: "vista_tui::testing::text(&buf)"
 ---
  sample-project                                          Ctrl-P Go to File   Ctrl-F Find in Files
  1: Project                 │
-                            │
+ ▾ sample-project           │
                             │
                        ┌ Keyboard shortcuts ────────────────────────────────┐
                        │            q, Ctrl-Q  Quit                         │

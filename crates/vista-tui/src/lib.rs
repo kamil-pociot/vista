@@ -5,6 +5,7 @@ pub mod args;
 pub mod event;
 pub mod keymap;
 pub mod probe;
+pub mod project;
 pub mod run;
 pub mod style;
 pub mod terminal;

@@ -13,6 +13,7 @@ repository = "https://github.com/kamilpociot/vista"
 vista-core = { path = "crates/vista-core" }
 vista-theme = { path = "crates/vista-theme" }
 vista-e2e = { path = "crates/vista-e2e" }
+vista-git = { path = "crates/vista-git" }
 
 anyhow = "1"
 thiserror = "2"

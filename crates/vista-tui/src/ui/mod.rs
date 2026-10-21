@@ -2,6 +2,7 @@
 
 pub mod chrome;
 pub mod help;
+pub mod project;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -19,6 +20,8 @@ pub struct Areas {
     pub top: Rect,
     pub rail: Option<Rect>,
     pub left: Option<Rect>,
+    /// Content area of the left tool window (below its header).
+    pub left_inner: Option<Rect>,
     pub separator: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
@@ -54,6 +57,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             top,
             rail,
             left: None,
+            left_inner: None,
             separator: None,
             main: body,
             bottom,
@@ -81,6 +85,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         top,
         rail,
         left: Some(left),
+        left_inner: None,
         separator,
         main,
         bottom,
@@ -91,14 +96,14 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     f.render_widget(Block::new().style(app.theme.base()), area);
-    let areas = compute_areas(area, app);
+    let mut areas = compute_areas(area, app);
 
     top_bar(f, areas.top, app);
     if let Some(rail) = areas.rail {
         chrome::icon_rail(f, rail, app);
     }
     if let Some(left) = areas.left {
-        left_panel(f, left, app);
+        areas.left_inner = Some(left_panel(f, left, app));
     }
     if let Some(sep) = areas.separator {
         chrome::separator(f, sep, &app.theme);
@@ -131,17 +136,32 @@ fn top_bar(f: &mut Frame, area: Rect, app: &App) {
     };
     let mut spans = hint(Action::GotoFile, "Go to File");
     spans.extend(hint(Action::FindInFiles, "Find in Files"));
+    if app.git.is_some() {
+        let b = &app.status.branch;
+        spans.push(Span::styled("⎇ ", t.fg("ui.dim")));
+        spans.push(Span::styled(b.label(), t.fg("ui.text")));
+        if b.ahead > 0 {
+            spans.push(Span::styled(format!(" ↑{}", b.ahead), t.fg("git.added")));
+        }
+        if b.behind > 0 {
+            spans.push(Span::styled(format!(" ↓{}", b.behind), t.fg("git.modified")));
+        }
+        spans.push(Span::raw(" "));
+    }
     f.render_widget(Paragraph::new(Line::from(spans)).right_aligned(), area);
 }
 
-fn left_panel(f: &mut Frame, area: Rect, app: &App) {
+fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
     let focused = app.focus == Focus::Left;
     let (title, bg) = match app.left {
         Some(LeftPanel::Commit) => ("0: Commit", "ui.panel.alt"),
         _ => ("1: Project", "ui.panel.alt"),
     };
     let inner = chrome::panel(f, area, title, focused, bg, &app.theme);
-    let _ = inner;
+    if app.left == Some(LeftPanel::Project) {
+        project::draw(f, inner, app);
+    }
+    inner
 }
 
 fn main_area(f: &mut Frame, area: Rect, app: &App) {

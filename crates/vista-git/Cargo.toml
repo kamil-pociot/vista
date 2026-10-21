@@ -1,0 +1,14 @@
+[package]
+name = "vista-git"
+description = "Git status, file contents at HEAD and write operations for vista (via the git CLI)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+vista-e2e.workspace = true
+proptest.workspace = true
