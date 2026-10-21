@@ -1,6 +1,8 @@
 //! The main loop: draw, wait for one event, handle it and everything queued
 //! behind it, repeat.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, Sender};
 use std::thread;
 use std::time::Duration;
@@ -27,7 +29,8 @@ pub fn run(mut app: App) -> Result<()> {
             Err(e) => tracing::warn!("image protocol query failed ({e}); using halfblocks"),
         }
     }
-    spawn_input_thread(app.tx.clone());
+    let paused = Arc::new(AtomicBool::new(false));
+    spawn_input_thread(app.tx.clone(), paused.clone());
     app.on_start();
     loop {
         term.draw(|f| ui::draw(f, &mut app))?;
@@ -42,6 +45,19 @@ pub fn run(mut app: App) -> Result<()> {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+        if let Some((editor, path)) = app.take_external() {
+            // Hand the terminal to the external editor; stop reading input meanwhile.
+            paused.store(true, Ordering::SeqCst);
+            thread::sleep(Duration::from_millis(80));
+            terminal::suspend();
+            let result = run_editor(&editor, &path);
+            terminal::resume()?;
+            // A fresh terminal has empty buffers, so the next draw repaints
+            // everything (Terminal::clear would query the cursor position).
+            term = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(std::io::stdout()))?;
+            paused.store(false, Ordering::SeqCst);
+            app.after_external(&path, result);
+        }
         if app.tick_due(TICK) {
             app.tick();
         }
@@ -53,13 +69,37 @@ pub fn run(mut app: App) -> Result<()> {
     Ok(())
 }
 
-fn spawn_input_thread(tx: Sender<AppEvent>) {
+/// Runs `$EDITOR file` in the foreground. The editor command may contain
+/// arguments (`code --wait`), so it goes through the shell.
+fn run_editor(editor: &str, path: &std::path::Path) -> std::io::Result<std::process::ExitStatus> {
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("{editor} \"$1\""))
+        .arg("vista-editor")
+        .arg(path)
+        .status()
+}
+
+fn spawn_input_thread(tx: Sender<AppEvent>, paused: Arc<AtomicBool>) {
     thread::Builder::new()
         .name("input".into())
         .spawn(move || {
-            while let Ok(ev) = event::read() {
-                if tx.send(AppEvent::Term(ev)).is_err() {
-                    break;
+            loop {
+                if paused.load(Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(20));
+                    continue;
+                }
+                match event::poll(Duration::from_millis(50)) {
+                    Ok(true) => match event::read() {
+                        Ok(ev) => {
+                            if tx.send(AppEvent::Term(ev)).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    },
+                    Ok(false) => {}
+                    Err(_) => break,
                 }
             }
         })

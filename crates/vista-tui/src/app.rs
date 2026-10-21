@@ -11,13 +11,16 @@ use vista_core::{Config, FsChange, Paths, Watcher};
 use vista_git::{Git, StatusSnapshot};
 use vista_theme::{Theme, ThemeLoader};
 
+use crate::editor;
 use crate::event::AppEvent;
 use crate::keymap::{Action, Keymap};
 use crate::project::{Outcome, ProjectView};
 use crate::recent::{PopupOutcome, Prompt, Recent, RecentPopup};
 use crate::viewer::{Content, ImageState, LoadCtx, MdImages, Viewer, ViewerOutcome};
 use ratatui_image::picker::Picker;
+use std::collections::HashSet;
 use vista_core::ImageProtocol;
+use vista_nvim::{Grid, Nvim, NvimEvent};
 
 /// Which panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +99,14 @@ pub struct App {
     pub recent: Recent,
     pub recent_popup: Option<RecentPopup>,
     pub prompt: Option<Prompt>,
+    /// The embedded editor, started on first use.
+    pub nvim: Option<Nvim>,
+    pub grid: Grid,
+    /// Files with unsaved changes in the editor.
+    pub dirty: HashSet<PathBuf>,
+    quit_confirm: Option<Instant>,
+    /// A command to run with the terminal handed over (`$EDITOR` fallback).
+    pending_external: Option<(String, PathBuf)>,
     last_tick: Instant,
 }
 
@@ -158,6 +169,11 @@ impl App {
             recent,
             recent_popup: None,
             prompt: None,
+            nvim: None,
+            grid: Grid::default(),
+            dirty: HashSet::new(),
+            quit_confirm: None,
+            pending_external: None,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -188,6 +204,140 @@ impl App {
     /// Called after the main loop ends, while the terminal is still set up.
     pub fn on_exit(&mut self) {
         self.watcher = None;
+        if let Some(mut n) = self.nvim.take() {
+            n.quit();
+        }
+    }
+
+    /// A command the run loop should execute with the terminal released.
+    pub fn take_external(&mut self) -> Option<(String, PathBuf)> {
+        self.pending_external.take()
+    }
+
+    /// Called after an external editor returned.
+    pub fn after_external(&mut self, path: &Path, result: std::io::Result<std::process::ExitStatus>) {
+        if let Err(e) = result {
+            self.notify(format!("could not run the editor: {e}"), MsgKind::Error);
+        }
+        let ctx = self.load_ctx();
+        self.viewer.reload_paths(&[path.to_path_buf()], &ctx);
+        self.project.tree.refresh(&[path.to_path_buf()]);
+        self.project.rebuild(&self.status);
+        self.request_status();
+    }
+
+    /// Keys go to Neovim: the main area is focused and shows an editor.
+    pub fn editing_focused(&self) -> bool {
+        self.focus == Focus::Main && self.nvim.is_some() && self.viewer.active_tab().is_some_and(|t| t.editing)
+    }
+
+    fn edit_action(&mut self) {
+        let target = match self.focus {
+            Focus::Left if self.left == Some(LeftPanel::Project) => self
+                .project
+                .selected_row()
+                .filter(|r| !r.is_dir)
+                .map(|r| (r.path.clone(), None)),
+            _ => self
+                .viewer
+                .active_tab()
+                .filter(|t| !t.editing)
+                .map(|t| (t.path.clone(), t.has_cursor().then_some(t.cursor + 1))),
+        };
+        if let Some((path, line)) = target {
+            self.start_editing(&path, line);
+        }
+    }
+
+    /// Opens `path` in the embedded Neovim (starting it if needed), or hands
+    /// the terminal to `$EDITOR` when Neovim isn't available.
+    pub fn start_editing(&mut self, path: &Path, line: Option<usize>) {
+        if self.nvim.is_none() {
+            let size = self.areas.viewer.map(|r| (r.width, r.height)).unwrap_or((80, 24));
+            let minimal = self.config.editor.config == vista_core::EditorConfigMode::Minimal;
+            match editor::spawn(&self.config.editor.nvim, minimal, &self.root, size, self.tx.clone()) {
+                Ok(n) => {
+                    if self.config.editor.theme_sync {
+                        let _ = n.set_highlights(&editor::highlight_groups(&self.theme));
+                    }
+                    self.nvim = Some(n);
+                }
+                Err(e) => {
+                    let ed = editor::external_editor();
+                    self.notify(format!("{e}; using {ed}"), MsgKind::Error);
+                    self.pending_external = Some((ed, path.to_path_buf()));
+                    return;
+                }
+            }
+        }
+        match self.viewer.position(path) {
+            Some(i) => self.viewer.activate(i),
+            None => self.open_file(path),
+        }
+        let res = self.nvim.as_ref().map(|n| n.open(path, line));
+        if let Some(Err(e)) = res {
+            self.notify(format!("editor: {e}"), MsgKind::Error);
+            return;
+        }
+        if let Some(t) = self.viewer.active_tab_mut() {
+            t.editing = true;
+        }
+        self.focus = Focus::Main;
+    }
+
+    fn leave_editor(&mut self) {
+        if self.left.is_none() {
+            self.left = Some(LeftPanel::Project);
+        }
+        self.focus = Focus::Left;
+    }
+
+    /// Keeps Neovim on the buffer of the active tab.
+    fn sync_editor_buffer(&mut self) {
+        if let (Some(n), Some(t)) = (&self.nvim, self.viewer.active_tab())
+            && t.editing
+        {
+            let _ = n.open(&t.path, None);
+        }
+    }
+
+    fn on_nvim(&mut self, e: NvimEvent) {
+        match e {
+            NvimEvent::Redraw(p) => self.grid.apply_redraw(&p),
+            NvimEvent::Modified(p, m) => {
+                if m {
+                    self.dirty.insert(p);
+                } else {
+                    self.dirty.remove(&p);
+                }
+            }
+            NvimEvent::Written(p) => {
+                self.dirty.remove(&p);
+                let ctx = self.load_ctx();
+                self.viewer.reload_paths(std::slice::from_ref(&p), &ctx);
+                self.project.tree.refresh(&[p]);
+                self.project.rebuild(&self.status);
+                self.request_status();
+            }
+            NvimEvent::Exited => {
+                self.nvim = None;
+                self.grid = Grid::default();
+                self.dirty.clear();
+                let paths: Vec<PathBuf> = self
+                    .viewer
+                    .tabs
+                    .iter_mut()
+                    .filter(|t| t.editing)
+                    .map(|t| {
+                        t.editing = false;
+                        t.path.clone()
+                    })
+                    .collect();
+                let ctx = self.load_ctx();
+                self.viewer.reload_paths(&paths, &ctx);
+                self.notify("Editor closed", MsgKind::Info);
+            }
+        }
     }
 
     pub fn notify(&mut self, text: impl Into<String>, kind: MsgKind) {
@@ -279,7 +429,15 @@ impl App {
                 }
             }
             AppEvent::Term(Event::Mouse(m)) => self.handle_mouse(m),
+            AppEvent::Term(Event::Paste(text)) => {
+                if self.editing_focused()
+                    && let Some(n) = &self.nvim
+                {
+                    let _ = n.paste(&text);
+                }
+            }
             AppEvent::Term(_) => {}
+            AppEvent::Nvim(e) => self.on_nvim(e),
             AppEvent::GitStatus(res) => {
                 self.status_job.running = false;
                 match res {
@@ -355,6 +513,18 @@ impl App {
             self.prompt_key(&key);
             return;
         }
+        if self.editing_focused() {
+            match self.keymap.action_for(&key) {
+                Some(Action::LeaveEditor) => self.leave_editor(),
+                Some(a @ (Action::ToggleProject | Action::ToggleCommit | Action::ToggleFind)) => self.handle_action(a),
+                _ => {
+                    if let (Some(n), Some(keys)) = (&self.nvim, editor::key_notation(&key)) {
+                        let _ = n.input(&keys);
+                    }
+                }
+            }
+            return;
+        }
         if self.focus == Focus::Main
             && let Some(tab) = self.viewer.active_tab_mut()
         {
@@ -390,11 +560,22 @@ impl App {
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
+        if let Some(r) = viewer.filter(|r| r.contains(pos))
+            && self.viewer.active_tab().is_some_and(|t| t.editing)
+            && let Some(n) = &self.nvim
+        {
+            editor::send_mouse(n, &m, m.row - r.y, m.column - r.x);
+            if matches!(m.kind, MouseEventKind::Down(_)) {
+                self.focus = Focus::Main;
+            }
+            return;
+        }
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if inside(self.areas.tabs) => {
                 self.focus = Focus::Main;
                 if let Some(i) = self.tab_at(m.column) {
                     self.viewer.activate(i);
+                    self.sync_editor_buffer();
                 }
             }
             MouseEventKind::Down(MouseButton::Left) if inside(viewer) => {
@@ -442,7 +623,28 @@ impl App {
 
     pub fn handle_action(&mut self, action: Action) {
         match action {
-            Action::Quit => self.should_quit = true,
+            Action::Quit => {
+                let unsaved = self
+                    .nvim
+                    .as_ref()
+                    .and_then(|n| n.modified_buffers().ok())
+                    .unwrap_or_default();
+                let confirmed = self.quit_confirm.is_some_and(|t| t.elapsed() < Duration::from_secs(4));
+                if unsaved.is_empty() || confirmed {
+                    self.should_quit = true;
+                } else {
+                    self.quit_confirm = Some(Instant::now());
+                    self.notify(
+                        format!(
+                            "{} file(s) with unsaved changes in the editor; press q again to discard",
+                            unsaved.len()
+                        ),
+                        MsgKind::Error,
+                    );
+                }
+            }
+            Action::Edit => self.edit_action(),
+            Action::LeaveEditor => self.leave_editor(),
             Action::Help => self.show_help = true,
             Action::FocusNext | Action::FocusPrev => self.cycle_focus(),
             Action::ToggleProject => self.toggle_left(LeftPanel::Project),
@@ -471,8 +673,14 @@ impl App {
                     self.focus = Focus::Left;
                 }
             }
-            Action::NextTab => self.viewer.cycle(1),
-            Action::PrevTab => self.viewer.cycle(-1),
+            Action::NextTab => {
+                self.viewer.cycle(1);
+                self.sync_editor_buffer();
+            }
+            Action::PrevTab => {
+                self.viewer.cycle(-1);
+                self.sync_editor_buffer();
+            }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
             Action::RevealFile => {
                 if let Some(path) = self.viewer.active_tab().map(|t| t.path.clone()) {

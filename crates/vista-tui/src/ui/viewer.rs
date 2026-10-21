@@ -22,7 +22,7 @@ use crate::viewer::{Content, ImageState, Tab};
 
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     let focused = app.focus == Focus::Main;
-    let labels: Vec<(String, &'static str)> = app
+    let labels: Vec<(String, &'static str, bool)> = app
         .viewer
         .tabs
         .iter()
@@ -33,15 +33,15 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let token = app.status.file_status(&t.path).map(|s| s.token()).unwrap_or("ui.text");
-            (name, token)
+            (name, token, app.dirty.contains(&t.path))
         })
         .collect();
     let tabs: Vec<TabLabel> = labels
         .iter()
-        .map(|(n, tok)| TabLabel {
+        .map(|(n, tok, dirty)| TabLabel {
             title: n,
             fg: tok,
-            dirty: false,
+            dirty: *dirty,
         })
         .collect();
     let inner = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme);
@@ -99,6 +99,10 @@ fn search_or_prompt_line(app: &App) -> Option<Line<'static>> {
 
 fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     let Some(i) = app.viewer.active else { return };
+    if app.viewer.tabs[i].editing && app.nvim.is_some() {
+        draw_editor(f, area, app);
+        return;
+    }
     let focused = app.focus == Focus::Main;
     let font = app.font_size();
     // Split borrows: the tab is mutated (scroll, render cache) while the
@@ -178,6 +182,81 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
         ),
         Content::Error(e) => message(f, area, e, "ui.error", t),
     }
+}
+
+/// Draws Neovim's grid, resizing Neovim to the area first.
+fn draw_editor(f: &mut Frame, area: Rect, app: &mut App) {
+    if let Some(n) = app.nvim.as_mut() {
+        let _ = n.resize(area.width, area.height);
+    }
+    let g = &app.grid;
+    let focused = app.focus == Focus::Main;
+    let default_fg = g.default_fg.map(crate::style::rgb_u32);
+    let default_bg = g.default_bg.map(crate::style::rgb_u32);
+    let mut lines = Vec::with_capacity(area.height as usize);
+    for row in 0..(area.height as usize).min(g.height) {
+        let mut spans: Vec<Span> = Vec::new();
+        let mut run = String::new();
+        let mut run_hl = u64::MAX;
+        let mut run_cursor = false;
+        let style_for = |hl: u64, cursor: bool| {
+            let a = g.hl.get(&hl).cloned().unwrap_or_default();
+            let mut fg = a.fg.map(crate::style::rgb_u32).or(default_fg);
+            let mut bg = a.bg.map(crate::style::rgb_u32).or(default_bg);
+            if a.reverse != cursor {
+                std::mem::swap(&mut fg, &mut bg);
+            }
+            let mut s = ratatui::style::Style::new();
+            if let Some(c) = fg {
+                s = s.fg(c);
+            }
+            if let Some(c) = bg {
+                s = s.bg(c);
+            }
+            let mut m = Modifier::empty();
+            if a.bold {
+                m |= Modifier::BOLD;
+            }
+            if a.italic {
+                m |= Modifier::ITALIC;
+            }
+            if a.underline {
+                m |= Modifier::UNDERLINED;
+            }
+            if a.strikethrough {
+                m |= Modifier::CROSSED_OUT;
+            }
+            if cursor && fg.is_none() && bg.is_none() {
+                m |= Modifier::REVERSED;
+            }
+            s.add_modifier(m)
+        };
+        for col in 0..(area.width as usize).min(g.width) {
+            let Some(cell) = g.cell(row, col) else { continue };
+            if cell.text.is_empty() {
+                // Right half of a wide character.
+                continue;
+            }
+            let cursor = focused && g.cursor == (row, col);
+            if cell.hl != run_hl || cursor != run_cursor {
+                if !run.is_empty() {
+                    spans.push(Span::styled(std::mem::take(&mut run), style_for(run_hl, run_cursor)));
+                }
+                run_hl = cell.hl;
+                run_cursor = cursor;
+            }
+            run.push_str(&cell.text);
+        }
+        if !run.is_empty() {
+            spans.push(Span::styled(run, style_for(run_hl, run_cursor)));
+        }
+        lines.push(Line::from(spans));
+    }
+    let base = match default_bg {
+        Some(bg) => app.theme.base().bg(bg),
+        None => app.theme.base(),
+    };
+    f.render_widget(Paragraph::new(lines).style(base), area);
 }
 
 fn message(f: &mut Frame, area: Rect, text: &str, token: &str, t: &vista_theme::Theme) {

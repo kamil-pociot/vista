@@ -10,6 +10,11 @@ pub fn color(rgb: Rgb) -> Color {
     Color::Rgb(rgb.0, rgb.1, rgb.2)
 }
 
+/// A 0xRRGGBB value (as Neovim sends colours).
+pub fn rgb_u32(v: u32) -> Color {
+    Color::Rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+}
+
 pub fn rgb_of(color: Color) -> Option<Rgb> {
     match color {
         Color::Rgb(r, g, b) => Some(Rgb(r, g, b)),

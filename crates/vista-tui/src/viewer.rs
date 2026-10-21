@@ -88,6 +88,8 @@ pub struct Tab {
     pub view_height: usize,
     pub view_width: usize,
     pub last_used: u64,
+    /// Shown in the embedded editor instead of the read-only viewer.
+    pub editing: bool,
 }
 
 /// What a key in the viewer asks the app to do.
@@ -215,6 +217,7 @@ impl Viewer {
             view_height: 20,
             view_width: 80,
             last_used: 0,
+            editing: false,
         };
         load(&mut tab, ctx);
         self.tabs.push(tab);

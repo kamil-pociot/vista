@@ -12,7 +12,7 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
+    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
     supports_keyboard_enhancement,
 };
 
@@ -80,6 +80,32 @@ pub fn restore() {
         Show
     );
     let _ = disable_raw_mode();
+}
+
+/// Temporarily gives the terminal back (to run an external program).
+pub fn suspend() {
+    restore();
+}
+
+/// Takes the terminal again after [`suspend`].
+pub fn resume() -> io::Result<()> {
+    enable_raw_mode()?;
+    let mut out = io::stdout();
+    execute!(
+        out,
+        EnterAlternateScreen,
+        Clear(ClearType::All),
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
+    if KITTY_KEYBOARD.load(Ordering::SeqCst) {
+        execute!(
+            out,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
+    }
+    RESTORED.store(false, Ordering::SeqCst);
+    Ok(())
 }
 
 fn install_panic_hook() {

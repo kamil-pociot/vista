@@ -25,6 +25,8 @@ pub enum AppEvent {
         generation: u64,
         image: Result<Box<image::DynamicImage>, String>,
     },
+    /// Something from the embedded Neovim.
+    Nvim(vista_nvim::NvimEvent),
     /// An image referenced from Markdown finished decoding.
     MdImageDecoded {
         path: std::path::PathBuf,

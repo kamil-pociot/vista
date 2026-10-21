@@ -15,6 +15,7 @@ vista-theme = { path = "crates/vista-theme" }
 vista-e2e = { path = "crates/vista-e2e" }
 vista-render = { path = "crates/vista-render" }
 vista-diff = { path = "crates/vista-diff" }
+vista-nvim = { path = "crates/vista-nvim" }
 vista-git = { path = "crates/vista-git" }
 
 anyhow = "1"

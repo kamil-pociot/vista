@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod args;
+pub mod editor;
 pub mod event;
 pub mod keymap;
 pub mod probe;

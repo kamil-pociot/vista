@@ -295,16 +295,16 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Done when:** opening any file in the tree shows the right view.
 **Tests:** snapshots: highlighted Rust/TS/JSON, rendered Markdown, gutter markers. E2e: open code / Markdown / image (kitty sequence emitted; half-blocks when forced) / binary / huge file.
 
-### M3 — Editing with embedded Neovim
-- [ ] `vista-nvim`: spawn `nvim --embed`, attach with `ext_linegrid`, model the grid (cells, hl attrs, cursor, mode, resize).
-- [ ] Render the grid in the viewer pane; forward keys/mouse while focused; focus-return chord.
-- [ ] Open/switch buffers from tree, tabs, finder; unsaved-changes indicator in tabs and tree.
-- [ ] Theme sync (`nvim_set_hl` from the active look) or keep the user colourscheme.
-- [ ] `BufWritePost` → refresh status, tree colours, gutter, commit view.
-- [ ] Config modes `user` / `minimal`; `$EDITOR` fallback when `nvim` is missing.
+### M3 — Editing with embedded Neovim ✅
+- [x] `vista-nvim`: spawn `nvim --embed`, own msgpack-RPC client, `ext_linegrid` grid model (cells, hl attrs, cursor, mode, scroll, resize).
+- [x] Render the grid in the viewer pane; forward keys, paste and mouse while focused; `Ctrl-\` returns focus to the tree (tool-window keys still work).
+- [x] `e` opens the selected tree file or the current viewer file (at the cursor line); switching tabs switches buffers; `●` unsaved marker in tabs and tree; `:q` closes the editor and returns to the viewer.
+- [x] Theme sync (`nvim_set_hl` for ~50 groups from the active look) or keep the user colourscheme (`[editor] theme_sync = false`).
+- [x] `BufWritePost` → `rpcnotify` → refresh status, tree colours, gutter; quitting with unsaved changes asks for a second `q`.
+- [x] Config modes `user` / `minimal`; `$VISUAL`/`$EDITOR` fallback (terminal suspended and resumed) when `nvim` is missing.
 
 **Done when:** a file can be opened, edited, saved, and its tree colour flips to "modified" right away.
-**Tests:** unit: grid model fed recorded `redraw` events. E2e (real `nvim`): `e` → insert text → `:w` → file on disk changed, tree colour now `git.modified`; focus returns to tree; unsaved-changes marker; missing `nvim` falls back to `$EDITOR`.
+**Tests:** unit: grid model fed recorded `redraw` events, key notation, a real-Neovim RPC round trip. E2e (real `nvim`): `e` → insert text → `:w` → file on disk changed, tree colour now `git.modified`; focus returns to tree; unsaved-changes marker and quit confirmation; theme sync; missing `nvim` falls back to `$EDITOR`.
 
 ### M4 — Go to File (fuzzy)
 - [ ] Popup per mockup A: tabs `All / Files / Text / Recent` (`Text` hands the query over to Find in Files, M5); `nucleo` over non-ignored paths, kept fresh by the watcher.

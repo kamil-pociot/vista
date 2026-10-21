@@ -15,6 +15,7 @@ vista-theme.workspace = true
 vista-git.workspace = true
 vista-render.workspace = true
 vista-diff.workspace = true
+vista-nvim.workspace = true
 anyhow.workspace = true
 ratatui.workspace = true
 tracing.workspace = true

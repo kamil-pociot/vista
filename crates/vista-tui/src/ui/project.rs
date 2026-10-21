@@ -50,6 +50,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
             Span::styled(format!(" {indent}{arrow}"), t.fg("ui.dim")),
             Span::styled(row.name.clone(), name_style),
         ];
+        if app.dirty.contains(&row.path) {
+            spans.push(Span::styled(" ●", t.fg("ui.warning")));
+        }
         if letters && let Some(s) = status.filter(|s| *s != FileStatus::Ignored) {
             let used = 1 + indent.width() + 2 + row.name.width();
             let letter = if row.is_dir { '•' } else { s.letter() };
