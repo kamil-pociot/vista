@@ -13,14 +13,17 @@ use vista_theme::{Theme, ThemeLoader};
 
 use crate::editor;
 use crate::event::AppEvent;
+use crate::goto::{GotoOutcome, GotoPopup, GotoTab};
 use crate::keymap::{Action, Keymap};
 use crate::project::{Outcome, ProjectView};
 use crate::recent::{PopupOutcome, Prompt, Recent, RecentPopup};
 use crate::viewer::{Content, ImageState, LoadCtx, MdImages, Viewer, ViewerOutcome};
 use ratatui_image::picker::Picker;
 use std::collections::HashSet;
+use std::sync::Arc;
 use vista_core::ImageProtocol;
 use vista_nvim::{Grid, Nvim, NvimEvent};
+use vista_search::FileIndex;
 
 /// Which panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +110,11 @@ pub struct App {
     quit_confirm: Option<Instant>,
     /// A command to run with the terminal handed over (`$EDITOR` fallback).
     pending_external: Option<(String, PathBuf)>,
+    pub goto: Option<GotoPopup>,
+    /// All project files for Go to File (built in the background).
+    pub file_index: Option<Arc<FileIndex>>,
+    index_job: bool,
+    index_dirty: bool,
     last_tick: Instant,
 }
 
@@ -174,6 +182,10 @@ impl App {
             dirty: HashSet::new(),
             quit_confirm: None,
             pending_external: None,
+            goto: None,
+            file_index: None,
+            index_job: false,
+            index_dirty: true,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -189,6 +201,7 @@ impl App {
     /// file watcher and the first `git status`.
     pub fn on_start(&mut self) {
         vista_render::Highlighter::preload();
+        self.request_index();
         if std::env::var_os("VISTA_NO_WATCH").is_none() {
             let tx = self.tx.clone();
             match Watcher::new(&self.root, Duration::from_millis(120), move |c| {
@@ -390,8 +403,102 @@ impl App {
         }
     }
 
+    /// Rebuilds the file index in the background.
+    pub fn request_index(&mut self) {
+        if self.index_job {
+            return;
+        }
+        self.index_job = true;
+        self.index_dirty = false;
+        let include_ignored = self.goto.as_ref().is_some_and(|g| g.include_ignored);
+        let (root, tx) = (self.root.clone(), self.tx.clone());
+        std::thread::spawn(move || {
+            let index = Arc::new(FileIndex::build(&root, include_ignored));
+            let _ = tx.send(AppEvent::Index { index, include_ignored });
+        });
+    }
+
+    /// Builds the index on the calling thread (tests).
+    pub fn build_index_now(&mut self) {
+        self.file_index = Some(Arc::new(FileIndex::build(&self.root, false)));
+    }
+
+    /// Recent files relative to the project root, most recent first.
+    pub fn recent_relative(&self) -> Vec<String> {
+        self.recent
+            .list
+            .iter()
+            .filter_map(|p| p.strip_prefix(&self.root).ok())
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect()
+    }
+
+    fn refresh_goto(&mut self) {
+        let recent = self.recent_relative();
+        if let Some(g) = self.goto.as_mut() {
+            g.refresh(self.file_index.as_deref(), &recent);
+        }
+    }
+
+    pub fn open_goto(&mut self, tab: GotoTab) {
+        self.goto = Some(GotoPopup::new(tab, false));
+        if self.index_dirty || self.file_index.is_none() {
+            self.request_index();
+        }
+        self.refresh_goto();
+    }
+
+    /// Opens a file at an optional 1-based line, in the viewer or the editor.
+    pub fn open_at(&mut self, path: &Path, line: Option<usize>, edit: bool) {
+        if edit {
+            self.start_editing(path, line);
+            return;
+        }
+        self.open_file(path);
+        if let (Some(n), Some(t)) = (line, self.viewer.active_tab_mut())
+            && n > 0
+        {
+            t.set_cursor(n - 1);
+            let h = t.view_height.max(1);
+            t.scroll = (n - 1).saturating_sub(h / 2);
+        }
+    }
+
+    /// Opens Find in Files with a query (replaced by the real panel in M5).
+    pub fn open_find(&mut self, query: String) {
+        let _ = query;
+        self.notify("Find in Files is not available yet", MsgKind::Info);
+    }
+
+    fn goto_key(&mut self, key: &KeyEvent) {
+        let root = self.root.clone();
+        let Some(g) = self.goto.as_mut() else { return };
+        match g.handle_key(key, &root) {
+            GotoOutcome::Handled => self.refresh_goto(),
+            GotoOutcome::Close => self.goto = None,
+            GotoOutcome::Open { path, line, edit } => {
+                self.goto = None;
+                self.open_at(&path, line, edit);
+            }
+            GotoOutcome::Reindex => {
+                self.file_index = None;
+                self.index_job = false;
+                self.request_index();
+                self.refresh_goto();
+            }
+            GotoOutcome::FindText(q) => {
+                self.goto = None;
+                self.open_find(q);
+            }
+        }
+    }
+
     fn on_fs_change(&mut self, change: FsChange) {
         if !change.paths.is_empty() {
+            self.index_dirty = true;
+            if self.goto.is_some() {
+                self.request_index();
+            }
             self.project.tree.refresh(&change.paths);
             self.project.rebuild(&self.status);
             let ctx = self.load_ctx();
@@ -438,6 +545,16 @@ impl App {
             }
             AppEvent::Term(_) => {}
             AppEvent::Nvim(e) => self.on_nvim(e),
+            AppEvent::Index { index, include_ignored } => {
+                self.index_job = false;
+                let wanted = self.goto.as_ref().is_some_and(|g| g.include_ignored);
+                if include_ignored == wanted {
+                    self.file_index = Some(index);
+                    self.refresh_goto();
+                } else {
+                    self.request_index();
+                }
+            }
             AppEvent::GitStatus(res) => {
                 self.status_job.running = false;
                 match res {
@@ -496,6 +613,10 @@ impl App {
         if self.show_help {
             // Any key closes help; the key itself is consumed.
             self.show_help = false;
+            return;
+        }
+        if self.goto.is_some() {
+            self.goto_key(&key);
             return;
         }
         if let Some(popup) = self.recent_popup.as_mut() {
@@ -560,6 +681,17 @@ impl App {
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
+        if let Some(g) = self.goto.as_mut() {
+            if let Some(r) = self.areas.goto_list.filter(|r| r.contains(pos)) {
+                match m.kind {
+                    MouseEventKind::Down(MouseButton::Left) => g.click((m.row - r.y) as usize),
+                    MouseEventKind::ScrollDown => g.scroll_by(3),
+                    MouseEventKind::ScrollUp => g.scroll_by(-3),
+                    _ => {}
+                }
+            }
+            return;
+        }
         if let Some(r) = viewer.filter(|r| r.contains(pos))
             && self.viewer.active_tab().is_some_and(|t| t.editing)
             && let Some(n) = &self.nvim
@@ -644,6 +776,7 @@ impl App {
                 }
             }
             Action::Edit => self.edit_action(),
+            Action::GotoFile => self.open_goto(GotoTab::Files),
             Action::LeaveEditor => self.leave_editor(),
             Action::Help => self.show_help = true,
             Action::FocusNext | Action::FocusPrev => self.cycle_focus(),

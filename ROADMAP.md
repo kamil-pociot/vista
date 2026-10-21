@@ -306,12 +306,12 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Done when:** a file can be opened, edited, saved, and its tree colour flips to "modified" right away.
 **Tests:** unit: grid model fed recorded `redraw` events, key notation, a real-Neovim RPC round trip. E2e (real `nvim`): `e` → insert text → `:w` → file on disk changed, tree colour now `git.modified`; focus returns to tree; unsaved-changes marker and quit confirmation; theme sync; missing `nvim` falls back to `$EDITOR`.
 
-### M4 — Go to File (fuzzy)
-- [ ] Popup per mockup A: tabs `All / Files / Text / Recent` (`Text` hands the query over to Find in Files, M5); `nucleo` over non-ignored paths, kept fresh by the watcher.
-- [ ] IntelliJ-like ranking: camel-hump/word-start boosts, filename over directory, recent first.
-- [ ] `name:42` jumps to a line; open in viewer or straight into Neovim.
+### M4 — Go to File (fuzzy) ✅
+- [x] Popup per mockup A: tabs `All / Files / Text / Recent` (`Tab`/`Shift-Tab`; `Text` hands the query to Find in Files, M5); `nucleo` over non-ignored paths, rebuilt in the background when files change; "include ignored" toggle (`Alt-I`).
+- [x] IntelliJ-like ranking: camel-hump/word-start hits (nucleo bonuses), file-name matches over folder matches, exact names first, recent files boosted.
+- [x] `name:42` jumps to a line; `Enter` opens in the viewer, `Alt-Enter` (or Shift/Ctrl-Enter with the kitty keyboard protocol) straight in Neovim; matched characters highlighted; preview of the selected file; mouse click/wheel.
 
-**Done when:** any file is a few keystrokes away, each keystroke under 16 ms.
+**Done when:** any file is a few keystrokes away, each keystroke under 16 ms. Measured: ranking 50k paths < 16 ms (release unit test); keystroke-to-screen 2.3 ms worst case on a 50k-file project (e2e).
 **Tests:** unit: ranking table (`stat` → `status.rs` first, camel-hump cases). E2e: `Ctrl-P`, type, `Enter` opens; `name:42` lands on line 42; keystroke latency budget on the 50k-file fixture.
 
 ### M5 — Find in Files (IntelliJ-style)

@@ -25,6 +25,11 @@ pub enum AppEvent {
         generation: u64,
         image: Result<Box<image::DynamicImage>, String>,
     },
+    /// The project file index was (re)built.
+    Index {
+        index: std::sync::Arc<vista_search::FileIndex>,
+        include_ignored: bool,
+    },
     /// Something from the embedded Neovim.
     Nvim(vista_nvim::NvimEvent),
     /// An image referenced from Markdown finished decoding.

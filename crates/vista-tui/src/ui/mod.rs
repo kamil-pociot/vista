@@ -1,6 +1,7 @@
 //! Drawing. Every colour comes from the theme via [`crate::style::ThemeStyle`].
 
 pub mod chrome;
+pub mod goto;
 pub mod help;
 pub mod project;
 pub mod viewer;
@@ -27,6 +28,8 @@ pub struct Areas {
     /// The tab strip and content of the viewer (last draw).
     pub tabs: Option<Rect>,
     pub viewer: Option<Rect>,
+    /// The result list of the Go to File popup.
+    pub goto_list: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -65,6 +68,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             separator: None,
             tabs: None,
             viewer: None,
+            goto_list: None,
             main: body,
             bottom,
             keyhints,
@@ -95,6 +99,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         separator,
         tabs: None,
         viewer: None,
+        goto_list: None,
         main,
         bottom,
         keyhints,
@@ -126,13 +131,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.recent_popup.is_some() {
         viewer::draw_recent(f, area, app);
     }
+    app.areas.goto_list = None;
+    if app.goto.is_some() {
+        goto::draw(f, area, app);
+    }
     if app.show_help {
         help::draw(f, area, app);
     }
-    let (tabs, viewer_area) = (app.areas.tabs, app.areas.viewer);
+    let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
+        goto_list,
         ..areas
     };
 }
