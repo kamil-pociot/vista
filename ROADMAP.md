@@ -1,4 +1,4 @@
-# fb — Research & Roadmap
+# vista — Research & Roadmap
 
 A lean, keyboard-driven replacement for the parts of IntelliJ IDEA that are actually used day to day:
 
@@ -6,7 +6,7 @@ A lean, keyboard-driven replacement for the parts of IntelliJ IDEA that are actu
 2. **Viewer** — images, rendered Markdown, source code with syntax highlighting.
 3. **Editing** — through an embedded Neovim, when needed.
 4. **Find file** — IntelliJ-style "Go to File" (type a few letters, fuzzy / camel-hump matching).
-5. **Find in Path** — full-text search across the project.
+5. **Find in Files** — IntelliJ-style full-text search inside files (text, regex, case, words, mask, scope, preview).
 6. **Commit view** — changed files (tracked + unversioned) with an IntelliJ-like side-by-side diff against `HEAD`, and committing.
 
 Non-goals: language intelligence (LSP) beyond what your Neovim config brings, run configurations, plugins, debugger.
@@ -25,8 +25,9 @@ Non-goals: language intelligence (LSP) beyond what your Neovim config brings, ru
 | 3 | Terminal | **Ghostty**, usually inside **herdr**; plain Ghostty is fine where herdr gets in the way. Target: kitty graphics + kitty keyboard protocols. See §1.6. |
 | 4 | Commits | The commit view **makes commits** (commit, amend; push as an option). |
 | 5 | Partial commits | Not now, but **planned** (M9). The diff model keeps stable hunk identities from day one so it's an add-on, not a rewrite. |
-| 6 | Repo size | Reference repo `lms-context`: **~4,000 files** (4,004 tracked, 4,083 not ignored, 4,266 total, 203 MB). At that size a live ripgrep-engine search takes tens of milliseconds, so **no persistent index** is planned. |
-| 7 | Name | `fb` for now. Alternatives in §4. |
+| 6 | Repo size | Reference repo `lms-context`: **~4,000 files** (4,004 tracked, 4,083 not ignored, 4,266 total, 203 MB; 3,881 of them Markdown, 25.7 MB of text). |
+| 7 | Name | **`vista`** (binary `vista`, crates `vista-*`, config `~/.config/vista/`). Not on Homebrew. On crates.io `vista` is taken, which only matters for `cargo install`, so we'd publish as `vista-tui`. |
+| 8 | Search in files | Works **like IntelliJ's Find in Files** (M5, §1.3). Measured on `lms-context`: a full scan takes **~38 ms** for literal, word, case-insensitive and regex queries, so v1 needs **no index**. The engine is pluggable, and a trigram index (M10) switches on automatically when a repo outgrows scanning. |
 
 ---
 
@@ -77,53 +78,73 @@ The architecture keeps a desktop front-end possible later: all logic lives in UI
 
 ### 1.3 Full-text search strategy
 
-Parallel, streaming search with the ripgrep engine, respecting `.gitignore`; cancelled and restarted per keystroke (debounced). At ~4k files (§0.6) this finishes in tens of milliseconds once the page cache is warm, so there's **no index to build, store or keep fresh**. A trigram index stays a documented escape hatch if repos grow by 50×+, not a planned item.
+**Goal:** IntelliJ's *Find in Files* behaviour: exact text or regex, case and whole-word toggles, file mask, scope, live results with preview.
+
+**How IntelliJ does it:** a persistent **trigram index**, a map from every 3-character sequence to the files containing it. A query's trigrams narrow the search to a few candidate files, and only those are scanned to confirm matches. IntelliJ needs this because it's a heavyweight JVM IDE indexing huge projects anyway.
+
+**Measured on `lms-context`** (whole repo, ripgrep engine, process start-up included, 2026-10-21):
+
+| Query | Files matched | Time |
+|---|---|---|
+| `deploy` (case-insensitive) | 254 | 38 ms (80 ms on a cold cache) |
+| `StatusMap` (literal) | 0 | 37 ms |
+| `agent` (whole word, case-insensitive) | 124 | 38 ms |
+| `TODO\|FIXME` (regex) | 27 | 38 ms |
+| `retry.*backoff` (regex, case-insensitive) | 4 | 38 ms |
+
+Anything under ~50 ms feels instant, and inside vista there's no process start-up. So:
+
+- **v1 (M5), scan engine:** parallel, streaming search with the ripgrep libraries, respecting `.gitignore`, debounced and cancelled per keystroke. Always fresh, nothing on disk.
+- **Pluggable engine:** `SearchEngine` trait with `Scan` and `TrigramIndex` implementations, and identical results (enforced by tests that compare both engines' output).
+- **v2 (M10), trigram index:** built in the background and updated incrementally by the file watcher, so it's never stale. It narrows candidates; the ripgrep engine still confirms every match, so results never differ. `auto` mode switches to it when a full scan exceeds ~100 ms or a repo has 50k+ files. It's stored **outside the repo** in `~/Library/Caches/vista/<repo-id>/`, so nothing needs gitignoring. Expected size for `lms-context`: a few MB.
 
 ### 1.4 Prerequisites on this machine
 
-- **Rust toolchain:** not installed. Run `brew install rustup && rustup-init` (or the rustup.rs script).
-- **Neovim:** not installed. Run `brew install neovim` (≥ 0.10 needed for the UI protocol features we use).
-- Already present: git 2.54, ripgrep, fd, Homebrew, herdr 0.9.5.
+- **Rust:** installed 2026-10-21 via `brew install rustup` + `rustup default stable` (rustc 1.99.1). Homebrew's rustup is keg-only, so add `export PATH="/opt/homebrew/opt/rustup/bin:$PATH"` to `~/.zshrc` to get `cargo` in your shell.
+- **Neovim:** installed 2026-10-21 via `brew install neovim` (v0.12.6).
+- Already present: git 2.54, fd, Homebrew, herdr 0.9.5. Standalone `ripgrep` isn't installed (the `rg` in Claude Code sessions is bundled); vista links the ripgrep libraries, so it isn't needed.
 
 ### 1.5 Editing: embedded Neovim
 
-Building a pure Neovim *client* was rejected: the tree, git colours, search, commit view and diff aren't part of Neovim's protocol, so they'd still be our code. Instead, **Neovim is embedded as the editor inside fb's viewer pane**:
+Building a pure Neovim *client* was rejected: the tree, git colours, search, commit view and diff aren't part of Neovim's protocol, so they'd still be our code. Instead, **Neovim is embedded as the editor inside vista's viewer pane**:
 
-- One headless `nvim --embed` process per fb session, attached over msgpack-RPC with the **`ext_linegrid`** UI extension. Without `ext_multigrid`, Neovim composites floating windows (completion, telescope, etc.) into a single grid itself, so fb only renders one grid: cells, highlight attributes, cursor, mode.
+- One headless `nvim --embed` process per vista session, attached over msgpack-RPC with the **`ext_linegrid`** UI extension. Without `ext_multigrid`, Neovim composites floating windows (completion, telescope, etc.) into a single grid itself, so vista only renders one grid: cells, highlight attributes, cursor, mode.
 - Files open as Neovim buffers (`:edit`), so undo history survives switching files.
-- **Theme sync:** fb pushes its theme into Neovim (`nvim_set_hl`) so the editor matches Darcula exactly; or it keeps your colourscheme (config option).
-- **Events:** an autocmd → `rpcnotify` on `BufWritePost` makes fb refresh git status, tree colours and gutter markers immediately.
+- **Theme sync:** vista pushes its theme into Neovim (`nvim_set_hl`) so the editor matches Darcula exactly; or it keeps your colourscheme (config option).
+- **Events:** an autocmd → `rpcnotify` on `BufWritePost` makes vista refresh git status, tree colours and gutter markers immediately.
 - **Config:** uses your `init.lua` by default; `--clean`-style minimal profile available (`[editor] config = "user" | "minimal"`).
-- **Focus model:** Viewer is read-only and instant (and renders images/Markdown). `e` (or `Enter` on a code file, configurable) hands the pane to Neovim; `Ctrl-\ Ctrl-n`-style escape chord or a configurable key returns focus to fb's tree/panels.
+- **Focus model:** Viewer is read-only and instant (and renders images/Markdown). `e` (or `Enter` on a code file, configurable) hands the pane to Neovim; `Ctrl-\ Ctrl-n`-style escape chord or a configurable key returns focus to vista's tree/panels.
 - **Fallback:** if `nvim` isn't on `PATH`, `e` opens `$EDITOR` full-screen (suspend/resume).
 
 ### 1.6 Ghostty + herdr
 
 - **Ghostty** supports the kitty graphics protocol and the kitty keyboard protocol: both are first-class targets.
 - **herdr** (0.9.5 installed) is a tmux-style multiplexer with its own terminal emulation. It implements kitty graphics, but its tracker shows open issues: images missing after re-attach (#5408), slow large images (#5442), and an unanswered case where the support query says OK but nothing renders (#5468).
-- **Plan:** a protocol spike in M0 runs inside herdr *and* plain Ghostty. fb auto-detects support; `[images] protocol = "auto" | "kitty" | "halfblocks" | "off"` lets you force a mode. If herdr misbehaves, images degrade to half-blocks there and stay pixel-perfect in plain Ghostty. Everything else (colours, mouse, keys) is unaffected by herdr.
-- fb never binds `Ctrl-b` (herdr's prefix).
+- **Plan:** a protocol spike in M0 runs inside herdr *and* plain Ghostty. vista auto-detects support; `[images] protocol = "auto" | "kitty" | "halfblocks" | "off"` lets you force a mode. If herdr misbehaves, images degrade to half-blocks there and stay pixel-perfect in plain Ghostty. Everything else (colours, mouse, keys) is unaffected by herdr.
+- vista never binds `Ctrl-b` (herdr's prefix).
 
 ---
 
 ## 2. Architecture
 
 ```
-fb/                         (cargo workspace)
+vista/                         (cargo workspace)
 ├── crates/
-│   ├── fb-core/     workspace model, file tree, fs watcher, config, events
-│   ├── fb-theme/    theme + chrome model, loading, built-in looks
-│   ├── fb-git/      status, HEAD blobs, change list, write ops via git CLI
-│   ├── fb-diff/     line + word diff, side-by-side alignment, hunk ids
-│   ├── fb-search/   fuzzy file finder (nucleo), full-text search (grep-*)
-│   ├── fb-render/   syntax highlighting, markdown → styled lines, image decoding
-│   ├── fb-nvim/     embedded Neovim: RPC, linegrid model, theme sync
-│   └── fb-tui/      ratatui front-end (binary: `fb`)
-├── themes/          darcula.toml (A), quiet.toml (B), paper.toml (C)…
+│   ├── vista-core/     workspace model, file tree, fs watcher, config, events
+│   ├── vista-theme/    theme + chrome model, loading, built-in looks
+│   ├── vista-git/      status, HEAD blobs, change list, write ops via git CLI
+│   ├── vista-diff/     line + word diff, side-by-side alignment, hunk ids
+│   ├── vista-search/   fuzzy file finder (nucleo), Find in Files engine (grep-*)
+│   ├── vista-index/    trigram index for Find in Files (M10)
+│   ├── vista-render/   syntax highlighting, markdown → styled lines, image decoding
+│   ├── vista-nvim/     embedded Neovim: RPC, linegrid model, theme sync
+│   ├── vista-tui/      ratatui front-end (binary: `vista`)
+│   └── vista-e2e/      PTY test harness + git fixtures (dev-only)
+├── themes/             darcula.toml (A), quiet.toml (B), paper.toml (C)…
 └── ROADMAP.md
 ```
 
-- **UI-agnostic core.** `fb-tui` consumes view-models (tree rows, styled lines, diff rows), never git or fs directly.
+- **UI-agnostic core.** `vista-tui` consumes view-models (tree rows, styled lines, diff rows), never git or fs directly.
 - **Never block the UI thread.** Status, search, highlighting, image decoding and Neovim RPC run on workers and post results through channels.
 - **Swappable viewer.** The viewer pane is a trait with implementations: code, markdown, image, diff, Neovim editor.
 - **Lazy everything.** Tree nodes load on expand; highlighting covers the viewport (+ margin); big/binary files are detected.
@@ -140,7 +161,7 @@ The three mockups differ in two independent ways, and the system mirrors that sp
    Syntax scopes from syntect map onto these tokens, so **one file styles both the chrome and the code**; Neovim gets the same palette via theme sync.
 2. **Chrome (layout & decoration)**: border style (`plain` / `rounded` / `none`), panel headers (`titled-bar` / `inline` / `none`), tab style (`underline` / `pill` / `text`), status-bar layout and segments, key-hint line on/off, tool-window strip (`bottom-bar` / `icon-rail` / `none`), git indicators (`colour` / `colour+letter`), tree glyphs, spacing (`compact` / `comfortable`).
 
-A **look** = one TOML file with `[palette]` + `[chrome]` (+ optional `inherits = "darcula"`). Adding a design means writing a TOML file, not touching widget code. Built-in looks are embedded in the binary; user looks live in `~/.config/fb/themes/`. Hot reload while editing a theme file; `fb --theme quiet` or `:theme` to switch. A CI check fails if a widget uses a colour literal.
+A **look** = one TOML file with `[palette]` + `[chrome]` (+ optional `inherits = "darcula"`). Adding a design means writing a TOML file, not touching widget code. Built-in looks are embedded in the binary; user looks live in `~/.config/vista/themes/`. Hot reload while editing a theme file; `vista --theme quiet` or `:theme` to switch. A CI check fails if a widget uses a colour literal.
 
 ```toml
 # themes/darcula.toml (excerpt)
@@ -180,7 +201,7 @@ Folders inherit a colour when they contain changes (toggleable).
 
 ### 2.3 Testing strategy
 
-Terminal apps can be tested end to end much like Playwright tests a browser. The real `fb` binary runs inside a **pseudo-terminal (PTY)**, the test sends keystrokes, and a terminal-emulator library turns fb's output back into a grid of cells: text, colours, cursor. Assertions **auto-wait** for the screen to reach the expected state, like Playwright's `expect(...).toBeVisible()`. No sleeps, no flaky timing.
+Terminal apps can be tested end to end much like Playwright tests a browser. The real `vista` binary runs inside a **pseudo-terminal (PTY)**, the test sends keystrokes, and a terminal-emulator library turns vista's output back into a grid of cells: text, colours, cursor. Assertions **auto-wait** for the screen to reach the expected state, like Playwright's `expect(...).toBeVisible()`. No sleeps, no flaky timing.
 
 Five layers, fastest first:
 
@@ -189,7 +210,7 @@ Five layers, fastest first:
 | 1. Unit | Pure logic: tree model, status mapping, fuzzy ranking, diff alignment, theme parsing, Neovim grid model | `cargo nextest`, `proptest` (e.g. "aligned diff rows always reconstruct both files") | every change, milliseconds |
 | 2. Render snapshots | Each widget drawn into an in-memory terminal (`ratatui::TestBackend`); text **and colours** snapshotted, for every built-in look | `insta` + `cargo insta review` | every change, milliseconds |
 | 3. Integration | Core crates against real git repos built by a fixture builder in a temp dir. Real `git status --porcelain=v2` and `rg --json` act as the **oracle**: our results must match theirs. | `tempfile`, `git`, `rg` | every change, seconds |
-| 4. End-to-end | Real `fb` binary in a PTY, driven by Playwright-style scripts | in-repo `fb-e2e` harness (`portable-pty` + `vt100`) | every change, seconds |
+| 4. End-to-end | Real `vista` binary in a PTY, driven by Playwright-style scripts | in-repo `vista-e2e` harness (`portable-pty` + `vt100`) | every change, seconds |
 | 5. Real-terminal smoke | Pixel images and keyboard protocol in Ghostty and Ghostty+herdr | short manual checklist | per release |
 
 **What an e2e test looks like:**
@@ -198,27 +219,27 @@ Five layers, fastest first:
 #[test]
 fn modified_file_turns_blue_and_commits() -> Result<()> {
     let repo = Fixture::rust_project().modify("src/status.rs", "// edit\n").build()?;
-    let mut fb = Fb::launch(&repo).size(160, 45).theme("darcula").start()?;
+    let mut vista = Vista::launch(&repo).size(160, 45).theme("darcula").start()?;
 
-    fb.expect_text("status.rs").to_have_fg(token("git.modified"))?;
-    fb.press("alt+0")?;                                  // Commit tool window
-    fb.expect_text("Changes  1 file").visible()?;
-    fb.type_text("Fix status refresh")?;
-    fb.press("ctrl+k")?;
-    fb.expect_text("Committed 1 file").visible()?;
+    vista.expect_text("status.rs").to_have_fg(token("git.modified"))?;
+    vista.press("alt+0")?;                                  // Commit tool window
+    vista.expect_text("Changes  1 file").visible()?;
+    vista.type_text("Fix status refresh")?;
+    vista.press("ctrl+k")?;
+    vista.expect_text("Committed 1 file").visible()?;
 
     assert_eq!(repo.git(["log", "-1", "--format=%s"])?, "Fix status refresh");
     Ok(())
 }
 ```
 
-**Harness features (`crates/fb-e2e`):**
+**Harness features (`crates/vista-e2e`):**
 - **Fixtures:** builder for git repos (files, commits, modifications, untracked, ignored, conflicts). Git runs hermetically (temp `HOME`, no global config, fixed author and dates), so screens are deterministic.
 - **Locators + auto-wait:** `expect_text`, `expect_row(n)`, `to_have_fg/bg(token(..))`. Colours are asserted by **theme token**, not hex, so tests survive palette changes.
 - **Input:** keys (including kitty-keyboard encoding), mouse clicks and scrolling at cells, paste, terminal resize.
 - **Whole-screen golden snapshots** via `insta`.
 - **Failure traces**, like Playwright's trace viewer: every step's screen is saved as a coloured HTML page with the action taken. Kept locally on failure and uploaded as a CI artifact.
-- **Images:** the harness records fb's raw output. Tests assert that a kitty graphics sequence (`ESC _ G …`) is sent with the right size and placement, and that `protocol = "halfblocks"` draws block characters instead. Whether the pixels look right is the terminal's job, which is why layer 5 exists.
+- **Images:** the harness records vista's raw output. Tests assert that a kitty graphics sequence (`ESC _ G …`) is sent with the right size and placement, and that `protocol = "halfblocks"` draws block characters instead. Whether the pixels look right is the terminal's job, which is why layer 5 exists.
 - **Neovim:** scenarios run with a pinned minimal profile (no user config) for determinism.
 - **Performance budgets:** on a generated 50k-file fixture, first frame < 150 ms and Go to File keystroke-to-frame < 16 ms are asserted in e2e. `criterion` benches cover the hot paths.
 
@@ -243,14 +264,14 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 ### M0 — Foundations
 - [ ] Install Rust + Neovim; cargo workspace with the crates above.
 - [ ] App shell: alternate screen, event loop, panic hook restoring the terminal, `tracing` to a log file.
-- [ ] **Theme engine** (`fb-theme`): semantic tokens, chrome options, TOML loading, `inherits`, hot reload; `darcula.toml` built in.
+- [ ] **Theme engine** (`vista-theme`): semantic tokens, chrome options, TOML loading, `inherits`, hot reload; `darcula.toml` built in.
 - [ ] Pane/focus model, configurable keymap (avoiding `Ctrl-b`), status bar, help overlay (`?`).
-- [ ] Config at `~/.config/fb/config.toml`.
+- [ ] Config at `~/.config/vista/config.toml`.
 - [ ] **Terminal spike:** kitty graphics + kitty keyboard detection inside herdr and plain Ghostty; record results here.
 - [ ] CI: `fmt`, `clippy`, tests, "no colour literals in widgets" check.
-- [ ] **Test infrastructure:** evaluate tui-test / termlens / ratatui-testlib, then build or adopt the `fb-e2e` harness (PTY, emulator, locators, auto-wait, HTML traces). Add the git `Fixture` builder, `insta` snapshot setup, and `nextest` config.
+- [ ] **Test infrastructure:** evaluate tui-test / termlens / ratatui-testlib, then build or adopt the `vista-e2e` harness (PTY, emulator, locators, auto-wait, HTML traces). Add the git `Fixture` builder, `insta` snapshot setup, and `nextest` config.
 
-**Done when:** `fb [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
+**Done when:** `vista [path]` opens design A's split layout and quits cleanly, in herdr and in plain Ghostty.
 **Tests:** e2e: launch → first frame shows the layout → `q` quits and restores the terminal; resize redraws. Snapshot: empty layout in darcula. Unit: theme loading, `inherits`, invalid theme errors.
 
 ### M1 — Project tree with git colours
@@ -275,7 +296,7 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Tests:** snapshots: highlighted Rust/TS/JSON, rendered Markdown, gutter markers. E2e: open code / Markdown / image (kitty sequence emitted; half-blocks when forced) / binary / huge file.
 
 ### M3 — Editing with embedded Neovim
-- [ ] `fb-nvim`: spawn `nvim --embed`, attach with `ext_linegrid`, model the grid (cells, hl attrs, cursor, mode, resize).
+- [ ] `vista-nvim`: spawn `nvim --embed`, attach with `ext_linegrid`, model the grid (cells, hl attrs, cursor, mode, resize).
 - [ ] Render the grid in the viewer pane; forward keys/mouse while focused; focus-return chord.
 - [ ] Open/switch buffers from tree, tabs, finder; unsaved-changes indicator in tabs and tree.
 - [ ] Theme sync (`nvim_set_hl` from the active look) or keep the user colourscheme.
@@ -286,26 +307,34 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Tests:** unit: grid model fed recorded `redraw` events. E2e (real `nvim`): `e` → insert text → `:w` → file on disk changed, tree colour now `git.modified`; focus returns to tree; unsaved-changes marker; missing `nvim` falls back to `$EDITOR`.
 
 ### M4 — Go to File (fuzzy)
-- [ ] Popup per mockup A: tabs `All / Files / Text / Recent`, `nucleo` over non-ignored paths kept fresh by the watcher.
+- [ ] Popup per mockup A: tabs `All / Files / Text / Recent` (`Text` hands the query over to Find in Files, M5); `nucleo` over non-ignored paths, kept fresh by the watcher.
 - [ ] IntelliJ-like ranking: camel-hump/word-start boosts, filename over directory, recent first.
 - [ ] `name:42` jumps to a line; open in viewer or straight into Neovim.
 
 **Done when:** any file is a few keystrokes away, each keystroke under 16 ms.
 **Tests:** unit: ranking table (`stat` → `status.rs` first, camel-hump cases). E2e: `Ctrl-P`, type, `Enter` opens; `name:42` lands on line 42; keystroke latency budget on the 50k-file fixture.
 
-### M5 — Find in Path (full-text)
-- [ ] The `Text` tab of the same popup, or a docked panel: case / whole word / regex toggles, file mask, scope.
-- [ ] Streaming parallel search, grouped by file, highlighted context, preview; `Enter` opens at the line.
+### M5 — Find in Files (IntelliJ-style)
+Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shift+F`:
+- [ ] **Popup:** query field (prefilled from the selection or the word under the cursor; `↑`/`↓` search history; multi-line queries) with toggles **Match case** `Alt-C`, **Words** `Alt-O`, **Regex** `Alt-X`; **File mask** with several patterns and exclusions (`*.md, !archive/**`).
+- [ ] **Scopes:** `In Project` · `Directory` (defaults to the folder selected in the tree; recursive toggle) · `Changed files` · `Open files`.
+- [ ] **Live results** while typing: one row per match with the line text and match highlighted, file name and line number right-aligned; status-coloured file names; counter "`254 matches in 38 files`"; results capped at 1,000 with a "show more" option.
+- [ ] **Preview pane** under the results, the file scrolled to the match with every occurrence highlighted.
+- [ ] `Enter` opens the file at the match (viewer, or Neovim when editing); `Ctrl-Enter` **"Open in Find tool window"**.
+- [ ] **Find tool window** (`3: Find`), docked at the bottom: persistent results tree grouped by directory → file → match, several result tabs, and next/previous occurrence across files (`Ctrl-Alt-↓/↑`) while the window is closed.
+- [ ] Respects `.gitignore` and excludes (ignored files opt-in), skips binaries, Markdown searched as raw text.
+- [ ] Search runs off the UI thread, streaming; each keystroke cancels the previous search.
+- [ ] *(Later)* **Replace in Files** (`Ctrl-Shift-R`) with per-match preview, applied through Neovim buffers so it can be undone.
 
-**Done when:** results match `rg` and feel instant on `lms-context`.
-**Tests:** integration: results vs `rg --json` for literal, regex, case and whole-word queries. E2e: search → navigate results → `Enter` opens at the matching line; typing cancels the previous search.
+**Done when:** it feels like IntelliJ's Find in Files and results match `rg` on `lms-context`.
+**Tests:** integration: results vs `rg --json` across literal / regex / case / word / mask / scope combinations; cancellation; result cap. E2e: `Ctrl-Shift-F` → type → toggles change counts → preview follows selection → `Enter` opens at the line; `Ctrl-Enter` → tool window → `Ctrl-Alt-↓` walks matches; history recall. Latency budget: first results < 100 ms on `lms-context`.
 
 ### M6 — Commit view
 - [ ] `0: Commit` tool window: **Changes** and **Unversioned Files** groups, flat or by directory.
 - [ ] File-level checkboxes, commit message editor (single-line fast path; full editor via Neovim), **Commit**, **Amend**, optional **Commit & Push**. All writes go through the `git` CLI.
 - [ ] Rollback (confirm), add unversioned to VCS, refresh.
 
-**Done when:** a normal commit workflow happens without leaving fb.
+**Done when:** a normal commit workflow happens without leaving vista.
 **Tests:** e2e: groups and counts; untick a file → commit → `git log` and `git status` confirm only the ticked files went in; amend; failing pre-commit hook shows its output; rollback asks for confirmation.
 
 ### M7 — IntelliJ-style diff viewer
@@ -329,7 +358,14 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 - [ ] Commit only the selected hunks: build a patch and `git apply --cached`, then commit; working tree untouched.
 - [ ] Tests: e2e: tick 1 of 3 hunks → commit → `git show` holds exactly that hunk; working tree still has the other two.
 
+### M10 — Trigram index for Find in Files
+- [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
+- [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.
+- [ ] `[search] engine = "auto" | "scan" | "index"`. `auto` picks the index when a full scan exceeds ~100 ms or a repo has 50k+ files. Status bar shows indexing progress; search keeps scanning until the index is ready.
+- [ ] Tests: differential (index results = scan results, on random queries over fixtures), crash/restart recovery, incremental update after edits/checkout, size and build-time budgets on the 50k-file fixture.
+
 ### Later / ideas
+- Replace in Files; search in comments/strings only (IntelliJ's context filter).
 - Git log & file history, blame ("Annotate"), branch switcher.
 - Compare two files/revisions; edit the right side of a diff via Neovim.
 - Desktop front-end reusing the core crates.
@@ -338,12 +374,4 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 
 ## 4. Remaining open questions
 
-1. **Name:** keep `fb`, or pick one of:
-   - **`perch`**: sitting above the project, looking down at it.
-   - **`loupe`**: a jeweller's magnifier for close reading (a GNOME image viewer shares the name, on Linux only).
-   - **`keel`**: the steady backbone under the work; short to type.
-   - **`vista`**: an overview of the whole project.
-   - **`prism`**: one view split into tree, code and diffs.
-
-   None of these collide with a command on this machine. A crates.io/Homebrew name check happens before renaming.
-2. **Editor entry key:** should `Enter` on a code file open the read-only viewer (fast, default) or go straight into Neovim?
+1. **Editor entry key:** should `Enter` on a code file open the read-only viewer (fast, default) or go straight into Neovim?
