@@ -11,7 +11,7 @@ A lean, keyboard-driven replacement for the parts of IntelliJ IDEA that are actu
 
 Non-goals: language intelligence (LSP) beyond what your Neovim config brings, run configurations, plugins, debugger.
 
-> Status: **approved direction, decisions recorded in §0.** Implementation has not started.
+> Status: **approved.** Decisions are recorded in §0. Next step: M0.
 > Design mockups: <https://claude.ai/artifact/UJ6tw99LFSzjDsXjW276Dr> (A was chosen).
 
 ---
@@ -27,7 +27,8 @@ Non-goals: language intelligence (LSP) beyond what your Neovim config brings, ru
 | 5 | Partial commits | Not now, but **planned** (M9). The diff model keeps stable hunk identities from day one so it's an add-on, not a rewrite. |
 | 6 | Repo size | Reference repo `lms-context`: **~4,000 files** (4,004 tracked, 4,083 not ignored, 4,266 total, 203 MB; 3,881 of them Markdown, 25.7 MB of text). |
 | 7 | Name | **`vista`** (binary `vista`, crates `vista-*`, config `~/.config/vista/`). Not on Homebrew. On crates.io `vista` is taken, which only matters for `cargo install`, so we'd publish as `vista-tui`. |
-| 8 | Search in files | Works **like IntelliJ's Find in Files** (M5, §1.3). Measured on `lms-context`: a full scan takes **~38 ms** for literal, word, case-insensitive and regex queries, so v1 needs **no index**. The engine is pluggable, and a trigram index (M10) switches on automatically when a repo outgrows scanning. |
+| 8 | Search in files | Works **like IntelliJ's Find in Files** (M5, §1.3). Measured on `lms-context`: a full scan takes **~38 ms** for literal, word, case-insensitive and regex queries, so v1 needs **no index**. The engine is pluggable, and a trigram index (M10) is **deferred**: built only if a repo outgrows scanning. |
+| 9 | Opening files | `Enter` opens the **read-only viewer** (fast; renders images and Markdown). Editing is optional: `e` hands the pane to embedded Neovim. |
 
 ---
 
@@ -113,7 +114,7 @@ Building a pure Neovim *client* was rejected: the tree, git colours, search, com
 - **Theme sync:** vista pushes its theme into Neovim (`nvim_set_hl`) so the editor matches Darcula exactly; or it keeps your colourscheme (config option).
 - **Events:** an autocmd → `rpcnotify` on `BufWritePost` makes vista refresh git status, tree colours and gutter markers immediately.
 - **Config:** uses your `init.lua` by default; `--clean`-style minimal profile available (`[editor] config = "user" | "minimal"`).
-- **Focus model:** Viewer is read-only and instant (and renders images/Markdown). `e` (or `Enter` on a code file, configurable) hands the pane to Neovim; `Ctrl-\ Ctrl-n`-style escape chord or a configurable key returns focus to vista's tree/panels.
+- **Focus model:** Viewer is read-only and instant (and renders images/Markdown). `Enter` opens files in the viewer; `e` hands the pane to Neovim; `Ctrl-\ Ctrl-n`-style escape chord or a configurable key returns focus to vista's tree/panels.
 - **Fallback:** if `nvim` isn't on `PATH`, `e` opens `$EDITOR` full-screen (suspend/resume).
 
 ### 1.6 Ghostty + herdr
@@ -358,7 +359,7 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [ ] Commit only the selected hunks: build a patch and `git apply --cached`, then commit; working tree untouched.
 - [ ] Tests: e2e: tick 1 of 3 hunks → commit → `git show` holds exactly that hunk; working tree still has the other two.
 
-### M10 — Trigram index for Find in Files
+### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.
 - [ ] `[search] engine = "auto" | "scan" | "index"`. `auto` picks the index when a full scan exceeds ~100 ms or a repo has 50k+ files. Status bar shows indexing progress; search keeps scanning until the index is ready.
@@ -374,4 +375,4 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 
 ## 4. Remaining open questions
 
-1. **Editor entry key:** should `Enter` on a code file open the read-only viewer (fast, default) or go straight into Neovim?
+None. New questions get added here as they come up during implementation.
