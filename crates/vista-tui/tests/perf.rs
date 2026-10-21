@@ -27,4 +27,26 @@ fn tree_and_status_are_fast_on_a_real_repo() {
     println!("first frame: {first_frame:?}, branch+status: {status:?}");
     assert!(first_frame.as_millis() < 1500, "first frame took {first_frame:?}");
     assert!(status.as_millis() < 3000, "status took {status:?}");
+
+    // Find in Files: keystroke → first visible hit, and → finished search.
+    let query = std::env::var("VISTA_PERF_QUERY").unwrap_or_else(|_| "deploy".into());
+    for round in ["cold", "warm"] {
+        vista.press("ctrl+f");
+        vista.expect_text("File mask:");
+        vista.press("ctrl+u");
+        vista.settle(std::time::Duration::from_millis(150));
+        let start = Instant::now();
+        vista.type_text(&query);
+        // A selected hit shows its file and occurrence count above the preview.
+        vista.expect_text("occurrence");
+        let first = start.elapsed();
+        vista.wait_until("search finished", |s| {
+            let c = s.contents();
+            c.contains("matches in") && !c.contains(" 0 matches in")
+        });
+        let done = start.elapsed();
+        println!("find in files ({query}, {round}): first hit on screen {first:?}, finished {done:?}");
+        assert!(first.as_millis() < 300, "first results took {first:?}");
+        vista.press("esc");
+    }
 }

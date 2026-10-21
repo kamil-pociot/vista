@@ -8,7 +8,11 @@ license.workspace = true
 [dependencies]
 nucleo-matcher = "0.3"
 ignore = "0.4"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"
 
 [dev-dependencies]
 tempfile.workspace = true
 proptest.workspace = true
+vista-e2e.workspace = true

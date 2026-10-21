@@ -221,7 +221,7 @@ pub fn bottom_bar(f: &mut Frame, area: Rect, app: &App) {
         let spans = vec![
             tool_label(app, "1", "Project", left_active(LeftPanel::Project)),
             tool_label(app, "0", "Commit", left_active(LeftPanel::Commit)),
-            tool_label(app, "3", "Find", false),
+            tool_label(app, "3", "Find", app.focus == Focus::Bottom),
             tool_label(app, "?", "Help", app.show_help),
         ];
         f.render_widget(Paragraph::new(Line::from(spans)), area);

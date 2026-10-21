@@ -314,20 +314,20 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Done when:** any file is a few keystrokes away, each keystroke under 16 ms. Measured: ranking 50k paths < 16 ms (release unit test); keystroke-to-screen 2.3 ms worst case on a 50k-file project (e2e).
 **Tests:** unit: ranking table (`stat` → `status.rs` first, camel-hump cases). E2e: `Ctrl-P`, type, `Enter` opens; `name:42` lands on line 42; keystroke latency budget on the 50k-file fixture.
 
-### M5 — Find in Files (IntelliJ-style)
+### M5 — Find in Files (IntelliJ-style) ✅
 Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shift+F`:
-- [ ] **Popup:** query field (prefilled from the selection or the word under the cursor; `↑`/`↓` search history; multi-line queries) with toggles **Match case** `Alt-C`, **Words** `Alt-O`, **Regex** `Alt-X`; **File mask** with several patterns and exclusions (`*.md, !archive/**`).
-- [ ] **Scopes:** `In Project` · `Directory` (defaults to the folder selected in the tree; recursive toggle) · `Changed files` · `Open files`.
-- [ ] **Live results** while typing: one row per match with the line text and match highlighted, file name and line number right-aligned; status-coloured file names; counter "`254 matches in 38 files`"; results capped at 1,000 with a "show more" option.
-- [ ] **Preview pane** under the results, the file scrolled to the match with every occurrence highlighted.
-- [ ] `Enter` opens the file at the match (viewer, or Neovim when editing); `Ctrl-Enter` **"Open in Find tool window"**.
-- [ ] **Find tool window** (`3: Find`), docked at the bottom: persistent results tree grouped by directory → file → match, several result tabs, and next/previous occurrence across files (`Ctrl-Alt-↓/↑`) while the window is closed.
-- [ ] Respects `.gitignore` and excludes (ignored files opt-in), skips binaries, Markdown searched as raw text.
-- [ ] Search runs off the UI thread, streaming; each keystroke cancels the previous search.
+- [x] **Popup:** query field prefilled from the viewer's find query or the last search (selected, so typing replaces it); `Alt-↑`/`Alt-↓` history (persisted); toggles **Match case** `Alt-C`, **Words** `Alt-W`, **Regex** `Alt-X`; **File mask** (`Tab` to edit) with several patterns and exclusions (`*.md, !archive/**`). *Not done: multi-line queries; prefill from a selection (the viewer has no text selection).*
+- [x] **Scopes** (`Alt-S`): `In Project` · `Directory` (the folder selected in the tree) · `Changed files` (local changes, like IntelliJ) · `Open files`.
+- [x] **Live results** while typing: line text with matches highlighted, file name (status-coloured) and line number right-aligned; "`N matches in M files`"; capped at 1,000.
+- [x] **Preview pane** under the results: the file around the match, syntax-highlighted once the search finishes, match marked.
+- [x] `Enter` opens the file at the match; `Alt-Enter` opens it in Neovim; `Alt-O` (or `Ctrl-Enter` with the kitty keyboard protocol) **"Open in Find tool window"**.
+- [x] **Find tool window** (`3: Find`, `Alt-3`), docked at the bottom: results grouped by file, several result tabs (`←/→`, `Ctrl-W` closes), next/previous occurrence across files (`Ctrl-Alt-↓/↑`) even when the window is closed.
+- [x] Respects `.gitignore` (hidden files included, `.git` never), skips binaries.
+- [x] Search runs off the UI thread, streaming; a burst of keystrokes cancels and restarts it once.
 - [ ] *(Later)* **Replace in Files** (`Ctrl-Shift-R`) with per-match preview, applied through Neovim buffers so it can be undone.
 
-**Done when:** it feels like IntelliJ's Find in Files and results match `rg` on `lms-context`.
-**Tests:** integration: results vs `rg --json` across literal / regex / case / word / mask / scope combinations; cancellation; result cap. E2e: `Ctrl-Shift-F` → type → toggles change counts → preview follows selection → `Enter` opens at the line; `Ctrl-Enter` → tool window → `Ctrl-Alt-↓` walks matches; history recall. Latency budget: first results < 100 ms on `lms-context`.
+**Done when:** it feels like IntelliJ's Find in Files and results match `rg` on `lms-context`. Measured on `lms-context` (release): first results on screen in 22–32 ms, complete in 53–118 ms; engine alone ~30 ms per search (ripgrep CLI: 38 ms).
+**Tests:** integration: results vs `git grep` (standalone ripgrep isn't installed everywhere; `git grep` is an independent implementation) across literal / case / word / regex / mask / directory-scope combinations, plus engine unit tests for scopes, cancellation and the result cap. E2e: popup, toggles, mask, regex errors, scopes, preview, open at line, Find tool window, `Ctrl-Alt-↓`, history, hand-over from Go to File. Latency: opt-in perf test on `lms-context`.
 
 ### M6 — Commit view
 - [ ] `0: Commit` tool window: **Changes** and **Unversioned Files** groups, flat or by directory.

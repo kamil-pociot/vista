@@ -1,6 +1,7 @@
 //! Drawing. Every colour comes from the theme via [`crate::style::ThemeStyle`].
 
 pub mod chrome;
+pub mod find;
 pub mod goto;
 pub mod help;
 pub mod project;
@@ -30,6 +31,10 @@ pub struct Areas {
     pub viewer: Option<Rect>,
     /// The result list of the Go to File popup.
     pub goto_list: Option<Rect>,
+    /// The bottom tool window (Find results).
+    pub panel_bottom: Option<Rect>,
+    pub find_list: Option<Rect>,
+    pub find_window: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -46,6 +51,17 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         .constraints(rows)
         .split(area);
     let (top, mut body, bottom) = (v[0], v[1], v[2]);
+    // Bottom tool window (Find) spans the full width under the panels.
+    let mut bottom_panel = None;
+    if app.find_window.visible && !app.find_window.tabs.is_empty() && body.height > 12 {
+        let h = (body.height * 35 / 100).max(8);
+        bottom_panel = Some(Rect {
+            y: body.y + body.height - h,
+            height: h,
+            ..body
+        });
+        body.height -= h;
+    }
     let keyhints = chrome.keyhints.then(|| v[3]);
 
     let mut rail = None;
@@ -69,6 +85,9 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             tabs: None,
             viewer: None,
             goto_list: None,
+            panel_bottom: bottom_panel,
+            find_list: None,
+            find_window: None,
             main: body,
             bottom,
             keyhints,
@@ -100,6 +119,9 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         tabs: None,
         viewer: None,
         goto_list: None,
+        panel_bottom: bottom_panel,
+        find_list: None,
+        find_window: None,
         main,
         bottom,
         keyhints,
@@ -123,7 +145,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     app.areas.tabs = None;
     app.areas.viewer = None;
+    app.areas.find_window = None;
     main_area(f, areas.main, app);
+    if let Some(b) = areas.panel_bottom {
+        find::draw_window(f, b, app);
+    }
     chrome::bottom_bar(f, areas.bottom, app);
     if let Some(k) = areas.keyhints {
         chrome::keyhints(f, k, app);
@@ -135,14 +161,21 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.goto.is_some() {
         goto::draw(f, area, app);
     }
+    app.areas.find_list = None;
+    if app.find.is_some() {
+        find::draw_popup(f, area, app);
+    }
     if app.show_help {
         help::draw(f, area, app);
     }
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
+    let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
         goto_list,
+        find_list,
+        find_window,
         ..areas
     };
 }

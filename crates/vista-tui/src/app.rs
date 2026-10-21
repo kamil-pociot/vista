@@ -13,6 +13,7 @@ use vista_theme::{Theme, ThemeLoader};
 
 use crate::editor;
 use crate::event::AppEvent;
+use crate::find::{FindOutcome, FindPopup, FindWindow, ResultTab};
 use crate::goto::{GotoOutcome, GotoPopup, GotoTab};
 use crate::keymap::{Action, Keymap};
 use crate::project::{Outcome, ProjectView};
@@ -21,6 +22,7 @@ use crate::viewer::{Content, ImageState, LoadCtx, MdImages, Viewer, ViewerOutcom
 use ratatui_image::picker::Picker;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use vista_core::ImageProtocol;
 use vista_nvim::{Grid, Nvim, NvimEvent};
 use vista_search::FileIndex;
@@ -32,6 +34,8 @@ pub enum Focus {
     Left,
     /// The main area (viewer / editor / diff).
     Main,
+    /// The bottom tool window (Find results).
+    Bottom,
 }
 
 /// Which tool window occupies the left side.
@@ -115,6 +119,11 @@ pub struct App {
     pub file_index: Option<Arc<FileIndex>>,
     index_job: bool,
     index_dirty: bool,
+    pub find: Option<FindPopup>,
+    pub find_window: FindWindow,
+    pub find_history: Vec<String>,
+    find_generation: u64,
+    find_pending: bool,
     last_tick: Instant,
 }
 
@@ -149,6 +158,7 @@ impl App {
         let git = Git::discover(&root).ok();
         let recent = Recent::load(&opts.paths.cache_dir, &root);
         let picker = default_picker(opts.config.images.protocol);
+        let find_history = crate::find::load_history(&opts.paths.cache_dir);
         let mut app = App {
             root,
             project_name,
@@ -186,6 +196,11 @@ impl App {
             file_index: None,
             index_job: false,
             index_dirty: true,
+            find: None,
+            find_window: FindWindow::default(),
+            find_history,
+            find_generation: 0,
+            find_pending: false,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -202,6 +217,17 @@ impl App {
     pub fn on_start(&mut self) {
         vista_render::Highlighter::preload();
         self.request_index();
+        // The first search in a process pays one-time costs (thread pool, matcher
+        // and ignore-rule setup, cold file cache); pay them in the background.
+        let root = self.root.clone();
+        std::thread::spawn(move || {
+            let opts = vista_search::FindOptions {
+                query: "\u{1}vista-warm-up".into(),
+                max_results: 1,
+                ..Default::default()
+            };
+            vista_search::find::search(&root, &opts, &std::sync::atomic::AtomicBool::new(false), &|_| {});
+        });
         if std::env::var_os("VISTA_NO_WATCH").is_none() {
             let tx = self.tx.clone();
             match Watcher::new(&self.root, Duration::from_millis(120), move |c| {
@@ -464,10 +490,122 @@ impl App {
         }
     }
 
-    /// Opens Find in Files with a query (replaced by the real panel in M5).
+    /// Opens Find in Files, prefilled with `query`.
     pub fn open_find(&mut self, query: String) {
-        let _ = query;
-        self.notify("Find in Files is not available yet", MsgKind::Info);
+        // Directory scope: the folder selected in the tree (or the file's folder).
+        let dir = self
+            .project
+            .selected_row()
+            .map(|r| {
+                if r.is_dir {
+                    r.path.clone()
+                } else {
+                    r.path.parent().map(Path::to_path_buf).unwrap_or_default()
+                }
+            })
+            .unwrap_or_else(|| self.root.clone());
+        self.find = Some(FindPopup::new(query, dir));
+        self.start_find();
+    }
+
+    /// (Re)starts the search for the popup's current options.
+    pub fn start_find(&mut self) {
+        let changed: Vec<PathBuf> = self
+            .status
+            .changes()
+            .iter()
+            // IntelliJ's "Changed files": local changes, not unversioned files.
+            .filter(|c| {
+                !matches!(
+                    c.status,
+                    vista_git::FileStatus::Deleted | vista_git::FileStatus::Unversioned
+                )
+            })
+            .map(|c| c.path.clone())
+            .collect();
+        let open: Vec<PathBuf> = self.viewer.tabs.iter().map(|t| t.path.clone()).collect();
+        let Some(p) = self.find.as_mut() else { return };
+        p.cancel.store(true, Ordering::SeqCst);
+        p.cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.find_generation += 1;
+        p.generation = self.find_generation;
+        p.reset_results();
+        p.running = !p.query.is_empty();
+        let opts = p.options(changed, open);
+        let (root, tx, generation, cancel) = (self.root.clone(), self.tx.clone(), p.generation, p.cancel.clone());
+        std::thread::spawn(move || {
+            vista_search::find::search(&root, &opts, &cancel, &|event| {
+                let _ = tx.send(AppEvent::Find { generation, event });
+            });
+        });
+    }
+
+    fn close_find(&mut self) {
+        if let Some(p) = self.find.take() {
+            p.cancel.store(true, Ordering::SeqCst);
+            crate::find::push_history(&self.paths.cache_dir, &mut self.find_history, &p.query);
+        }
+    }
+
+    fn find_key(&mut self, key: &KeyEvent) {
+        let history = self.find_history.clone();
+        let Some(p) = self.find.as_mut() else { return };
+        match p.handle_key(key, &history) {
+            FindOutcome::Handled => {}
+            // Coalesced: a burst of typed keys starts one search (see `drain_events`).
+            FindOutcome::Restart => self.find_pending = true,
+            FindOutcome::Close => self.close_find(),
+            FindOutcome::Open { path, line, edit } => {
+                self.close_find();
+                self.open_at(&path, Some(line), edit);
+            }
+            FindOutcome::ToWindow => {
+                let tab = ResultTab::new(p.query.clone(), p.results.clone());
+                self.close_find();
+                self.find_window.add(tab);
+                self.focus = Focus::Bottom;
+            }
+        }
+    }
+
+    /// Keys while the Find tool window has focus.
+    fn find_window_key(&mut self, key: &KeyEvent) -> bool {
+        use ratatui::crossterm::event::KeyCode;
+        let h = self.find_window.view_height;
+        let n_tabs = self.find_window.tabs.len();
+        let Some(tab) = self.find_window.active_tab_mut() else {
+            return false;
+        };
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => tab.move_by(-1, h),
+            KeyCode::Down | KeyCode::Char('j') => tab.move_by(1, h),
+            KeyCode::PageUp => tab.move_by(-(h as isize), h),
+            KeyCode::PageDown => tab.move_by(h as isize, h),
+            KeyCode::Left if n_tabs > 1 => self.find_window.active = (self.find_window.active + n_tabs - 1) % n_tabs,
+            KeyCode::Right if n_tabs > 1 => self.find_window.active = (self.find_window.active + 1) % n_tabs,
+            KeyCode::Enter => {
+                if let Some(hit) = tab.selected_hit().cloned() {
+                    let idx = tab.hits.iter().position(|x| *x == hit);
+                    tab.current = idx;
+                    self.open_at(&hit.path, Some(hit.line), false);
+                }
+            }
+            KeyCode::Esc => self.focus = Focus::Main,
+            _ => return false,
+        }
+        true
+    }
+
+    fn step_occurrence(&mut self, forward: bool) {
+        let Some(hit) = self.find_window.active_tab_mut().and_then(|t| t.step(forward)) else {
+            self.notify("No Find results", MsgKind::Info);
+            return;
+        };
+        let focus = self.focus;
+        self.open_at(&hit.path, Some(hit.line), false);
+        if focus == Focus::Bottom {
+            self.focus = Focus::Bottom;
+        }
     }
 
     fn goto_key(&mut self, key: &KeyEvent) {
@@ -545,6 +683,23 @@ impl App {
             }
             AppEvent::Term(_) => {}
             AppEvent::Nvim(e) => self.on_nvim(e),
+            AppEvent::Find { generation, event } => {
+                if let Some(p) = self.find.as_mut()
+                    && p.generation == generation
+                {
+                    match event {
+                        vista_search::FindEvent::Hits(h) => p.add_hits(h),
+                        vista_search::FindEvent::Done(s) => {
+                            p.running = false;
+                            p.summary = Some(s);
+                        }
+                        vista_search::FindEvent::Error(e) => {
+                            p.running = false;
+                            p.error = Some(e);
+                        }
+                    }
+                }
+            }
             AppEvent::Index { index, include_ignored } => {
                 self.index_job = false;
                 let wanted = self.goto.as_ref().is_some_and(|g| g.include_ignored);
@@ -606,7 +761,15 @@ impl App {
             self.handle_event(ev);
             n += 1;
         }
+        self.flush_pending();
         n
+    }
+
+    /// Work deferred until queued input is handled (search restarts).
+    pub fn flush_pending(&mut self) {
+        if std::mem::take(&mut self.find_pending) && self.find.is_some() {
+            self.start_find();
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -617,6 +780,13 @@ impl App {
         }
         if self.goto.is_some() {
             self.goto_key(&key);
+            return;
+        }
+        if self.find.is_some() {
+            self.find_key(&key);
+            return;
+        }
+        if self.focus == Focus::Bottom && self.find_window.visible && self.find_window_key(&key) {
             return;
         }
         if let Some(popup) = self.recent_popup.as_mut() {
@@ -681,6 +851,35 @@ impl App {
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
+        if let Some(p) = self.find.as_mut() {
+            if let Some(r) = self.areas.find_list.filter(|r| r.contains(pos)) {
+                match m.kind {
+                    MouseEventKind::Down(MouseButton::Left) => p.click((m.row - r.y) as usize),
+                    MouseEventKind::ScrollDown => p.scroll_by(3),
+                    MouseEventKind::ScrollUp => p.scroll_by(-3),
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if let Some(r) = self.areas.find_window.filter(|r| r.contains(pos)) {
+            let h = self.find_window.view_height;
+            if let Some(tab) = self.find_window.active_tab_mut() {
+                match m.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        self.focus = Focus::Bottom;
+                        let i = tab.scroll + (m.row - r.y) as usize;
+                        if i < tab.rows.len() {
+                            tab.selected = i;
+                        }
+                    }
+                    MouseEventKind::ScrollDown => tab.move_by(3, h),
+                    MouseEventKind::ScrollUp => tab.move_by(-3, h),
+                    _ => {}
+                }
+            }
+            return;
+        }
         if let Some(g) = self.goto.as_mut() {
             if let Some(r) = self.areas.goto_list.filter(|r| r.contains(pos)) {
                 match m.kind {
@@ -777,6 +976,29 @@ impl App {
             }
             Action::Edit => self.edit_action(),
             Action::GotoFile => self.open_goto(GotoTab::Files),
+            Action::FindInFiles => {
+                let q = self
+                    .viewer
+                    .active_tab()
+                    .and_then(|t| t.search.as_ref().map(|s| s.query.clone()))
+                    .filter(|q| !q.is_empty())
+                    .or_else(|| self.find_history.first().cloned())
+                    .unwrap_or_default();
+                self.open_find(q);
+            }
+            Action::ToggleFind => {
+                if self.find_window.tabs.is_empty() {
+                    self.notify("No Find results yet (Ctrl-F, then Alt-O)", MsgKind::Info);
+                } else if self.find_window.visible && self.focus == Focus::Bottom {
+                    self.find_window.visible = false;
+                    self.focus = Focus::Main;
+                } else {
+                    self.find_window.visible = true;
+                    self.focus = Focus::Bottom;
+                }
+            }
+            Action::NextOccurrence => self.step_occurrence(true),
+            Action::PrevOccurrence => self.step_occurrence(false),
             Action::LeaveEditor => self.leave_editor(),
             Action::Help => self.show_help = true,
             Action::FocusNext | Action::FocusPrev => self.cycle_focus(),
@@ -797,6 +1019,12 @@ impl App {
                 let paths: Vec<PathBuf> = self.viewer.tabs.iter().map(|t| t.path.clone()).collect();
                 let ctx = self.load_ctx();
                 self.viewer.reload_paths(&paths, &ctx);
+            }
+            Action::CloseTab if self.focus == Focus::Bottom => {
+                self.find_window.close_active();
+                if !self.find_window.visible {
+                    self.focus = Focus::Main;
+                }
             }
             Action::CloseTab => {
                 if let Some(i) = self.viewer.active {
@@ -887,10 +1115,12 @@ impl App {
     }
 
     fn cycle_focus(&mut self) {
-        self.focus = match (self.focus, self.left) {
-            (Focus::Left, _) => Focus::Main,
-            (Focus::Main, Some(_)) => Focus::Left,
-            (Focus::Main, None) => Focus::Main,
+        let bottom = self.find_window.visible && !self.find_window.tabs.is_empty();
+        self.focus = match (self.focus, self.left, bottom) {
+            (Focus::Left, _, _) => Focus::Main,
+            (Focus::Main, _, true) => Focus::Bottom,
+            (Focus::Main, Some(_), false) | (Focus::Bottom, Some(_), _) => Focus::Left,
+            (Focus::Main, None, false) | (Focus::Bottom, None, _) => Focus::Main,
         };
     }
 

@@ -5,7 +5,6 @@ expression: "vista_tui::testing::text(&buf)"
  sample-project                                          Ctrl-P Go to File   Ctrl-F Find in Files
  1: Project                 │
  ▾ sample-project           │
-                            │
                        ┌ Keyboard shortcuts ────────────────────────────────┐
                        │            q, Ctrl-Q  Quit                         │
                        │                ?, F1  Show this help               │
@@ -30,8 +29,9 @@ expression: "vista_tui::testing::text(&buf)"
                        │               Alt-F1  Reveal current file in tree  │
                        │                    -  Collapse all folders         │
                        │               Ctrl-T  Switch to next look          │
+                       │           Ctrl-Alt-↓  Next Find result             │
+                       │           Ctrl-Alt-↑  Previous Find result         │
                        └ any key to close ──────────────────────────────────┘
-                            │
                             │
                             │
                             │

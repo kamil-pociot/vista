@@ -4,6 +4,7 @@ pub mod app;
 pub mod args;
 pub mod editor;
 pub mod event;
+pub mod find;
 pub mod goto;
 pub mod keymap;
 pub mod probe;

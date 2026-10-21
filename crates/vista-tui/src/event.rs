@@ -30,6 +30,11 @@ pub enum AppEvent {
         index: std::sync::Arc<vista_search::FileIndex>,
         include_ignored: bool,
     },
+    /// Streaming results of a Find in Files run.
+    Find {
+        generation: u64,
+        event: vista_search::FindEvent,
+    },
     /// Something from the embedded Neovim.
     Nvim(vista_nvim::NvimEvent),
     /// An image referenced from Markdown finished decoding.

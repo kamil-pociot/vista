@@ -31,6 +31,8 @@ pub enum Action {
     RevealFile,
     CollapseAll,
     CycleTheme,
+    NextOccurrence,
+    PrevOccurrence,
 }
 
 impl Action {
@@ -58,6 +60,8 @@ impl Action {
         Action::RevealFile,
         Action::CollapseAll,
         Action::CycleTheme,
+        Action::NextOccurrence,
+        Action::PrevOccurrence,
     ];
 
     pub fn name(self) -> &'static str {
@@ -85,6 +89,8 @@ impl Action {
             Action::RevealFile => "reveal-file",
             Action::CollapseAll => "collapse-all",
             Action::CycleTheme => "cycle-theme",
+            Action::NextOccurrence => "next-occurrence",
+            Action::PrevOccurrence => "prev-occurrence",
         }
     }
 
@@ -117,6 +123,8 @@ impl Action {
             Action::RevealFile => "Reveal current file in tree",
             Action::CollapseAll => "Collapse all folders",
             Action::CycleTheme => "Switch to next look",
+            Action::NextOccurrence => "Next Find result",
+            Action::PrevOccurrence => "Previous Find result",
         }
     }
 }
@@ -267,6 +275,8 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("alt+f1", Action::RevealFile),
     ("-", Action::CollapseAll),
     ("ctrl+t", Action::CycleTheme),
+    ("ctrl+alt+down", Action::NextOccurrence),
+    ("ctrl+alt+up", Action::PrevOccurrence),
 ];
 
 #[derive(Debug, Clone)]
