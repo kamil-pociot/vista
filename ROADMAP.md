@@ -284,13 +284,13 @@ Each milestone ends in something usable. Design A is built first; B and C come i
 **Done when:** `lms-context` browses instantly and colours match `git status`. Measured: first frame and branch+status both under 0.4 s on `lms-context` (debug build, `tests/perf.rs`).
 **Tests:** integration: status of every fixture state vs `git status --porcelain=v1` (incl. 24 random edit sequences and merge conflicts). E2e: expand/collapse via keys and mouse; colours per status; an external file change shows up without a keypress; ignored toggle.
 
-### M2 — Viewer (code / Markdown / images)
-- [ ] Code: syntect via theme tokens, line numbers, scroll, go-to-line, wrap toggle.
-- [ ] Git change markers in the gutter.
-- [ ] Large/binary file safety.
-- [ ] Markdown rendered view + raw toggle.
-- [ ] Images via `ratatui-image` (kitty → half-block fallback), fit-to-pane.
-- [ ] Tabs + recent files (`Ctrl-E`), find in file.
+### M2 — Viewer (code / Markdown / images) ✅
+- [x] Code: syntect (bat's grammars) mapped to theme tokens, line numbers, scroll, go-to-line (`Ctrl-G`), wrap toggle (`w`), horizontal scroll (`h`/`l`).
+- [x] Git change markers in the gutter (added / modified / deleted vs HEAD); `F7`/`Shift-F7` jump between changes.
+- [x] Large/binary file safety: >20 MB not loaded, binaries as a hex dump. Highlighting runs off the UI thread for the whole file (plain text above 2 MB); viewport-lazy highlighting wasn't needed at these sizes.
+- [x] Markdown rendered view (headings, emphasis, lists, task lists, tables, quotes, highlighted fenced code, links, inline images) + raw toggle (`m`).
+- [x] Images: png/jpg/gif/webp/bmp/ico/tiff via `ratatui-image` (kitty with unicode placeholders, half-block fallback, or off), fit-to-pane. SVG is shown as source.
+- [x] Tabs (LRU limit 12, `Alt-←/→`, `Ctrl-W`, click), recent files (`Ctrl-E`, persisted per project), find in file (`/`, `n`/`N`, smart case), reveal in tree (`Alt-F1`), `vista <file>` opens a file.
 
 **Done when:** opening any file in the tree shows the right view.
 **Tests:** snapshots: highlighted Rust/TS/JSON, rendered Markdown, gutter markers. E2e: open code / Markdown / image (kitty sequence emitted; half-blocks when forced) / binary / huge file.

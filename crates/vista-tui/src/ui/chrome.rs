@@ -196,7 +196,17 @@ fn status_spans(app: &App) -> Vec<Span<'static>> {
             if !spans.is_empty() {
                 spans.push(Span::raw("   "));
             }
-            spans.push(Span::styled(format!("{} ", app.theme.name), t.fg("ui.dim")));
+            match app.viewer.active_tab() {
+                Some(tab) => {
+                    if tab.has_cursor() {
+                        spans.push(Span::styled(format!("{}:1   ", tab.cursor + 1), t.fg("ui.text")));
+                    }
+                    if !tab.language.is_empty() {
+                        spans.push(Span::styled(format!("{} ", tab.language), t.fg("ui.dim")));
+                    }
+                }
+                None => spans.push(Span::styled(format!("{} ", app.theme.name), t.fg("ui.dim"))),
+            }
             spans
         }
     }

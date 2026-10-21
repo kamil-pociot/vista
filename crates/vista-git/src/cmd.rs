@@ -92,6 +92,13 @@ impl Git {
         }
     }
 
+    /// A file's content in HEAD, or `None` if it isn't in HEAD (new file, no
+    /// commits yet, or outside the repository).
+    pub fn head_content(&self, path: &Path) -> Option<Vec<u8>> {
+        let rel = self.relative(path)?;
+        self.run_bytes(&["cat-file", "blob", &format!("HEAD:{rel}")]).ok()
+    }
+
     /// Path relative to the repository top level, with `/` separators.
     pub fn relative(&self, path: &Path) -> Option<String> {
         let rel = path.strip_prefix(&self.toplevel).ok()?;

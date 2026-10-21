@@ -17,6 +17,16 @@ const POLL: Duration = Duration::from_millis(250);
 
 pub fn run(mut app: App) -> Result<()> {
     let (mut term, _guard) = terminal::setup(&format!("vista — {}", app.project_name))?;
+    if app.config.images.protocol == vista_core::ImageProtocol::Auto {
+        // Must run before the input thread starts reading stdin.
+        match ratatui_image::picker::Picker::from_query_stdio() {
+            Ok(p) => {
+                tracing::info!("image protocol: {:?}, font {:?}", p.protocol_type(), p.font_size());
+                app.picker = Some(p);
+            }
+            Err(e) => tracing::warn!("image protocol query failed ({e}); using halfblocks"),
+        }
+    }
     spawn_input_thread(app.tx.clone());
     app.on_start();
     loop {

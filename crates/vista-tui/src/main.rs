@@ -42,14 +42,25 @@ fn real_main() -> Result<()> {
     }
     init_logging(&paths);
     let config = Config::load(&paths)?;
-    let root = args.path.unwrap_or_else(|| PathBuf::from("."));
-    let app = App::new(AppOptions {
+    let path = args.path.unwrap_or_else(|| PathBuf::from("."));
+    // `vista some/file.rs` opens the file with its folder as the project.
+    let (root, file) = if path.is_file() {
+        let file = path.canonicalize()?;
+        let root = file.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+        (root, Some(file))
+    } else {
+        (path, None)
+    };
+    let mut app = App::new(AppOptions {
         root,
         config,
         paths,
         theme: args.theme,
     })
     .context("starting vista")?;
+    if let Some(f) = file {
+        app.open_file(&f);
+    }
     run::run(app)
 }
 

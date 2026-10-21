@@ -1,0 +1,65 @@
+---
+source: crates/vista-tui/tests/render_m2.rs
+expression: snap
+---
+ <root>                                 Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+ 1: Project                 │ status.rs
+ ▾ <root>         │  1   use std::path::{Path, PathBuf};
+   ▸ crates                 │  2
+   ▸ docs                   │  3 ▌ use anyhow::Context;
+   ▸ target                 │  4   use gix::status::index_worktree::Item;
+     .gitignore             │  5
+     build.log              │  6   pub struct StatusMap {
+     Cargo.lock             │  7       root: PathBuf,
+     Cargo.toml             │  8       entries: HashMap<PathBuf, FileStatus>,
+     README.md              │  9   }
+     ROADMAP.md             │ 10
+     screenshot.png         │ 11   impl StatusMap {
+                            │ 12       pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {
+                            │ 13 ▌         let root = repo.workdir().context("bare repository")?;
+                            │ 14           let mut entries = HashMap::new();
+                            │ 15 ▌         for item in repo.status(gix::progress::Discard)?.into_ite
+                            │ 16 ▌             let item = item?;
+                            │ 17 ▌             entries.insert(root.join(item.location()), classify(&
+                            │ 18           }
+                            │ 19           Ok(Self { root: root.to_owned(), entries })
+                            │ 20       }
+                            │ 21
+                            │ 22 ▌     /// Status of `path`, or `None` when the file is clean.
+                            │ 23       pub fn get(&self, path: &Path) -> Option<FileStatus> {
+                            │ 24           self.entries.get(path).copied()
+                            │ 25       }
+                            │ 26 ▌
+                            │ 27 ▌     pub fn is_dirty(&self) -> bool {
+ 1: Project   0: Commit   3: Find   ?: Help                  4 changed · 2 unversioned   1:1   Rust
+--- styles ---
+  0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..50 fg=ui.text bg=ui.panel] [50..56 fg=ui.dim bg=ui.panel] [56..70 fg=ui.text bg=ui.panel] [70..76 fg=ui.dim bg=ui.panel] [76..93 fg=ui.text bg=ui.panel] [93..95 fg=ui.dim bg=ui.panel] [95..100 fg=ui.text bg=ui.panel]
+  1: [0..11 fg=ui.header bg=ui.panel +bold] [11..28 fg=ui.text bg=ui.panel] [28..29 fg=ui.border bg=ui.bg] [29..40 fg=git.modified bg=ui.bg +underline] [40..100 fg=ui.text bg=ui.panel]
+  2: [0..3 fg=ui.dim bg=ui.selection.inactive] [3..19 fg=git.modified bg=ui.selection.inactive +bold] [19..28 fg=ui.text bg=ui.selection.inactive] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.text.strong bg=ui.cursorline] [33..34 fg=ui.dim bg=ui.cursorline] [34..35 fg=ui.text bg=ui.cursorline] [35..38 fg=syntax.keyword bg=ui.cursorline] [38..100 fg=ui.text bg=ui.cursorline]
+  3: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.modified bg=ui.panel.alt] [11..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+  4: [0..5 fg=ui.dim bg=ui.panel.alt] [5..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg] [35..38 fg=syntax.keyword bg=ui.bg]
+  5: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.ignored bg=ui.panel.alt +italic] [11..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [35..38 fg=syntax.keyword bg=ui.bg]
+  6: [0..5 fg=ui.dim bg=ui.panel.alt] [5..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+  7: [0..5 fg=ui.dim bg=ui.panel.alt] [5..14 fg=git.ignored bg=ui.panel.alt +italic] [14..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [35..38 fg=syntax.keyword bg=ui.bg] [39..45 fg=syntax.keyword bg=ui.bg] [46..55 fg=syntax.type bg=ui.bg]
+  8: [0..5 fg=ui.dim bg=ui.panel.alt] [5..15 fg=git.modified bg=ui.panel.alt] [15..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+  9: [0..5 fg=ui.dim bg=ui.panel.alt] [5..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 10: [0..5 fg=ui.dim bg=ui.panel.alt] [5..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 11: [0..5 fg=ui.dim bg=ui.panel.alt] [5..15 fg=ui.success bg=ui.panel.alt] [15..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 12: [0..5 fg=ui.dim bg=ui.panel.alt] [5..19 fg=git.unversioned bg=ui.panel.alt] [19..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [35..39 fg=syntax.keyword bg=ui.bg]
+ 13: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [39..42 fg=syntax.keyword bg=ui.bg] [43..45 fg=syntax.keyword bg=ui.bg] [46..50 fg=syntax.function bg=ui.bg] [86..92 fg=syntax.type bg=ui.bg] [93..97 fg=syntax.keyword bg=ui.bg]
+ 14: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.modified bg=ui.bg] [43..46 fg=syntax.keyword bg=ui.bg] [59..66 fg=syntax.function bg=ui.bg] [69..76 fg=syntax.function bg=ui.bg] [77..94 fg=syntax.string bg=ui.bg]
+ 15: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [43..46 fg=syntax.keyword bg=ui.bg] [47..50 fg=syntax.keyword bg=ui.bg]
+ 16: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.modified bg=ui.bg] [43..46 fg=syntax.keyword bg=ui.bg] [60..66 fg=syntax.function bg=ui.bg] [92..100 fg=syntax.function bg=ui.bg]
+ 17: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.modified bg=ui.bg] [47..50 fg=syntax.keyword bg=ui.bg]
+ 18: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.modified bg=ui.bg] [55..61 fg=syntax.function bg=ui.bg] [67..71 fg=syntax.function bg=ui.bg] [77..85 fg=syntax.function bg=ui.bg] [90..98 fg=syntax.function bg=ui.bg]
+ 19: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 20: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [43..45 fg=syntax.type bg=ui.bg] [46..50 fg=syntax.keyword bg=ui.bg] [64..72 fg=syntax.function bg=ui.bg]
+ 21: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 22: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 23: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg] [39..94 fg=syntax.comment bg=ui.bg +italic]
+ 24: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [39..42 fg=syntax.keyword bg=ui.bg] [43..45 fg=syntax.keyword bg=ui.bg] [46..49 fg=syntax.function bg=ui.bg] [73..79 fg=syntax.type bg=ui.bg]
+ 25: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [43..47 fg=syntax.keyword bg=ui.bg] [56..59 fg=syntax.function bg=ui.bg] [66..72 fg=syntax.function bg=ui.bg]
+ 26: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
+ 27: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg]
+ 28: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg] [39..42 fg=syntax.keyword bg=ui.bg] [43..45 fg=syntax.keyword bg=ui.bg] [46..54 fg=syntax.function bg=ui.bg] [65..69 fg=syntax.keyword bg=ui.bg]
+ 29: [0..45 fg=ui.header bg=ui.panel] [45..61 fg=ui.text bg=ui.panel] [61..70 fg=git.modified bg=ui.panel] [70..73 fg=ui.dim bg=ui.panel] [73..86 fg=git.unversioned bg=ui.panel] [86..95 fg=ui.text bg=ui.panel] [95..100 fg=ui.dim bg=ui.panel]

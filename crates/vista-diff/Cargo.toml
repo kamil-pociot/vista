@@ -1,0 +1,11 @@
+[package]
+name = "vista-diff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+similar = { version = "2", features = ["inline"] }
+
+[dev-dependencies]
+proptest.workspace = true

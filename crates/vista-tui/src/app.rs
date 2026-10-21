@@ -14,6 +14,10 @@ use vista_theme::{Theme, ThemeLoader};
 use crate::event::AppEvent;
 use crate::keymap::{Action, Keymap};
 use crate::project::{Outcome, ProjectView};
+use crate::recent::{PopupOutcome, Prompt, Recent, RecentPopup};
+use crate::viewer::{Content, ImageState, LoadCtx, MdImages, Viewer, ViewerOutcome};
+use ratatui_image::picker::Picker;
+use vista_core::ImageProtocol;
 
 /// Which panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +89,13 @@ pub struct App {
     pub status: StatusSnapshot,
     status_job: StatusJob,
     watcher: Option<Watcher>,
+    pub viewer: Viewer,
+    /// Image encoder for the terminal; `None` when images are off.
+    pub picker: Option<Picker>,
+    pub md_images: MdImages,
+    pub recent: Recent,
+    pub recent_popup: Option<RecentPopup>,
+    pub prompt: Option<Prompt>,
     last_tick: Instant,
 }
 
@@ -117,6 +128,8 @@ impl App {
         let (tx, rx) = mpsc::channel();
         let project = ProjectView::new(&root, opts.config.tree.show_ignored);
         let git = Git::discover(&root).ok();
+        let recent = Recent::load(&opts.paths.cache_dir, &root);
+        let picker = default_picker(opts.config.images.protocol);
         let mut app = App {
             root,
             project_name,
@@ -139,6 +152,12 @@ impl App {
             status: StatusSnapshot::default(),
             status_job: StatusJob::default(),
             watcher: None,
+            viewer: Viewer::new(),
+            picker,
+            md_images: MdImages::default(),
+            recent,
+            recent_popup: None,
+            prompt: None,
             last_tick: Instant::now(),
         };
         if let Some(w) = warnings.first() {
@@ -153,6 +172,7 @@ impl App {
     /// Called once the terminal is ready, before the first event: starts the
     /// file watcher and the first `git status`.
     pub fn on_start(&mut self) {
+        vista_render::Highlighter::preload();
         if std::env::var_os("VISTA_NO_WATCH").is_none() {
             let tx = self.tx.clone();
             match Watcher::new(&self.root, Duration::from_millis(120), move |c| {
@@ -210,16 +230,43 @@ impl App {
     }
 
     fn set_status(&mut self, s: StatusSnapshot) {
+        let head_moved = s.branch.oid != self.status.branch.oid;
         self.status = s;
         self.project.rebuild(&self.status);
+        if head_moved {
+            // Gutter markers compare with HEAD; recompute them.
+            let ctx = self.load_ctx();
+            self.viewer.reload_all(&ctx);
+        }
     }
 
     fn on_fs_change(&mut self, change: FsChange) {
         if !change.paths.is_empty() {
             self.project.tree.refresh(&change.paths);
             self.project.rebuild(&self.status);
+            let ctx = self.load_ctx();
+            self.viewer.reload_paths(&change.paths, &ctx);
         }
         self.request_status();
+    }
+
+    pub fn load_ctx(&self) -> LoadCtx {
+        LoadCtx {
+            tx: self.tx.clone(),
+            git: self.git.clone(),
+            images_enabled: self.picker.is_some(),
+        }
+    }
+
+    /// Cell size in pixels used to size images.
+    pub fn font_size(&self) -> (u16, u16) {
+        self.picker
+            .as_ref()
+            .map(|p| {
+                let fs = p.font_size();
+                (fs.width, fs.height)
+            })
+            .unwrap_or((8, 16))
     }
 
     // ----- events ----------------------------------------------------------
@@ -244,6 +291,36 @@ impl App {
                 }
             }
             AppEvent::Fs(change) => self.on_fs_change(change),
+            AppEvent::Loaded {
+                tab,
+                generation,
+                loaded,
+            } => {
+                if let Some(t) = self.viewer.tab_by_id_mut(tab) {
+                    crate::viewer::apply_loaded(t, generation, *loaded);
+                }
+            }
+            AppEvent::ImageDecoded { tab, generation, image } => {
+                let proto = match (&self.picker, image) {
+                    (Some(p), Ok(img)) => ImageState::Ready(Box::new(p.new_resize_protocol(*img))),
+                    (None, _) => ImageState::Disabled,
+                    (_, Err(e)) => ImageState::Failed(e),
+                };
+                if let Some(t) = self.viewer.tab_by_id_mut(tab)
+                    && t.generation == generation
+                    && let Content::Image { state, .. } = &mut t.content
+                {
+                    *state = proto;
+                }
+            }
+            AppEvent::MdImageDecoded { path, image } => {
+                let state = match (&self.picker, image) {
+                    (Some(p), Ok(img)) => ImageState::Ready(Box::new(p.new_resize_protocol(*img))),
+                    (_, Err(e)) => ImageState::Failed(e),
+                    (None, _) => ImageState::Disabled,
+                };
+                self.md_images.entries.insert(path, state);
+            }
         }
     }
 
@@ -262,6 +339,36 @@ impl App {
             // Any key closes help; the key itself is consumed.
             self.show_help = false;
             return;
+        }
+        if let Some(popup) = self.recent_popup.as_mut() {
+            match popup.handle_key(&key, &self.recent.list) {
+                PopupOutcome::Handled => {}
+                PopupOutcome::Close => self.recent_popup = None,
+                PopupOutcome::Open(p) => {
+                    self.recent_popup = None;
+                    self.open_file(&p);
+                }
+            }
+            return;
+        }
+        if self.prompt.is_some() {
+            self.prompt_key(&key);
+            return;
+        }
+        if self.focus == Focus::Main
+            && let Some(tab) = self.viewer.active_tab_mut()
+        {
+            match tab.handle_key(&key) {
+                ViewerOutcome::Handled => return,
+                ViewerOutcome::GotoLinePrompt => {
+                    self.prompt = Some(Prompt {
+                        label: "Go to line",
+                        input: String::new(),
+                    });
+                    return;
+                }
+                ViewerOutcome::Unhandled => {}
+            }
         }
         if self.focus == Focus::Left && self.left == Some(LeftPanel::Project) {
             match self.project.handle_key(&key, &self.status) {
@@ -282,7 +389,35 @@ impl App {
         let pos = Position::new(m.column, m.row);
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
+        let viewer = self.areas.viewer;
         match m.kind {
+            MouseEventKind::Down(MouseButton::Left) if inside(self.areas.tabs) => {
+                self.focus = Focus::Main;
+                if let Some(i) = self.tab_at(m.column) {
+                    self.viewer.activate(i);
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left) if inside(viewer) => {
+                self.focus = Focus::Main;
+                let r = viewer.expect("checked");
+                if let Some(tab) = self.viewer.active_tab_mut()
+                    && tab.has_cursor()
+                    && !tab.wrap
+                {
+                    let line = tab.scroll + (m.row - r.y) as usize;
+                    tab.set_cursor(line);
+                }
+            }
+            MouseEventKind::ScrollDown if inside(viewer) => {
+                if let Some(t) = self.viewer.active_tab_mut() {
+                    t.scroll_by(3);
+                }
+            }
+            MouseEventKind::ScrollUp if inside(viewer) => {
+                if let Some(t) = self.viewer.active_tab_mut() {
+                    t.scroll_by(-3);
+                }
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 if inside(tree) {
                     let r = tree.expect("checked");
@@ -324,15 +459,90 @@ impl App {
                 self.project.tree.refresh_all();
                 self.project.rebuild(&self.status);
                 self.request_status();
+                let paths: Vec<PathBuf> = self.viewer.tabs.iter().map(|t| t.path.clone()).collect();
+                let ctx = self.load_ctx();
+                self.viewer.reload_paths(&paths, &ctx);
+            }
+            Action::CloseTab => {
+                if let Some(i) = self.viewer.active {
+                    self.viewer.close(i);
+                }
+                if self.viewer.active.is_none() && self.left.is_some() {
+                    self.focus = Focus::Left;
+                }
+            }
+            Action::NextTab => self.viewer.cycle(1),
+            Action::PrevTab => self.viewer.cycle(-1),
+            Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
+            Action::RevealFile => {
+                if let Some(path) = self.viewer.active_tab().map(|t| t.path.clone()) {
+                    self.left = Some(LeftPanel::Project);
+                    self.focus = Focus::Left;
+                    self.project.reveal(&path, &self.status);
+                }
+            }
+            Action::NextChange | Action::PrevChange => {
+                let forward = action == Action::NextChange;
+                if let Some(t) = self.viewer.active_tab_mut()
+                    && !t.jump_to_change(forward)
+                {
+                    self.notify("No more changes", MsgKind::Info);
+                }
             }
             _ => {}
         }
     }
 
-    /// Opens a file in the main area.
+    /// Opens a file in the main area and focuses it.
     pub fn open_file(&mut self, path: &Path) {
-        let rel = path.strip_prefix(&self.root).unwrap_or(path);
-        self.notify(format!("Open {}", rel.display()), MsgKind::Info);
+        let ctx = self.load_ctx();
+        self.viewer.open(path, &ctx);
+        self.recent.push(path);
+        self.focus = Focus::Main;
+    }
+
+    /// Which tab label is at screen column `x` (mirrors `chrome::tab_strip`).
+    fn tab_at(&self, x: u16) -> Option<usize> {
+        let strip = self.areas.tabs?;
+        let gap = usize::from(self.theme.chrome.tabs != vista_theme::Tabs::Underline);
+        let mut col = strip.x as usize;
+        for (i, t) in self.viewer.tabs.iter().enumerate() {
+            let name = t
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let w = unicode_width::UnicodeWidthStr::width(name.as_str()) + 2;
+            if (col..col + w).contains(&(x as usize)) {
+                return Some(i);
+            }
+            col += w + gap;
+        }
+        None
+    }
+
+    fn prompt_key(&mut self, key: &KeyEvent) {
+        use ratatui::crossterm::event::KeyCode;
+        let Some(p) = self.prompt.as_mut() else { return };
+        match key.code {
+            KeyCode::Esc => self.prompt = None,
+            KeyCode::Backspace => {
+                p.input.pop();
+            }
+            KeyCode::Char(c) if c.is_ascii_digit() => p.input.push(c),
+            KeyCode::Enter => {
+                let n: usize = p.input.parse().unwrap_or(0);
+                self.prompt = None;
+                if let Some(t) = self.viewer.active_tab_mut()
+                    && n > 0
+                {
+                    t.set_cursor(n - 1);
+                    let h = t.view_height.max(1);
+                    t.scroll = (n - 1).saturating_sub(h / 2);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn cycle_focus(&mut self) {
@@ -401,6 +611,22 @@ impl App {
                 self.notify(format!("Reloaded look `{id}`"), MsgKind::Info);
             }
             Err(e) => self.notify(e.to_string(), MsgKind::Error),
+        }
+    }
+}
+
+/// The image encoder for a configured protocol, without querying the
+/// terminal (`auto` is resolved by [`crate::run`] once the terminal is up).
+pub fn default_picker(protocol: ImageProtocol) -> Option<Picker> {
+    use ratatui_image::picker::ProtocolType;
+    match protocol {
+        ImageProtocol::Off => None,
+        ImageProtocol::Halfblocks | ImageProtocol::Auto => Some(Picker::halfblocks()),
+        ImageProtocol::Kitty => {
+            #[allow(deprecated)]
+            let mut p = Picker::from_fontsize(ratatui_image::FontSize::new(8, 16));
+            p.set_protocol_type(ProtocolType::Kitty);
+            Some(p)
         }
     }
 }

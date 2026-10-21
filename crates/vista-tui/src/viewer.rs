@@ -1,0 +1,827 @@
+//! Open files: tabs, loading, scrolling, search. Drawing is in `ui::viewer`.
+
+use std::collections::HashMap;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui_image::protocol::StatefulProtocol;
+use vista_diff::{Markers, line_markers};
+use vista_git::Git;
+use vista_render::filetype::{self, FileKind};
+use vista_render::highlight::plain_lines;
+use vista_render::markdown::MdLine;
+use vista_render::styled::line_text;
+use vista_render::{Highlighter, StyledLine};
+
+use crate::event::AppEvent;
+
+/// At most this many tabs stay open; the least recently used one closes.
+pub const MAX_TABS: usize = 12;
+
+pub enum ImageState {
+    Loading,
+    Ready(Box<StatefulProtocol>),
+    Failed(String),
+    /// Images are off (`[images] protocol = "off"`).
+    Disabled,
+}
+
+pub enum Content {
+    Text {
+        lines: Vec<StyledLine>,
+        markers: Markers,
+        highlighted: bool,
+    },
+    Markdown {
+        source: String,
+        lines: Vec<StyledLine>,
+        markers: Markers,
+        raw: bool,
+        /// Rendered for a width: (width, lines).
+        rendered: Option<(u16, Vec<MdLine>)>,
+    },
+    Image {
+        info: String,
+        state: ImageState,
+    },
+    Binary {
+        size: u64,
+        dump: Vec<String>,
+    },
+    TooLarge {
+        size: u64,
+    },
+    Error(String),
+}
+
+impl Content {
+    pub fn is_textual(&self) -> bool {
+        matches!(self, Content::Text { .. } | Content::Markdown { .. })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Search {
+    pub query: String,
+    /// The query is being typed.
+    pub editing: bool,
+    /// (line, start char, end char)
+    pub matches: Vec<(usize, usize, usize)>,
+    pub current: usize,
+}
+
+pub struct Tab {
+    pub id: u64,
+    pub path: PathBuf,
+    pub content: Content,
+    pub generation: u64,
+    pub language: String,
+    /// First visible line (rendered row for Markdown).
+    pub scroll: usize,
+    /// Cursor line.
+    pub cursor: usize,
+    pub hscroll: usize,
+    pub wrap: bool,
+    pub search: Option<Search>,
+    pub view_height: usize,
+    pub view_width: usize,
+    pub last_used: u64,
+}
+
+/// What a key in the viewer asks the app to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViewerOutcome {
+    Handled,
+    Unhandled,
+    /// Ask for a line number.
+    GotoLinePrompt,
+}
+
+/// Result of a background load.
+pub struct Loaded {
+    pub lines: Vec<StyledLine>,
+    pub markers: Markers,
+    pub language: String,
+}
+
+pub struct Viewer {
+    pub tabs: Vec<Tab>,
+    pub active: Option<usize>,
+    next_id: u64,
+    clock: u64,
+}
+
+impl Default for Viewer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// How many text lines a tab shows (for scroll limits).
+pub fn line_count(content: &Content) -> usize {
+    match content {
+        Content::Text { lines, .. } => lines.len(),
+        Content::Markdown { raw: true, lines, .. } => lines.len(),
+        Content::Markdown {
+            rendered: Some((_, r)), ..
+        } => r.len(),
+        Content::Markdown { lines, .. } => lines.len(),
+        Content::Binary { dump, .. } => dump.len(),
+        _ => 0,
+    }
+}
+
+impl Viewer {
+    pub fn new() -> Viewer {
+        Viewer {
+            tabs: Vec::new(),
+            active: None,
+            next_id: 1,
+            clock: 0,
+        }
+    }
+
+    pub fn active_tab(&self) -> Option<&Tab> {
+        self.active.and_then(|i| self.tabs.get(i))
+    }
+
+    pub fn active_tab_mut(&mut self) -> Option<&mut Tab> {
+        self.active.and_then(|i| self.tabs.get_mut(i))
+    }
+
+    pub fn tab_by_id_mut(&mut self, id: u64) -> Option<&mut Tab> {
+        self.tabs.iter_mut().find(|t| t.id == id)
+    }
+
+    pub fn position(&self, path: &Path) -> Option<usize> {
+        self.tabs.iter().position(|t| t.path == path)
+    }
+
+    pub fn activate(&mut self, i: usize) {
+        if i < self.tabs.len() {
+            self.clock += 1;
+            self.tabs[i].last_used = self.clock;
+            self.active = Some(i);
+        }
+    }
+
+    pub fn close(&mut self, i: usize) {
+        if i >= self.tabs.len() {
+            return;
+        }
+        self.tabs.remove(i);
+        self.active = if self.tabs.is_empty() {
+            None
+        } else {
+            Some(i.min(self.tabs.len() - 1))
+        };
+    }
+
+    pub fn cycle(&mut self, delta: isize) {
+        if let Some(a) = self.active {
+            let n = self.tabs.len() as isize;
+            let next = ((a as isize + delta) % n + n) % n;
+            self.activate(next as usize);
+        }
+    }
+
+    /// Opens (or activates) a tab for `path` and starts loading it.
+    /// Returns the tab id.
+    pub fn open(&mut self, path: &Path, ctx: &LoadCtx) -> u64 {
+        if let Some(i) = self.position(path) {
+            self.activate(i);
+            return self.tabs[i].id;
+        }
+        if self.tabs.len() >= MAX_TABS
+            && let Some(lru) = (0..self.tabs.len()).min_by_key(|i| self.tabs[*i].last_used)
+        {
+            self.tabs.remove(lru);
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        let mut tab = Tab {
+            id,
+            path: path.to_path_buf(),
+            content: Content::Error(String::new()),
+            generation: 0,
+            language: String::new(),
+            scroll: 0,
+            cursor: 0,
+            hscroll: 0,
+            wrap: false,
+            search: None,
+            view_height: 20,
+            view_width: 80,
+            last_used: 0,
+        };
+        load(&mut tab, ctx);
+        self.tabs.push(tab);
+        let i = self.tabs.len() - 1;
+        self.activate(i);
+        id
+    }
+
+    /// Reloads tabs whose file changed on disk, keeping the scroll position.
+    pub fn reload_paths(&mut self, paths: &[PathBuf], ctx: &LoadCtx) {
+        for tab in &mut self.tabs {
+            if paths.contains(&tab.path) {
+                load(tab, ctx);
+            }
+        }
+    }
+
+    /// Recomputes gutter markers for all text tabs (HEAD moved).
+    pub fn reload_all(&mut self, ctx: &LoadCtx) {
+        for tab in &mut self.tabs {
+            if tab.content.is_textual() {
+                load(tab, ctx);
+            }
+        }
+    }
+}
+
+/// What loading needs from the app.
+pub struct LoadCtx {
+    pub tx: Sender<AppEvent>,
+    pub git: Option<Git>,
+    pub images_enabled: bool,
+}
+
+fn read_head(path: &Path, n: usize) -> std::io::Result<Vec<u8>> {
+    let mut f = std::fs::File::open(path)?;
+    let mut buf = vec![0u8; n];
+    let mut read = 0;
+    while read < n {
+        let k = f.read(&mut buf[read..])?;
+        if k == 0 {
+            break;
+        }
+        read += k;
+    }
+    buf.truncate(read);
+    Ok(buf)
+}
+
+/// (Re)loads a tab: cheap work now, highlighting/decoding in the background.
+pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
+    tab.generation += 1;
+    let path = tab.path.clone();
+    let meta = match std::fs::metadata(&path) {
+        Ok(m) => m,
+        Err(e) => {
+            tab.content = Content::Error(format!("cannot open {}: {e}", path.display()));
+            return;
+        }
+    };
+    let head = read_head(&path, 8192).unwrap_or_default();
+    let kind = filetype::classify(&path, meta.len(), &head);
+    let keep_raw = matches!(tab.content, Content::Markdown { raw: true, .. });
+    match kind {
+        FileKind::Text | FileKind::Markdown => {
+            let bytes = std::fs::read(&path).unwrap_or_default();
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let lines = plain_lines(&text);
+            let (old_markers, old_rendered) = match &tab.content {
+                Content::Text { markers, .. } => (markers.clone(), None),
+                Content::Markdown { markers, rendered, .. } => (markers.clone(), rendered.clone()),
+                _ => (Markers::default(), None),
+            };
+            tab.content = if kind == FileKind::Markdown {
+                Content::Markdown {
+                    source: text.clone(),
+                    lines,
+                    markers: old_markers,
+                    raw: keep_raw,
+                    rendered: old_rendered.filter(|_| false),
+                }
+            } else {
+                Content::Text {
+                    lines,
+                    markers: old_markers,
+                    highlighted: false,
+                }
+            };
+            let (tx, git, id, generation) = (ctx.tx.clone(), ctx.git.clone(), tab.id, tab.generation);
+            std::thread::spawn(move || {
+                let hl = Highlighter::global();
+                let lines = hl.highlight_file(&path, &text);
+                let language = hl.language(&path, text.lines().next().unwrap_or(""));
+                let markers = git
+                    .as_ref()
+                    .map(|g| {
+                        let old = g
+                            .head_content(&path)
+                            .map(|b| String::from_utf8_lossy(&b).into_owned())
+                            .unwrap_or_default();
+                        // Untracked files have no HEAD content: everything is new.
+                        line_markers(&old, &text)
+                    })
+                    .unwrap_or_default();
+                let _ = tx.send(AppEvent::Loaded {
+                    tab: id,
+                    generation,
+                    loaded: Box::new(Loaded {
+                        lines,
+                        markers,
+                        language,
+                    }),
+                });
+            });
+        }
+        FileKind::Image => {
+            let fmt = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            let dims = image::image_dimensions(&path)
+                .map(|(w, h)| format!("{w}×{h}"))
+                .unwrap_or_else(|_| "?".into());
+            tab.language = "Image".into();
+            tab.content = Content::Image {
+                info: format!("{fmt} {dims} · {}", filetype::human_size(meta.len())),
+                state: if ctx.images_enabled {
+                    ImageState::Loading
+                } else {
+                    ImageState::Disabled
+                },
+            };
+            if ctx.images_enabled {
+                let (tx, id, generation) = (ctx.tx.clone(), tab.id, tab.generation);
+                std::thread::spawn(move || {
+                    let res = image::open(&path).map_err(|e| e.to_string());
+                    let _ = tx.send(AppEvent::ImageDecoded {
+                        tab: id,
+                        generation,
+                        image: res.map(Box::new),
+                    });
+                });
+            }
+        }
+        FileKind::Binary => {
+            let head = read_head(&path, 4096).unwrap_or_default();
+            tab.language = "Binary".into();
+            tab.content = Content::Binary {
+                size: meta.len(),
+                dump: filetype::hex_dump(&head, 256),
+            };
+        }
+        FileKind::TooLarge => {
+            tab.language = "Text".into();
+            tab.content = Content::TooLarge { size: meta.len() };
+        }
+    }
+    let n = line_count(&tab.content);
+    tab.cursor = tab.cursor.min(n.saturating_sub(1));
+    tab.scroll = tab.scroll.min(n.saturating_sub(1));
+}
+
+/// Applies a finished background load (ignores stale generations).
+pub fn apply_loaded(tab: &mut Tab, generation: u64, loaded: Loaded) {
+    if generation != tab.generation {
+        return;
+    }
+    tab.language = loaded.language;
+    match &mut tab.content {
+        Content::Text {
+            lines,
+            markers,
+            highlighted,
+        } => {
+            *lines = loaded.lines;
+            *markers = loaded.markers;
+            *highlighted = true;
+        }
+        Content::Markdown { lines, markers, .. } => {
+            *lines = loaded.lines;
+            *markers = loaded.markers;
+        }
+        _ => {}
+    }
+    refresh_search(tab);
+}
+
+fn find_matches(lines: &[StyledLine], query: &str) -> Vec<(usize, usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    // Smart case: lowercase queries match case-insensitively.
+    let insensitive = !query.chars().any(char::is_uppercase);
+    let q: Vec<char> = if insensitive {
+        query.to_lowercase().chars().collect()
+    } else {
+        query.chars().collect()
+    };
+    let mut out = Vec::new();
+    for (li, line) in lines.iter().enumerate() {
+        let text: Vec<char> = if insensitive {
+            line_text(line).to_lowercase().chars().collect()
+        } else {
+            line_text(line).chars().collect()
+        };
+        if text.len() < q.len() {
+            continue;
+        }
+        let mut i = 0;
+        while i + q.len() <= text.len() {
+            if text[i..i + q.len()] == q[..] {
+                out.push((li, i, i + q.len()));
+                i += q.len().max(1);
+            } else {
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// The lines search runs over (source lines; rendered rows for Markdown).
+pub fn searchable_lines(tab: &Tab) -> Vec<StyledLine> {
+    match &tab.content {
+        Content::Text { lines, .. } => lines.clone(),
+        Content::Markdown {
+            raw: false,
+            rendered: Some((_, r)),
+            ..
+        } => r.iter().map(|l| l.line.clone()).collect(),
+        Content::Markdown { lines, .. } => lines.clone(),
+        _ => Vec::new(),
+    }
+}
+
+pub fn refresh_search(tab: &mut Tab) {
+    let lines = searchable_lines(tab);
+    if let Some(s) = tab.search.as_mut() {
+        s.matches = find_matches(&lines, &s.query);
+        s.current = s.current.min(s.matches.len().saturating_sub(1));
+    }
+}
+
+impl Tab {
+    pub fn total_lines(&self) -> usize {
+        line_count(&self.content)
+    }
+
+    /// Markdown in rendered mode scrolls by rows and has no cursor.
+    pub fn has_cursor(&self) -> bool {
+        match &self.content {
+            Content::Text { .. } => true,
+            Content::Markdown { raw, .. } => *raw,
+            _ => false,
+        }
+    }
+
+    pub fn scroll_into_view(&mut self) {
+        let h = self.view_height.max(1);
+        if self.cursor < self.scroll {
+            self.scroll = self.cursor;
+        } else if self.cursor >= self.scroll + h {
+            self.scroll = self.cursor + 1 - h;
+        }
+    }
+
+    pub fn set_cursor(&mut self, line: usize) {
+        let n = self.total_lines();
+        self.cursor = line.min(n.saturating_sub(1));
+        if self.has_cursor() {
+            self.scroll_into_view();
+        } else {
+            self.scroll = self.cursor.min(n.saturating_sub(self.view_height.max(1)));
+        }
+    }
+
+    pub fn scroll_by(&mut self, delta: isize) {
+        let n = self.total_lines();
+        let max = n.saturating_sub(self.view_height.max(1));
+        self.scroll = (self.scroll as isize + delta).clamp(0, max as isize) as usize;
+        if self.has_cursor() {
+            let h = self.view_height.max(1);
+            self.cursor = self
+                .cursor
+                .clamp(self.scroll, (self.scroll + h - 1).min(n.saturating_sub(1)));
+        } else {
+            self.cursor = self.scroll;
+        }
+    }
+
+    fn move_cursor(&mut self, delta: isize) {
+        if self.has_cursor() {
+            let target = (self.cursor as isize + delta).max(0) as usize;
+            self.set_cursor(target);
+        } else {
+            self.scroll_by(delta);
+        }
+    }
+
+    fn jump_to_match(&mut self, forward: bool) {
+        let Some(s) = self.search.as_mut() else { return };
+        if s.matches.is_empty() {
+            return;
+        }
+        let cur_line = self.cursor;
+        let idx = if forward {
+            s.matches
+                .iter()
+                .position(|m| m.0 > cur_line || (m.0 == cur_line && Some(m) > s.matches.get(s.current)))
+                .unwrap_or(0)
+        } else {
+            s.matches
+                .iter()
+                .rposition(|m| m.0 < cur_line || (m.0 == cur_line && Some(m) < s.matches.get(s.current)))
+                .unwrap_or(s.matches.len() - 1)
+        };
+        s.current = idx;
+        let line = s.matches[idx].0;
+        self.set_cursor(line);
+        // Center the match when it was off-screen.
+        let h = self.view_height.max(1);
+        if line < self.scroll || line >= self.scroll + h {
+            self.scroll = line.saturating_sub(h / 2);
+        }
+    }
+
+    /// Jumps to the next/previous block of changed lines.
+    pub fn jump_to_change(&mut self, forward: bool) -> bool {
+        let markers = match &self.content {
+            Content::Text { markers, .. } => markers,
+            Content::Markdown { markers, raw: true, .. } => markers,
+            _ => return false,
+        };
+        let starts = markers.change_starts();
+        let target = if forward {
+            starts.iter().copied().find(|s| *s > self.cursor)
+        } else {
+            starts.iter().rev().copied().find(|s| *s < self.cursor)
+        };
+        match target {
+            Some(t) => {
+                self.set_cursor(t);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Keys while the search query is being typed.
+    fn search_key(&mut self, key: &KeyEvent) -> ViewerOutcome {
+        let Some(s) = self.search.as_mut() else {
+            return ViewerOutcome::Unhandled;
+        };
+        match key.code {
+            KeyCode::Esc => {
+                self.search = None;
+            }
+            KeyCode::Enter => {
+                s.editing = false;
+                self.jump_to_match(true);
+            }
+            KeyCode::Backspace => {
+                s.query.pop();
+                refresh_search(self);
+            }
+            KeyCode::Char(c) if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                s.query.push(c);
+                refresh_search(self);
+                // Incremental: show the first match at or after the cursor.
+                if let Some(s) = self.search.as_mut()
+                    && let Some(i) = s.matches.iter().position(|m| m.0 >= self.cursor)
+                {
+                    s.current = i;
+                    let line = s.matches[i].0;
+                    self.set_cursor(line);
+                }
+            }
+            _ => {}
+        }
+        ViewerOutcome::Handled
+    }
+
+    pub fn handle_key(&mut self, key: &KeyEvent) -> ViewerOutcome {
+        if self.search.as_ref().is_some_and(|s| s.editing) {
+            return self.search_key(key);
+        }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            return ViewerOutcome::Unhandled;
+        }
+        let page = self.view_height.max(1) as isize;
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') if !ctrl => self.move_cursor(-1),
+            KeyCode::Down | KeyCode::Char('j') if !ctrl => self.move_cursor(1),
+            KeyCode::PageUp => self.move_cursor(-page),
+            KeyCode::PageDown => self.move_cursor(page),
+            KeyCode::Char('u') if ctrl => self.move_cursor(-page / 2),
+            KeyCode::Char('d') if ctrl => self.move_cursor(page / 2),
+            KeyCode::Char('g') if ctrl => return ViewerOutcome::GotoLinePrompt,
+            KeyCode::Home | KeyCode::Char('g') if !ctrl => self.set_cursor(0),
+            KeyCode::End | KeyCode::Char('G') if !ctrl => self.set_cursor(usize::MAX / 2),
+            KeyCode::Left | KeyCode::Char('h') if !ctrl && !self.wrap => {
+                self.hscroll = self.hscroll.saturating_sub(4);
+            }
+            KeyCode::Right | KeyCode::Char('l') if !ctrl && !self.wrap => self.hscroll += 4,
+            KeyCode::Char('w') if !ctrl => {
+                self.wrap = !self.wrap;
+                self.hscroll = 0;
+            }
+            KeyCode::Char('m') if !ctrl => {
+                if let Content::Markdown { raw, .. } = &mut self.content {
+                    *raw = !*raw;
+                    self.scroll = 0;
+                    self.cursor = 0;
+                    refresh_search(self);
+                } else {
+                    return ViewerOutcome::Unhandled;
+                }
+            }
+            KeyCode::Char('/') if !ctrl => {
+                if !self.content.is_textual() {
+                    return ViewerOutcome::Unhandled;
+                }
+                self.search = Some(Search {
+                    editing: true,
+                    ..Search::default()
+                });
+            }
+            KeyCode::Char('n') if !ctrl => self.jump_to_match(true),
+            KeyCode::Char('N') if !ctrl => self.jump_to_match(false),
+            KeyCode::Esc if self.search.is_some() => self.search = None,
+            _ => return ViewerOutcome::Unhandled,
+        }
+        ViewerOutcome::Handled
+    }
+}
+
+/// Decoded Markdown images, shared by all Markdown tabs.
+#[derive(Default)]
+pub struct MdImages {
+    pub entries: HashMap<PathBuf, ImageState>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    fn ctx() -> (LoadCtx, mpsc::Receiver<AppEvent>) {
+        let (tx, rx) = mpsc::channel();
+        (
+            LoadCtx {
+                tx,
+                git: None,
+                images_enabled: false,
+            },
+            rx,
+        )
+    }
+
+    fn finish(viewer: &mut Viewer, rx: &mpsc::Receiver<AppEvent>) {
+        while let Ok(ev) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            if let AppEvent::Loaded {
+                tab,
+                generation,
+                loaded,
+            } = ev
+                && let Some(t) = viewer.tab_by_id_mut(tab)
+            {
+                apply_loaded(t, generation, *loaded);
+                return;
+            }
+        }
+        panic!("no load result");
+    }
+
+    fn key(c: KeyCode) -> KeyEvent {
+        KeyEvent::from(c)
+    }
+
+    #[test]
+    fn opens_text_and_navigates() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.rs");
+        let src: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&p, &src).unwrap();
+        let (ctx, rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        finish(&mut v, &rx);
+        let t = v.active_tab_mut().unwrap();
+        assert_eq!(t.language, "Rust");
+        assert_eq!(t.total_lines(), 100);
+        t.view_height = 10;
+        t.handle_key(&key(KeyCode::PageDown));
+        assert_eq!(t.cursor, 10);
+        t.handle_key(&key(KeyCode::End));
+        assert_eq!((t.cursor, t.scroll), (99, 90));
+        t.handle_key(&key(KeyCode::Char('g')));
+        assert_eq!((t.cursor, t.scroll), (0, 0));
+        assert_eq!(
+            t.handle_key(&KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL)),
+            ViewerOutcome::GotoLinePrompt
+        );
+    }
+
+    #[test]
+    fn incremental_search_with_smart_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "alpha\nBeta\nbeta gamma beta\n").unwrap();
+        let (ctx, rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        finish(&mut v, &rx);
+        let t = v.active_tab_mut().unwrap();
+        t.handle_key(&key(KeyCode::Char('/')));
+        for c in "beta".chars() {
+            t.handle_key(&key(KeyCode::Char(c)));
+        }
+        assert_eq!(
+            t.search.as_ref().unwrap().matches.len(),
+            3,
+            "lowercase is case-insensitive"
+        );
+        assert_eq!(t.cursor, 1);
+        t.handle_key(&key(KeyCode::Enter));
+        t.handle_key(&key(KeyCode::Char('n')));
+        assert_eq!(t.cursor, 2);
+        t.handle_key(&key(KeyCode::Char('/')));
+        for c in "Beta".chars() {
+            t.handle_key(&key(KeyCode::Char(c)));
+        }
+        assert_eq!(
+            t.search.as_ref().unwrap().matches.len(),
+            1,
+            "uppercase is case-sensitive"
+        );
+        t.handle_key(&key(KeyCode::Esc));
+        assert!(t.search.is_none());
+    }
+
+    #[test]
+    fn tabs_reuse_cycle_close_and_evict() {
+        let dir = tempfile::tempdir().unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        let paths: Vec<PathBuf> = (0..MAX_TABS + 2)
+            .map(|i| {
+                let p = dir.path().join(format!("f{i}.txt"));
+                std::fs::write(&p, "x").unwrap();
+                p
+            })
+            .collect();
+        let id0 = v.open(&paths[0], &ctx);
+        v.open(&paths[1], &ctx);
+        assert_eq!(v.open(&paths[0], &ctx), id0, "re-opening activates");
+        assert_eq!(v.tabs.len(), 2);
+        v.cycle(1);
+        assert_eq!(v.active_tab().unwrap().path, paths[1]);
+        for p in &paths[2..] {
+            v.open(p, &ctx);
+        }
+        assert_eq!(v.tabs.len(), MAX_TABS);
+        assert!(
+            v.position(&paths[0]).is_none() || v.position(&paths[1]).is_none(),
+            "LRU evicted"
+        );
+        let n = v.tabs.len();
+        v.close(n - 1);
+        assert_eq!(v.active, Some(n - 2));
+    }
+
+    #[test]
+    fn classifies_binary_large_and_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("app");
+        std::fs::write(&bin, b"\x7fELF\0\0\x01").unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&bin, &ctx);
+        assert!(matches!(v.active_tab().unwrap().content, Content::Binary { .. }));
+        v.open(&dir.path().join("missing.txt"), &ctx);
+        assert!(matches!(v.active_tab().unwrap().content, Content::Error(_)));
+    }
+
+    #[test]
+    fn stale_loads_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "one\n").unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        let old_gen = t.generation;
+        load(t, &ctx);
+        apply_loaded(
+            t,
+            old_gen,
+            Loaded {
+                lines: plain_lines("stale\n"),
+                markers: Markers::default(),
+                language: "X".into(),
+            },
+        );
+        assert_ne!(t.language, "X");
+    }
+}

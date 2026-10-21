@@ -50,3 +50,34 @@ impl ThemeStyle for Theme {
 pub fn bold() -> Modifier {
     Modifier::BOLD
 }
+
+/// A token style from the renderer as a ratatui style.
+pub fn tok(theme: &Theme, s: &vista_render::TokStyle) -> Style {
+    let mut style = Style::new().fg(color(theme.color(s.fg)));
+    if let Some(bg) = s.bg {
+        style = style.bg(color(theme.color(bg)));
+    }
+    let mut m = Modifier::empty();
+    if s.bold {
+        m |= Modifier::BOLD;
+    }
+    if s.italic {
+        m |= Modifier::ITALIC;
+    }
+    if s.underline {
+        m |= Modifier::UNDERLINED;
+    }
+    if s.strike {
+        m |= Modifier::CROSSED_OUT;
+    }
+    style.add_modifier(m)
+}
+
+/// A renderer line as a ratatui line.
+pub fn styled_line(theme: &Theme, line: &vista_render::StyledLine) -> ratatui::text::Line<'static> {
+    ratatui::text::Line::from(
+        line.iter()
+            .map(|s| ratatui::text::Span::styled(s.text.clone(), tok(theme, &s.style)))
+            .collect::<Vec<_>>(),
+    )
+}

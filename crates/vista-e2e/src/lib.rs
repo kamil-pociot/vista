@@ -69,6 +69,7 @@ pub struct Launcher<'a> {
     config: Option<String>,
     files: Vec<(String, String)>,
     name: Option<String>,
+    open: Option<String>,
 }
 
 impl<'a> Launcher<'a> {
@@ -106,6 +107,12 @@ impl<'a> Launcher<'a> {
     }
 
     /// Name used for the trace file (defaults to the test's thread name).
+    /// Launch as `vista <dir>/<rel>` (opens a file) instead of `vista <dir>`.
+    pub fn open(mut self, rel: &str) -> Self {
+        self.open = Some(rel.to_string());
+        self
+    }
+
     pub fn name(mut self, n: &str) -> Self {
         self.name = Some(n.to_string());
         self
@@ -140,7 +147,10 @@ impl<'a> Launcher<'a> {
             .expect("open pty");
         let mut cmd = CommandBuilder::new(&self.bin);
         cmd.cwd(&self.dir);
-        cmd.arg(&self.dir);
+        match &self.open {
+            Some(rel) => cmd.arg(self.dir.join(rel)),
+            None => cmd.arg(&self.dir),
+        }
         for a in &self.args {
             cmd.arg(a);
         }
@@ -258,6 +268,7 @@ impl Vista {
             config: None,
             files: Vec::new(),
             name: None,
+            open: None,
         }
     }
 
@@ -275,6 +286,7 @@ impl Vista {
             config: None,
             files: Vec::new(),
             name: None,
+            open: None,
         }
     }
 
@@ -471,6 +483,21 @@ impl Vista {
         Locator {
             vista: self,
             text: text.to_string(),
+            cols: 0..u16::MAX,
+        }
+    }
+
+    /// Like [`expect_text`](Self::expect_text) but only matches text that
+    /// starts within `cols` (e.g. inside the tree panel).
+    pub fn expect_text_in(&mut self, text: &str, cols: std::ops::Range<u16>) -> Locator<'_> {
+        let (t, c) = (text.to_string(), cols.clone());
+        self.wait_until(&format!("text {text:?} in columns {cols:?}"), move |s| {
+            find_in(s, &t, c.clone()).is_some()
+        });
+        Locator {
+            vista: self,
+            text: text.to_string(),
+            cols,
         }
     }
 
@@ -577,13 +604,18 @@ impl Drop for Vista {
 pub struct Locator<'a> {
     vista: &'a mut Vista,
     text: String,
+    /// Only match text starting in these columns.
+    cols: std::ops::Range<u16>,
 }
 
 impl Locator<'_> {
     fn check(self, desc: &str, pred: impl Fn(&vt100::Cell) -> bool) {
         let text = self.text.clone();
+        let cols = self.cols.clone();
         self.vista.wait_until(&format!("{text:?} {desc}"), move |s| {
-            find(s, &text).and_then(|(r, c)| s.cell(r, c)).is_some_and(&pred)
+            find_in(s, &text, cols.clone())
+                .and_then(|(r, c)| s.cell(r, c))
+                .is_some_and(&pred)
         });
     }
 
@@ -609,7 +641,7 @@ impl Locator<'_> {
     /// (row, col) of the text right now.
     pub fn position(self) -> (u16, u16) {
         let p = self.vista.parser.lock().expect("parser");
-        find(p.screen(), &self.text).expect("text vanished")
+        find_in(p.screen(), &self.text, self.cols.clone()).expect("text vanished")
     }
 }
 
@@ -649,12 +681,19 @@ fn row_string(screen: &vt100::Screen, row: u16) -> (String, Vec<u16>) {
 
 /// First (row, col) where `text` appears.
 pub fn find(screen: &vt100::Screen, text: &str) -> Option<(u16, u16)> {
+    find_in(screen, text, 0..u16::MAX)
+}
+
+/// First (row, col) where `text` appears starting within `cols`.
+pub fn find_in(screen: &vt100::Screen, text: &str, cols: std::ops::Range<u16>) -> Option<(u16, u16)> {
     let (rows, _) = screen.size();
     for r in 0..rows.get() {
         let (s, map) = row_string(screen, r);
-        if let Some(byte_idx) = s.find(text) {
-            let char_idx = s[..byte_idx].chars().count();
-            return Some((r, map[char_idx]));
+        for (byte_idx, _) in s.match_indices(text) {
+            let col = map[s[..byte_idx].chars().count()];
+            if cols.contains(&col) {
+                return Some((r, col));
+            }
         }
     }
     None

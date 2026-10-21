@@ -3,6 +3,7 @@
 pub mod chrome;
 pub mod help;
 pub mod project;
+pub mod viewer;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -23,6 +24,9 @@ pub struct Areas {
     /// Content area of the left tool window (below its header).
     pub left_inner: Option<Rect>,
     pub separator: Option<Rect>,
+    /// The tab strip and content of the viewer (last draw).
+    pub tabs: Option<Rect>,
+    pub viewer: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -59,6 +63,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             left: None,
             left_inner: None,
             separator: None,
+            tabs: None,
+            viewer: None,
             main: body,
             bottom,
             keyhints,
@@ -87,6 +93,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         left: Some(left),
         left_inner: None,
         separator,
+        tabs: None,
+        viewer: None,
         main,
         bottom,
         keyhints,
@@ -108,15 +116,25 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Some(sep) = areas.separator {
         chrome::separator(f, sep, &app.theme);
     }
+    app.areas.tabs = None;
+    app.areas.viewer = None;
     main_area(f, areas.main, app);
     chrome::bottom_bar(f, areas.bottom, app);
     if let Some(k) = areas.keyhints {
         chrome::keyhints(f, k, app);
     }
+    if app.recent_popup.is_some() {
+        viewer::draw_recent(f, area, app);
+    }
     if app.show_help {
         help::draw(f, area, app);
     }
-    app.areas = areas;
+    let (tabs, viewer_area) = (app.areas.tabs, app.areas.viewer);
+    app.areas = Areas {
+        tabs,
+        viewer: viewer_area,
+        ..areas
+    };
 }
 
 fn top_bar(f: &mut Frame, area: Rect, app: &App) {
@@ -164,14 +182,11 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
     inner
 }
 
-fn main_area(f: &mut Frame, area: Rect, app: &App) {
-    let t = &app.theme;
-    let focused = app.focus == Focus::Main;
-    let inner = chrome::tab_strip(f, area, &[], None, focused, t);
-    empty_state(f, inner, app);
+fn main_area(f: &mut Frame, area: Rect, app: &mut App) {
+    viewer::draw(f, area, app);
 }
 
-fn empty_state(f: &mut Frame, area: Rect, app: &App) {
+pub(crate) fn empty_state(f: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme;
     let km = &app.keymap;
     let row = |a: Action, label: &str| {
