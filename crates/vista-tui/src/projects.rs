@@ -208,6 +208,7 @@ impl ProjectsPopup {
                 "terminal tab".into(),
                 self.bar.terminal == Some(*i),
             ),
+            Entry::Run(cmd) if cmd.is_empty() => ("shell".into(), "a new terminal tab with your shell".into(), false),
             Entry::Run(cmd) => (cmd.clone(), "run in a new terminal tab".into(), false),
         }
     }
@@ -225,10 +226,8 @@ impl ProjectsPopup {
         };
         if let Some(cmd) = self.query.trim().strip_prefix('>') {
             // `>command`: run it in a terminal tab.
-            let cmd = cmd.trim();
-            if !cmd.is_empty() {
-                entries.push(Entry::Run(cmd.to_string()));
-            }
+            // `>` alone: your shell.
+            entries.push(Entry::Run(cmd.trim().to_string()));
         } else if looks_like_path {
             // `~/Repos/lm` → folders in ~/Repos matching "lm"; `~/Repos/` → all.
             let typed = self.query.trim();
@@ -519,6 +518,14 @@ mod tests {
         assert_eq!(
             p.handle_key(&KeyEvent::from(KeyCode::Enter)),
             PopupOutcome::Request(WsRequest::Run("htop".into()))
+        );
+        // `>` alone opens the shell.
+        let mut p = ProjectsPopup::new(bar.clone());
+        typed(&mut p, ">");
+        assert_eq!(p.entries, vec![Entry::Run(String::new())]);
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Run(String::new()))
         );
         // `>anything` runs that command.
         let mut p = ProjectsPopup::new(bar.clone());

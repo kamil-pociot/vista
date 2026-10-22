@@ -31,7 +31,7 @@ expression: snap
                             │ 25       }
                             │ 26 ▌
                             │ 27 ▌     pub fn is_dirty(&self) -> bool {
- 1: Project   2: Commit   3: Find   9: Git   ?: Help         4 changed · 2 unversioned   1:1   Rust
+ 1: Project   2: Commit   3: Find   T: Terminal   9: Git     4 changed · 2 unversioned   1:1   Rust
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..50 fg=ui.text bg=ui.panel] [50..56 fg=ui.dim bg=ui.panel] [56..70 fg=ui.text bg=ui.panel] [70..76 fg=ui.dim bg=ui.panel] [76..93 fg=ui.text bg=ui.panel] [93..95 fg=ui.dim bg=ui.panel] [95..100 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.header bg=ui.panel +bold] [11..25 fg=ui.text bg=ui.panel] [25..28 fg=ui.border.focused bg=ui.panel] [28..29 fg=ui.border bg=ui.bg] [29..40 fg=git.modified bg=ui.bg +underline] [40..42 fg=ui.dim bg=ui.bg] [42..100 fg=ui.text bg=ui.panel]
@@ -62,4 +62,4 @@ expression: snap
  26: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg]
  27: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg]
  28: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg] [39..42 fg=syntax.keyword bg=ui.bg] [43..45 fg=syntax.keyword bg=ui.bg] [46..54 fg=syntax.function bg=ui.bg] [65..69 fg=syntax.keyword bg=ui.bg]
- 29: [0..54 fg=ui.header bg=ui.panel] [54..61 fg=ui.text bg=ui.panel] [61..70 fg=git.modified bg=ui.panel] [70..73 fg=ui.dim bg=ui.panel] [73..86 fg=git.unversioned bg=ui.panel] [86..95 fg=ui.text bg=ui.panel] [95..100 fg=ui.dim bg=ui.panel]
+ 29: [0..58 fg=ui.header bg=ui.panel] [58..61 fg=ui.text bg=ui.panel] [61..70 fg=git.modified bg=ui.panel] [70..73 fg=ui.dim bg=ui.panel] [73..86 fg=git.unversioned bg=ui.panel] [86..95 fg=ui.text bg=ui.panel] [95..100 fg=ui.dim bg=ui.panel]

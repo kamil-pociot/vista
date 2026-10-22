@@ -25,7 +25,7 @@ expression: "snapshot(&buf, &app.theme)"
                             │
                             │
                             │
- 1: Project   2: Commit   3: Find   9: Git   ?: Help                                Darcula Classic
+ 1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help                  Darcula Classic
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..17 fg=ui.text.strong bg=ui.selection.inactive +bold] [17..18 fg=ui.text bg=ui.panel] [18..21 fg=ui.border.focused bg=ui.panel] [21..57 fg=ui.text bg=ui.panel] [57..63 fg=ui.dim bg=ui.panel] [63..77 fg=ui.text bg=ui.panel] [77..83 fg=ui.dim bg=ui.panel] [83..100 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.text.strong bg=ui.selection.inactive +bold] [11..25 fg=ui.text bg=ui.selection.inactive] [25..28 fg=ui.dim bg=ui.selection.inactive] [28..29 fg=ui.border bg=ui.bg] [29..100 fg=ui.text bg=ui.panel]
@@ -50,4 +50,4 @@ expression: "snapshot(&buf, &app.theme)"
  20: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
  21: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
  22: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]
- 23: [0..13 fg=ui.text.strong bg=ui.panel +bold] [13..54 fg=ui.header bg=ui.panel] [54..84 fg=ui.text bg=ui.panel] [84..100 fg=ui.dim bg=ui.panel]
+ 23: [0..13 fg=ui.text.strong bg=ui.panel +bold] [13..68 fg=ui.header bg=ui.panel] [68..84 fg=ui.text bg=ui.panel] [84..100 fg=ui.dim bg=ui.panel]

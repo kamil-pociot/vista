@@ -31,7 +31,7 @@ expression: "commit_with_diff(&repo, look)"
  └────────────────────────────────┘ │
  [ ] Amend   4 of 6 files           │
   Commit ^K    Commit & Push (P)    │ u unified  i whitespace  side-by-side · whitespace: compare · lines: scroll · collapse: off
- 1: Project   2: Commit   3: Find   9: Git   ?: Help                                       4 changed · 2 unversioned   1:1   Diff
+ 1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help                         4 changed · 2 unversioned   1:1   Diff
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..123 fg=ui.text bg=ui.panel] [123..125 fg=ui.dim bg=ui.panel] [125..130 fg=ui.text bg=ui.panel]
   1: [0..10 fg=ui.header bg=ui.panel +bold] [10..36 fg=ui.text bg=ui.panel] [36..37 fg=ui.border bg=ui.bg] [37..48 fg=git.modified bg=ui.bg +underline] [48..50 fg=ui.dim bg=ui.bg] [50..130 fg=ui.text bg=ui.panel]
@@ -62,4 +62,4 @@ expression: "commit_with_diff(&repo, look)"
  26: [0..1 fg=ui.text bg=ui.panel.alt] [1..35 fg=ui.border bg=ui.bg] [35..36 fg=ui.text bg=ui.panel.alt] [36..37 fg=ui.border bg=ui.bg]
  27: [0..10 fg=ui.text bg=ui.panel.alt] [10..25 fg=ui.dim bg=ui.panel.alt] [25..36 fg=ui.text bg=ui.panel.alt] [36..37 fg=ui.border bg=ui.bg]
  28: [0..1 fg=ui.text bg=ui.panel.alt] [1..12 fg=ui.match.text bg=ui.button +bold] [12..14 fg=ui.text bg=ui.panel.alt] [14..33 fg=ui.text bg=ui.panel] [33..36 fg=ui.text bg=ui.panel.alt] [36..37 fg=ui.border bg=ui.bg] [37..130 fg=ui.dim bg=ui.panel]
- 29: [0..54 fg=ui.header bg=ui.panel] [54..91 fg=ui.text bg=ui.panel] [91..100 fg=git.modified bg=ui.panel] [100..103 fg=ui.dim bg=ui.panel] [103..116 fg=git.unversioned bg=ui.panel] [116..125 fg=ui.text bg=ui.panel] [125..130 fg=ui.dim bg=ui.panel]
+ 29: [0..68 fg=ui.header bg=ui.panel] [68..91 fg=ui.text bg=ui.panel] [91..100 fg=git.modified bg=ui.panel] [100..103 fg=ui.dim bg=ui.panel] [103..116 fg=git.unversioned bg=ui.panel] [116..125 fg=ui.text bg=ui.panel] [125..130 fg=ui.dim bg=ui.panel]

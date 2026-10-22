@@ -403,7 +403,14 @@ impl Workspace {
         };
         let tab = &mut self.terminals[ti];
         tab.resize(body.width, body.height);
-        crate::ui::term::draw(f, body, tab, &app.theme);
+        crate::ui::term::draw(
+            f,
+            body,
+            tab,
+            &app.theme,
+            true,
+            "Enter closes the tab, Ctrl-\\ goes back",
+        );
     }
 
     /// The window title: the active project or terminal.

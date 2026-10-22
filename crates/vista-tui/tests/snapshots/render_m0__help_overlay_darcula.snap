@@ -26,6 +26,7 @@ expression: "vista_tui::testing::text(&buf)"
                        │              Shift-L  Show/hide line numbers       │
                        │               Ctrl-O  Projects: switch, open, add  │
                        │                Alt-9  Git log tool window          │
+                       │                Alt-T  Terminal tool window         │
                        │                Alt-H  History of the current file  │
                        │         Ctrl-Shift-→  Widen the left panel         │
                        │         Ctrl-Shift-←  Narrow the left panel        │
@@ -34,5 +35,4 @@ expression: "vista_tui::testing::text(&buf)"
                        │       Alt-F1, Ctrl-L  Reveal current file in tree  │
                        │                    -  Collapse all folders         │
                        │               Ctrl-T  Switch to next look          │
-                       │           Ctrl-Alt-↓  Next Find result             │
  1: Project   2: Commit└ any key to close ──────────────────────────────────┘       Darcula Classic

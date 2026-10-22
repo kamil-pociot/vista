@@ -34,7 +34,7 @@ fn nz(n: u16) -> NonZeroU16 {
 
 impl TermTab {
     /// Runs `command` through the login shell (so `~/.zshrc`'s PATH applies)
-    /// in `cwd`, `cols`×`rows`. Output wakes the app with
+    /// in `cwd`, `cols`×`rows`; an empty command is the interactive shell. Output wakes the app with
     /// [`AppEvent::TermOutput`]; the end with [`AppEvent::TermExited`].
     pub fn spawn(id: ProjectId, command: &str, cwd: &Path, size: (u16, u16), tx: EventTx) -> Result<TermTab> {
         let (cols, rows) = (size.0.max(2), size.1.max(2));
@@ -51,7 +51,11 @@ impl TermTab {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "/bin/sh".into());
         let mut cmd = CommandBuilder::new(&shell);
-        cmd.args(["-l", "-i", "-c", command]);
+        if command.trim().is_empty() {
+            cmd.args(["-l", "-i"]);
+        } else {
+            cmd.args(["-l", "-i", "-c", command]);
+        }
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -84,9 +88,17 @@ impl TermTab {
                 let _ = tx.send(AppEvent::TermExited);
             })
             .context("terminal reader thread")?;
+        let title = if command.trim().is_empty() {
+            Path::new(&shell)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "shell".into())
+        } else {
+            command.to_string()
+        };
         Ok(TermTab {
             id,
-            title: command.to_string(),
+            title,
             parser,
             master: pair.master,
             writer,

@@ -200,6 +200,9 @@ pub struct App {
     dragging_divider: bool,
     /// The Git tool window (log, file history).
     pub log: crate::log::LogWindow,
+    /// The Terminal tool window's shell (started on first use).
+    pub shell: Option<crate::term_tab::TermTab>,
+    pub shell_visible: bool,
     ui_path: PathBuf,
     /// Where each tab and its × were drawn (last frame), for clicks.
     pub tab_hits: Vec<crate::ui::chrome::TabHit>,
@@ -321,6 +324,8 @@ impl App {
             project_hits: Vec::new(),
             dragging_divider: false,
             log: crate::log::LogWindow::default(),
+            shell: None,
+            shell_visible: false,
             tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
@@ -387,6 +392,7 @@ impl App {
     /// Called after the main loop ends, while the terminal is still set up.
     pub fn on_exit(&mut self) {
         self.watcher = None;
+        self.shell = None;
         if let Some(mut n) = self.nvim.take() {
             n.quit();
         }
@@ -1084,6 +1090,58 @@ impl App {
 
     // ----- Git window: log and file history -----------------------------------
 
+    /// Shows the Terminal tool window, starting the shell (in the project
+    /// folder) if it isn't running.
+    fn show_shell(&mut self) {
+        self.find_window.visible = false;
+        self.log.visible = false;
+        self.shell_visible = true;
+        self.focus = Focus::Bottom;
+        if self.shell.as_ref().is_none_or(|s| s.exited.is_some()) {
+            self.start_shell();
+        }
+    }
+
+    fn start_shell(&mut self) {
+        let size = self
+            .areas
+            .shell
+            .or(self.areas.panel_bottom)
+            .map(|r| (r.width, r.height.saturating_sub(1)))
+            .unwrap_or((self.areas.top.width.max(40), 10));
+        match crate::term_tab::TermTab::spawn(0, "", &self.root, size, self.tx.clone()) {
+            Ok(s) => self.shell = Some(s),
+            Err(e) => self.notify(format!("{e:#}"), MsgKind::Error),
+        }
+    }
+
+    /// Keys while the Terminal tool window has focus: all to the shell, but
+    /// Ctrl-\ (back to the editor) and the tool-window keys.
+    fn shell_key(&mut self, key: &KeyEvent) {
+        match self.keymap.action_for(key) {
+            Some(Action::LeaveEditor) => self.focus = Focus::Main,
+            Some(
+                a @ (Action::ToggleProject
+                | Action::ToggleCommit
+                | Action::ToggleFind
+                | Action::ToggleLog
+                | Action::ToggleTerminal
+                | Action::NextProject
+                | Action::PrevProject),
+            ) => self.handle_action(a),
+            _ => match self.shell.as_mut() {
+                // The shell ended: Enter starts a new one.
+                Some(s) if s.exited.is_some() => {
+                    if key.code == ratatui::crossterm::event::KeyCode::Enter {
+                        self.start_shell();
+                    }
+                }
+                Some(s) => s.key(key),
+                None => self.start_shell(),
+            },
+        }
+    }
+
     /// Shows the Git window (instead of Find), loading the log.
     fn show_log(&mut self, path: Option<PathBuf>) {
         if self.git.is_none() {
@@ -1091,6 +1149,7 @@ impl App {
             return;
         }
         self.find_window.visible = false;
+        self.shell_visible = false;
         self.log.visible = true;
         if self.log.path != path {
             self.log.path = path;
@@ -1438,6 +1497,11 @@ impl App {
                 }
             }
             AppEvent::Term(Event::Mouse(m)) => self.handle_mouse(m),
+            AppEvent::Term(Event::Paste(text)) if self.focus == Focus::Bottom && self.shell_visible => {
+                if let Some(sh) = self.shell.as_mut() {
+                    sh.paste(&text);
+                }
+            }
             AppEvent::Term(Event::Paste(text)) => {
                 if self.editing_focused()
                     && let Some(n) = &self.nvim
@@ -1447,7 +1511,13 @@ impl App {
             }
             AppEvent::Term(_) => {}
             // Terminal tabs belong to the workspace.
-            AppEvent::TermOutput(_) | AppEvent::TermExited => {}
+            // The Terminal tool window's shell (terminal tabs belong to the workspace).
+            AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
+            AppEvent::TermExited => {
+                if let Some(s) = self.shell.as_mut() {
+                    s.mark_exited();
+                }
+            }
             AppEvent::Log { generation, result } => {
                 if generation == self.log.generation {
                     match result {
@@ -1689,6 +1759,10 @@ impl App {
         }
         if self.prompt.is_some() {
             self.prompt_key(&key);
+            return;
+        }
+        if self.focus == Focus::Bottom && self.shell_visible {
+            self.shell_key(&key);
             return;
         }
         if self.editing_focused() {
@@ -1937,6 +2011,15 @@ impl App {
             }
             return;
         }
+        if let Some(r) = self.areas.shell.filter(|r| r.contains(pos)) {
+            if matches!(m.kind, MouseEventKind::Down(_)) {
+                self.focus = Focus::Bottom;
+            }
+            if let Some(sh) = self.shell.as_mut() {
+                sh.mouse(&m, m.column - r.x, m.row - r.y);
+            }
+            return;
+        }
         for (rect, files) in [(self.areas.log_commits, false), (self.areas.log_files, true)] {
             let Some(r) = rect.filter(|r| r.contains(pos)) else {
                 continue;
@@ -2138,6 +2221,7 @@ impl App {
             }
             Action::ToggleFind => {
                 self.log.visible = false;
+                self.shell_visible = false;
                 if self.find_window.tabs.is_empty() {
                     self.notify("No Find results yet (Ctrl-F, then Alt-O)", MsgKind::Info);
                 } else if self.find_window.visible && self.focus == Focus::Bottom {
@@ -2193,6 +2277,14 @@ impl App {
                 self.sync_editor_buffer();
             }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
+            Action::ToggleTerminal => {
+                if self.shell_visible && self.focus == Focus::Bottom {
+                    self.shell_visible = false;
+                    self.focus = Focus::Main;
+                } else {
+                    self.show_shell();
+                }
+            }
             Action::ToggleLog => {
                 if self.log.visible && self.focus == Focus::Bottom {
                     self.log.visible = false;
@@ -2304,7 +2396,8 @@ impl App {
     }
 
     fn cycle_focus(&mut self) {
-        let bottom = (self.find_window.visible && !self.find_window.tabs.is_empty()) || self.log.visible;
+        let bottom =
+            (self.find_window.visible && !self.find_window.tabs.is_empty()) || self.log.visible || self.shell_visible;
         self.focus = match (self.focus, self.left, bottom) {
             (Focus::Left, _, _) => Focus::Main,
             (Focus::Main, _, true) => Focus::Bottom,

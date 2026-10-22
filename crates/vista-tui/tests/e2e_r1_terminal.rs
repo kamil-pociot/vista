@@ -82,3 +82,60 @@ fn quitting_with_a_running_terminal_asks_first() {
     vista.press("q");
     vista.expect_exit();
 }
+
+#[test]
+fn a_lone_angle_bracket_opens_a_shell_tab() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .size(140, 30)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("ctrl+o");
+    vista.type_text(">");
+    vista.expect_text("▷ shell");
+    vista.press("enter");
+    vista.expect_text("▶ sh × ");
+    vista.type_text("echo hi-$((1+2))");
+    vista.press("enter");
+    vista.expect_text("hi-3");
+}
+
+#[test]
+fn terminal_tool_window_runs_a_shell_in_the_project() {
+    let repo = repo();
+    let name = repo.path().file_name().unwrap().to_string_lossy().into_owned();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .size(140, 36)
+        .start();
+    vista.expect_text("1: Project");
+    // Alt-T: a shell under the editor, in the project folder; the tree stays.
+    vista.press("alt+t");
+    vista.expect_text("T: Terminal");
+    vista.type_text("echo where=$(basename \"$PWD\")");
+    vista.press("enter");
+    vista.expect_text(&format!("where={name}"));
+    vista.expect_text("1: Project");
+    // Ctrl-\ back to the editor; Alt-T returns to the same shell.
+    vista.press("ctrl+\\");
+    vista.press("alt+t");
+    vista.type_text("echo again");
+    vista.press("enter");
+    vista.expect_text("again");
+    vista.expect_text(&format!("where={name}"));
+    // The shell ends: Enter starts a new one.
+    vista.type_text("exit");
+    vista.press("enter");
+    vista.expect_text("Enter starts a new shell");
+    vista.press("enter");
+    vista.expect_no_text("Enter starts a new shell");
+    vista.type_text("echo fresh");
+    vista.press("enter");
+    vista.expect_text("fresh");
+    // Alt-T while it has focus hides it.
+    vista.press("alt+t");
+    vista.expect_no_text("back to the editor");
+}

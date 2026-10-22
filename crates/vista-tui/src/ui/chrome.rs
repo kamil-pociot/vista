@@ -285,7 +285,13 @@ pub fn bottom_bar(f: &mut Frame, area: Rect, app: &App) {
                 app,
                 &km.tool_number(Action::ToggleFind),
                 "Find",
-                app.focus == Focus::Bottom && !app.log.visible,
+                app.focus == Focus::Bottom && !app.log.visible && !app.shell_visible,
+            ),
+            tool_label(
+                app,
+                &km.tool_number(Action::ToggleTerminal),
+                "Terminal",
+                app.focus == Focus::Bottom && app.shell_visible,
             ),
             tool_label(
                 app,

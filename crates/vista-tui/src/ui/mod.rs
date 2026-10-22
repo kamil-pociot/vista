@@ -53,6 +53,8 @@ pub struct Areas {
     pub projects_list: Option<Rect>,
     /// The Git window's commit and file lists.
     pub log_commits: Option<Rect>,
+    /// The Terminal tool window's screen.
+    pub shell: Option<Rect>,
     pub log_files: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
@@ -73,7 +75,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
     // Bottom tool window (Find) spans the full width under the panels.
     let mut bottom_panel = None;
     let find = app.find_window.visible && !app.find_window.tabs.is_empty();
-    if (find || app.log.visible) && body.height > 12 {
+    if (find || app.log.visible || app.shell_visible) && body.height > 12 {
         let h = (body.height * 35 / 100).max(8);
         bottom_panel = Some(Rect {
             y: body.y + body.height - h,
@@ -114,6 +116,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             projects_list: None,
             log_commits: None,
             log_files: None,
+            shell: None,
             main: body,
             bottom,
             keyhints,
@@ -158,6 +161,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         projects_list: None,
         log_commits: None,
         log_files: None,
+        shell: None,
         main,
         bottom,
         keyhints,
@@ -191,8 +195,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
     app.areas.log_commits = None;
     app.areas.log_files = None;
+    app.areas.shell = None;
     if let Some(b) = areas.panel_bottom {
-        if app.log.visible {
+        if app.shell_visible {
+            term::draw_panel(f, b, app);
+        } else if app.log.visible {
             log::draw(f, b, app);
         } else {
             find::draw_window(f, b, app);
@@ -227,7 +234,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
     let (reveal_button, projects_list) = (app.areas.reveal_button, app.areas.projects_list);
-    let (log_commits, log_files) = (app.areas.log_commits, app.areas.log_files);
+    let (log_commits, log_files, shell) = (app.areas.log_commits, app.areas.log_files, app.areas.shell);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
@@ -240,6 +247,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         projects_list,
         log_commits,
         log_files,
+        shell,
         ..areas
     };
 }
