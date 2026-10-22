@@ -28,6 +28,7 @@ pub enum Action {
     Commit,
     Refresh,
     ToggleIgnored,
+    ToggleLineNumbers,
     RevealFile,
     CollapseAll,
     CycleTheme,
@@ -57,6 +58,7 @@ impl Action {
         Action::Commit,
         Action::Refresh,
         Action::ToggleIgnored,
+        Action::ToggleLineNumbers,
         Action::RevealFile,
         Action::CollapseAll,
         Action::CycleTheme,
@@ -86,6 +88,7 @@ impl Action {
             Action::Commit => "commit",
             Action::Refresh => "refresh",
             Action::ToggleIgnored => "toggle-ignored",
+            Action::ToggleLineNumbers => "line-numbers",
             Action::RevealFile => "reveal-file",
             Action::CollapseAll => "collapse-all",
             Action::CycleTheme => "cycle-theme",
@@ -120,6 +123,7 @@ impl Action {
             Action::Commit => "Commit",
             Action::Refresh => "Refresh",
             Action::ToggleIgnored => "Show/hide ignored files",
+            Action::ToggleLineNumbers => "Show/hide line numbers",
             Action::RevealFile => "Reveal current file in tree",
             Action::CollapseAll => "Collapse all folders",
             Action::CycleTheme => "Switch to next look",
@@ -165,11 +169,21 @@ impl KeyChord {
 
     /// Parses `ctrl+shift+f`, `alt+1`, `f7`, `shift+f7`, `?`, `tab`, `space`, …
     pub fn parse(s: &str) -> Option<KeyChord> {
+        // A capital letter key (`L`, `ctrl+K`) means Shift with that letter.
+        let capital = s
+            .trim()
+            .rsplit('+')
+            .next()
+            .is_some_and(|k| k.len() == 1 && k.chars().all(|c| c.is_ascii_uppercase()));
         let s = s.trim().to_ascii_lowercase();
         if s.is_empty() {
             return None;
         }
-        let mut mods = KeyModifiers::NONE;
+        let mut mods = if capital {
+            KeyModifiers::SHIFT
+        } else {
+            KeyModifiers::NONE
+        };
         let mut parts: Vec<&str> = s.split('+').collect();
         // `ctrl++` style: a trailing empty part means the key is '+'.
         let key = if s.ends_with("++") {
@@ -275,6 +289,7 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("ctrl+r", Action::Refresh),
     ("f5", Action::Refresh),
     ("i", Action::ToggleIgnored),
+    ("L", Action::ToggleLineNumbers),
     ("ctrl+l", Action::RevealFile),
     ("alt+f1", Action::RevealFile),
     ("-", Action::CollapseAll),
@@ -449,5 +464,21 @@ mod tests {
         assert_eq!(KeyChord::parse("ctrl+shift+f").unwrap().to_string(), "Ctrl-Shift-F");
         assert_eq!(Keymap::defaults().hint(Action::GotoFile), "Ctrl-P");
         assert_eq!(Keymap::defaults().hint(Action::Edit), "e");
+    }
+
+    #[test]
+    fn capital_letters_mean_shift() {
+        let shift_l = KeyChord::from_event(&ev(KeyCode::Char('L'), KeyModifiers::SHIFT));
+        assert_eq!(KeyChord::parse("L"), Some(shift_l));
+        assert_eq!(KeyChord::parse("shift+l"), Some(shift_l));
+        assert_ne!(KeyChord::parse("l"), Some(shift_l));
+        assert_eq!(
+            Keymap::defaults().action_for(&ev(KeyCode::Char('L'), KeyModifiers::SHIFT)),
+            Some(Action::ToggleLineNumbers)
+        );
+        assert_eq!(
+            Keymap::defaults().action_for(&ev(KeyCode::Char('l'), KeyModifiers::NONE)),
+            None
+        );
     }
 }

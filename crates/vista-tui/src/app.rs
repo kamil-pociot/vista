@@ -173,6 +173,9 @@ pub struct App {
     quit_confirm: Option<Instant>,
     /// Armed "press again for the next file" step (next/previous change).
     pub change_hop: Option<ChangeHop>,
+    /// View settings remembered between runs (`state.toml`).
+    pub ui: vista_core::UiState,
+    ui_path: PathBuf,
     /// Where each tab and its × were drawn (last frame), for clicks.
     pub tab_hits: Vec<crate::ui::chrome::TabHit>,
     /// Last left click: (list, row, when), to spot double clicks.
@@ -209,8 +212,16 @@ impl App {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| root.display().to_string());
         let theme_loader = ThemeLoader::new(Some(opts.paths.themes_dir()));
-        let theme_id = opts.theme.clone().unwrap_or_else(|| opts.config.theme.clone());
-        let mut startup_error = None;
+        let ui_path = vista_core::UiState::path(&opts.paths);
+        let (ui, ui_warning) = vista_core::UiState::load(&ui_path);
+        // --theme / VISTA_THEME › the look picked last (Ctrl-T) › config.
+        let theme_id = opts
+            .theme
+            .clone()
+            .or_else(|| std::env::var("VISTA_THEME").ok().filter(|t| !t.is_empty()))
+            .or_else(|| ui.look.clone())
+            .unwrap_or_else(|| opts.config.theme.clone());
+        let mut startup_error = ui_warning;
         let theme = match theme_loader.load(&theme_id) {
             Ok(t) => t,
             Err(e) => {
@@ -222,7 +233,7 @@ impl App {
         let (keymap, warnings) = Keymap::with_overrides(&opts.config.keys);
         let (tx, rx) = mpsc::channel();
         let t = Instant::now();
-        let project = ProjectView::new(&root, opts.config.tree.show_ignored);
+        let project = ProjectView::new(&root, ui.tree.show_ignored.unwrap_or(opts.config.tree.show_ignored));
         tracing::info!("tree read in {:?}", t.elapsed());
         let t = Instant::now();
         let git = Git::discover(&root).ok();
@@ -263,6 +274,8 @@ impl App {
             dirty: HashSet::new(),
             quit_confirm: None,
             change_hop: None,
+            ui,
+            ui_path,
             tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
@@ -285,6 +298,7 @@ impl App {
         if let Some(e) = startup_error {
             app.notify(e, MsgKind::Error);
         }
+        app.commit.by_dir = app.ui.commit.group_by_folder.unwrap_or(false);
         Ok(app)
     }
 
@@ -292,7 +306,6 @@ impl App {
     /// file watcher and the first `git status`.
     pub fn on_start(&mut self) {
         vista_render::Highlighter::preload();
-        self.request_index();
         // The first search in a process pays one-time costs (thread pool, matcher
         // and ignore-rule setup, cold file cache); pay them in the background.
         let root = self.root.clone();
@@ -317,6 +330,12 @@ impl App {
                 Err(e) => self.notify(format!("file watching unavailable: {e}"), MsgKind::Error),
             }
         }
+        // Files created between reading the tree and the watcher starting
+        // sent no event: read again now that changes are being watched, and
+        // build the Go to File index after that point too.
+        self.project.tree.refresh_all();
+        self.project.rebuild(&self.status);
+        self.request_index();
         self.request_status();
     }
 
@@ -392,7 +411,8 @@ impl App {
         }
         // Neovim wraps long lines like the viewer did.
         let wrap = self.viewer.active_tab().map(|t| t.wrap);
-        let res = self.nvim.as_ref().map(|n| n.open(path, line, wrap));
+        let number = Some(self.line_numbers());
+        let res = self.nvim.as_ref().map(|n| n.open(path, line, wrap, number));
         if let Some(Err(e)) = res {
             self.notify(format!("editor: {e}"), MsgKind::Error);
             return;
@@ -500,7 +520,7 @@ impl App {
                 let _ = target.open_in(n);
             }
         } else if let Some(n) = &self.nvim {
-            let _ = n.open(&t.path, None, Some(t.wrap));
+            let _ = n.open(&t.path, None, Some(t.wrap), Some(self.line_numbers()));
             self.stop_diff_editing_tabs();
         }
     }
@@ -525,17 +545,17 @@ impl App {
             }
             NvimEvent::Wrap { path, wrap, diff } => {
                 // `:set wrap` / `:set nowrap` in Neovim carries over to the
-                // viewer (and back, when the editor opens the file again).
-                for t in &mut self.viewer.tabs {
-                    let shown = if diff {
-                        t.diff.is_some()
-                    } else {
-                        t.diff.is_none() && t.path == path
-                    };
-                    if t.editing && shown {
-                        t.wrap = wrap;
-                        t.hscroll = 0;
-                    }
+                // viewer (and back, when the editor opens a file again).
+                let shown = self.viewer.tabs.iter().find(|t| {
+                    t.editing
+                        && if diff {
+                            t.diff.is_some()
+                        } else {
+                            t.diff.is_none() && t.path == path
+                        }
+                });
+                if let Some(markdown) = shown.map(|t| vista_render::filetype::is_markdown_path(&t.path)) {
+                    self.set_wrap(markdown, wrap);
                 }
             }
             NvimEvent::Collapse(collapse) => {
@@ -549,6 +569,7 @@ impl App {
                         t.cursor = 0;
                     }
                 }
+                self.remember(|s| s.diff.collapse = Some(collapse));
             }
             NvimEvent::DiffClosed => {
                 // `:q` in the side-by-side editor: back to vista's diff.
@@ -702,7 +723,11 @@ impl App {
                 }
             })
             .unwrap_or_else(|| self.root.clone());
-        self.find = Some(FindPopup::new(query, dir));
+        let mut p = FindPopup::new(query, dir);
+        p.case = self.ui.find.case.unwrap_or(false);
+        p.word = self.ui.find.words.unwrap_or(false);
+        p.regex = self.ui.find.regex.unwrap_or(false);
+        self.find = Some(p);
         self.start_find();
     }
 
@@ -746,6 +771,22 @@ impl App {
     }
 
     fn find_key(&mut self, key: &KeyEvent) {
+        let opts = |p: &FindPopup| (p.case, p.word, p.regex);
+        let before = self.find.as_ref().map(opts);
+        self.find_key_inner(key);
+        // Case / words / regex are remembered (their keys keep the popup open).
+        if let (Some(b), Some(after)) = (before, self.find.as_ref().map(opts))
+            && b != after
+        {
+            self.remember(|s| {
+                s.find.case = Some(after.0);
+                s.find.words = Some(after.1);
+                s.find.regex = Some(after.2);
+            });
+        }
+    }
+
+    fn find_key_inner(&mut self, key: &KeyEvent) {
         let history = self.find_history.clone();
         let Some(p) = self.find.as_mut() else { return };
         match p.handle_key(key, &history) {
@@ -832,6 +873,16 @@ impl App {
     // ----- commit ----------------------------------------------------------
 
     fn commit_key(&mut self, key: &KeyEvent) -> bool {
+        let by_dir = self.commit.by_dir;
+        let handled = self.commit_key_inner(key);
+        if self.commit.by_dir != by_dir {
+            let on = self.commit.by_dir;
+            self.remember(|s| s.commit.group_by_folder = Some(on));
+        }
+        handled
+    }
+
+    fn commit_key_inner(&mut self, key: &KeyEvent) -> bool {
         let root = self.root.clone();
         match self.commit.handle_key(key, &self.status, &root) {
             CommitOutcome::Unhandled => return false,
@@ -1148,7 +1199,67 @@ impl App {
             tx: self.tx.clone(),
             git: self.git.clone(),
             images_enabled: self.picker.is_some(),
+            wrap_code: self.wrap_default(false),
+            wrap_markdown: self.wrap_default(true),
         }
+    }
+
+    // ----- remembered settings ----------------------------------------------
+
+    /// Line numbers in the viewer (and the editor).
+    pub fn line_numbers(&self) -> bool {
+        self.ui.viewer.line_numbers.unwrap_or(true)
+    }
+
+    /// Whether long lines wrap for Markdown or for code.
+    fn wrap_default(&self, markdown: bool) -> bool {
+        if markdown {
+            self.ui.viewer.wrap_markdown.unwrap_or(true)
+        } else {
+            self.ui.viewer.wrap_code.unwrap_or(false)
+        }
+    }
+
+    /// Changes the remembered settings and saves them if anything changed.
+    fn remember(&mut self, change: impl FnOnce(&mut vista_core::UiState)) {
+        let before = self.ui.clone();
+        change(&mut self.ui);
+        if self.ui != before
+            && let Err(e) = self.ui.save(&self.ui_path)
+        {
+            self.notify(format!("cannot save settings: {e}"), MsgKind::Error);
+        }
+    }
+
+    /// Wrapping for Markdown or code: remembered, and applied to every open
+    /// tab of that kind.
+    fn set_wrap(&mut self, markdown: bool, on: bool) {
+        self.remember(|s| {
+            if markdown {
+                s.viewer.wrap_markdown = Some(on);
+            } else {
+                s.viewer.wrap_code = Some(on);
+            }
+        });
+        for t in &mut self.viewer.tabs {
+            if vista_render::filetype::is_markdown_path(&t.path) == markdown && t.wrap != on {
+                t.wrap = on;
+                t.hscroll = 0;
+            }
+        }
+    }
+
+    /// Remembers the active diff's view options (`u`, `z`, `i`) for new diffs.
+    fn remember_diff_options(&mut self) {
+        let Some(Content::Diff(d)) = self.viewer.active_tab().map(|t| &t.content) else {
+            return;
+        };
+        let (unified, collapse, ws) = (d.unified, d.collapse, d.opts.ignore_whitespace);
+        self.remember(|s| {
+            s.diff.unified = Some(unified);
+            s.diff.collapse = Some(collapse);
+            s.diff.ignore_whitespace = Some(ws);
+        });
     }
 
     /// Cell size in pixels used to size images.
@@ -1183,6 +1294,7 @@ impl App {
             AppEvent::Nvim(e) => self.on_nvim(e),
             AppEvent::DiffLoaded { tab, generation, load } => {
                 let picker = self.picker.clone();
+                let diff_ui = self.ui.diff.clone();
                 if let Some(t) = self.viewer.tab_by_id_mut(tab)
                     && t.generation == generation
                 {
@@ -1207,6 +1319,12 @@ impl App {
                                 d.unified = prev.unified;
                                 d.collapse = prev.collapse;
                                 d.opts = prev.opts;
+                                d.rebuild();
+                            } else {
+                                // A new diff opens with the remembered options.
+                                d.unified = diff_ui.unified.unwrap_or(false);
+                                d.collapse = diff_ui.collapse.unwrap_or(false);
+                                d.opts.ignore_whitespace = diff_ui.ignore_whitespace.unwrap_or(false);
                                 d.rebuild();
                             }
                             let n = d.len();
@@ -1386,7 +1504,26 @@ impl App {
             && let Some(tab) = self.viewer.active_tab_mut()
         {
             match tab.handle_key(&key) {
-                ViewerOutcome::Handled => return,
+                ViewerOutcome::Handled => {
+                    if self.viewer.active_tab().is_some_and(|t| t.diff.is_some()) {
+                        self.remember_diff_options();
+                    }
+                    return;
+                }
+                ViewerOutcome::Wrap(on) => {
+                    let markdown = vista_render::filetype::is_markdown_path(&tab.path);
+                    self.set_wrap(markdown, on);
+                    let kind = if markdown { "Markdown" } else { "code" };
+                    self.notify(
+                        if on {
+                            format!("Long lines wrap ({kind}, w to scroll sideways)")
+                        } else {
+                            format!("Long lines scroll sideways ({kind}): ←/→, shift+wheel or the trackpad (w to wrap)")
+                        },
+                        MsgKind::Info,
+                    );
+                    return;
+                }
                 ViewerOutcome::OpenAt(line) => {
                     let path = tab.path.clone();
                     self.open_at(&path, Some(line + 1), false);
@@ -1690,6 +1827,8 @@ impl App {
             Action::CycleTheme => self.cycle_theme(),
             Action::ToggleIgnored => {
                 self.project.show_ignored = !self.project.show_ignored;
+                let shown = self.project.show_ignored;
+                self.remember(|s| s.tree.show_ignored = Some(shown));
                 self.project.rebuild(&self.status);
                 let state = if self.project.show_ignored { "shown" } else { "hidden" };
                 self.notify(format!("Ignored files {state}"), MsgKind::Info);
@@ -1723,6 +1862,11 @@ impl App {
                 self.sync_editor_buffer();
             }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
+            Action::ToggleLineNumbers => {
+                let on = !self.line_numbers();
+                self.remember(|s| s.viewer.line_numbers = Some(on));
+                self.notify(if on { "Line numbers on" } else { "Line numbers off" }, MsgKind::Info);
+            }
             Action::RevealFile => match self.viewer.active_tab().map(|t| t.path.clone()) {
                 Some(path) => {
                     self.left = Some(LeftPanel::Project);
@@ -1833,7 +1977,10 @@ impl App {
         let pos = ids.iter().position(|i| *i == self.theme.id).unwrap_or(0);
         let next = ids[(pos + 1) % ids.len()].clone();
         match self.set_theme(&next) {
-            Ok(()) => self.notify(format!("Look: {}", self.theme.name), MsgKind::Info),
+            Ok(()) => {
+                self.remember(|s| s.look = Some(next));
+                self.notify(format!("Look: {}", self.theme.name), MsgKind::Info);
+            }
             Err(e) => self.notify(e, MsgKind::Error),
         }
     }

@@ -92,6 +92,8 @@ pub struct Tab {
     pub wrap: bool,
     /// After the next load, put the cursor on the first (true) or last change.
     pub land: Option<bool>,
+    /// `wrap` has been set from the settings for this file's kind.
+    wrap_known: bool,
     /// Screen rows per line while wrapping (set when drawing; `None` means
     /// one row per line).
     pub row_heights: Option<Vec<usize>>,
@@ -125,6 +127,8 @@ pub enum ViewerOutcome {
     DiffFile(bool),
     /// Show the diff of this file against HEAD.
     ShowDiff,
+    /// `w` switched long-line wrapping (on = wrap).
+    Wrap(bool),
     /// Tick/untick a change of this file for the commit.
     ToggleHunk(u64, Vec<u64>),
     Info(&'static str),
@@ -287,6 +291,7 @@ impl Viewer {
             hscroll: 0,
             wrap: false,
             land: None,
+            wrap_known: false,
             row_heights: None,
             scroll_sub: None,
             scrolled: false,
@@ -367,6 +372,9 @@ pub struct LoadCtx {
     pub tx: Sender<AppEvent>,
     pub git: Option<Git>,
     pub images_enabled: bool,
+    /// Whether long lines wrap, for code and for Markdown (settings).
+    pub wrap_code: bool,
+    pub wrap_markdown: bool,
 }
 
 fn read_head(path: &Path, n: usize) -> std::io::Result<Vec<u8>> {
@@ -388,6 +396,14 @@ fn read_head(path: &Path, n: usize) -> std::io::Result<Vec<u8>> {
 pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
     tab.generation += 1;
     let path = tab.path.clone();
+    if !tab.wrap_known {
+        tab.wrap = if filetype::is_markdown_path(&path) {
+            ctx.wrap_markdown
+        } else {
+            ctx.wrap_code
+        };
+        tab.wrap_known = true;
+    }
     if let Some(spec) = tab.diff.clone() {
         if !matches!(tab.content, Content::Diff(_)) {
             tab.content = Content::DiffLoading;
@@ -430,9 +446,6 @@ pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
                 Content::Markdown { markers, rendered, .. } => (markers.clone(), rendered.clone()),
                 _ => (Markers::default(), None),
             };
-            if kind == FileKind::Markdown && !matches!(tab.content, Content::Markdown { .. }) {
-                tab.wrap = true;
-            }
             tab.content = if kind == FileKind::Markdown {
                 Content::Markdown {
                     source: text.clone(),
@@ -931,11 +944,7 @@ impl Tab {
             KeyCode::Char('w') if !ctrl => {
                 self.wrap = !self.wrap;
                 self.hscroll = 0;
-                return ViewerOutcome::Info(if self.wrap {
-                    "Long lines: wrap (w to scroll sideways)"
-                } else {
-                    "Long lines: scroll sideways with ←/→, shift+wheel or the trackpad (w to wrap)"
-                });
+                return ViewerOutcome::Wrap(self.wrap);
             }
             KeyCode::Char('m') if !ctrl => {
                 if let Content::Markdown { raw, .. } = &mut self.content {
@@ -983,6 +992,8 @@ mod tests {
                 tx,
                 git: None,
                 images_enabled: false,
+                wrap_code: false,
+                wrap_markdown: true,
             },
             rx,
         )

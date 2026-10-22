@@ -107,6 +107,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     }
     let focused = app.focus == Focus::Main;
     let font = app.font_size();
+    let numbers = app.line_numbers();
     let root = app.root.clone();
     // Split borrows: the tab is mutated (scroll, render cache) while the
     // theme and image cache are read.
@@ -127,11 +128,16 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     tab.row_heights = None;
     let t = &*theme;
     match &mut tab.content {
-        Content::Text { .. } => draw_code(f, area, tab, t, focused),
-        Content::Markdown { raw: true, .. } => draw_code(f, area, tab, t, focused),
+        Content::Text { .. } => draw_code(f, area, tab, t, focused, numbers),
+        Content::Markdown { raw: true, .. } => draw_code(f, area, tab, t, focused, numbers),
         Content::Markdown { .. } => {
             let base = tab.path.parent().map(Path::to_path_buf).unwrap_or_default();
-            let width = area.width.saturating_sub(2);
+            // Line numbers (source lines of each block) take a left column.
+            let gutter = match &tab.content {
+                Content::Markdown { lines, .. } if numbers => md_gutter(lines.len()),
+                _ => 0,
+            };
+            let width = area.width.saturating_sub(2 + gutter);
             let images_on = picker.is_some();
             let wide = !tab.wrap;
             if let Content::Markdown { source, rendered, .. } = &mut tab.content
@@ -150,7 +156,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
                 ));
                 crate::viewer::refresh_search(tab);
             }
-            draw_markdown(f, area, tab, t, &base, md_images, picker.as_ref(), tx);
+            draw_markdown(f, area, gutter, tab, t, &base, md_images, picker.as_ref(), tx);
         }
         Content::Image { info, state } => {
             let header = Rect { height: 1, ..area };
@@ -345,7 +351,8 @@ fn decorate(line: &StyledLine, tab: &Tab, idx: usize) -> StyledLine {
     l
 }
 
-fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, focused: bool) {
+fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, focused: bool, numbers: bool) {
+    let gutter_width = |n: usize| if numbers { gutter_width(n) } else { 2 };
     let (area, bar) = crate::ui::chrome::split_scrollbar(area);
     if tab.has_cursor() {
         tab.scroll_into_view();
@@ -403,7 +410,7 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
             if out.len() >= area.height as usize {
                 break;
             }
-            let num = if ri == 0 {
+            let num = if ri == 0 && numbers {
                 format!("{:>w$} ", idx + 1, w = gw - 3)
             } else {
                 " ".repeat(gw - 2)
@@ -441,9 +448,16 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Width of the line-number column in rendered Markdown (`lines` source lines).
+fn md_gutter(lines: usize) -> u16 {
+    lines.max(1).to_string().len() as u16 + 1
+}
+
+#[allow(clippy::too_many_arguments)]
 fn draw_markdown(
     f: &mut Frame,
     area: Rect,
+    gutter: u16,
     tab: &mut Tab,
     t: &vista_theme::Theme,
     base: &Path,
@@ -462,8 +476,8 @@ fn draw_markdown(
         .scroll
         .min(crate::viewer::max_scroll(rows.len(), area.height as usize));
     let text_area = Rect {
-        x: area.x + 1,
-        width: area.width.saturating_sub(2),
+        x: area.x + 1 + gutter,
+        width: area.width.saturating_sub(2 + gutter),
         ..area
     };
     // Wide tables scroll sideways; stop once the widest visible row is shown.
@@ -477,8 +491,19 @@ fn draw_markdown(
     tab.hscroll = tab.hscroll.min(widest.saturating_sub(text_area.width as usize));
     let hscroll = tab.hscroll;
     let mut out: Vec<Line> = Vec::new();
+    let mut nums: Vec<Line> = Vec::new();
     let mut image_rects: Vec<(PathBuf, Rect)> = Vec::new();
     for (i, row) in rows.iter().enumerate().skip(tab.scroll).take(area.height as usize) {
+        if gutter > 0 {
+            let w = gutter as usize - 1;
+            nums.push(Line::styled(
+                match row.src_line {
+                    Some(n) => format!("{n:>w$} "),
+                    None => " ".repeat(w + 1),
+                },
+                t.fg("ui.linenr"),
+            ));
+        }
         let decorated = decorate(&row.line, tab, i);
         let decorated = if hscroll > 0 {
             slice_cols(&decorated, hscroll, text_area.width as usize)
@@ -513,6 +538,16 @@ fn draw_markdown(
         out.push(line);
     }
     f.render_widget(Paragraph::new(out), text_area);
+    if gutter > 0 {
+        f.render_widget(
+            Paragraph::new(nums),
+            Rect {
+                x: area.x,
+                width: gutter,
+                ..area
+            },
+        );
+    }
     // The right margin column holds the scrollbar.
     if area.width > 2 {
         let bar = Rect {

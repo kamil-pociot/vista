@@ -217,23 +217,32 @@ impl Nvim {
     }
 
     /// Edits `path` (switching to its buffer if already loaded), optionally at
-    /// a 1-based line, with the window's `wrap` set when given.
-    pub fn open(&self, path: &Path, line: Option<usize>, wrap: Option<bool>) -> Result<(), RpcError> {
+    /// a 1-based line, with the window's `wrap` and `number` set when given.
+    pub fn open(
+        &self,
+        path: &Path,
+        line: Option<usize>,
+        wrap: Option<bool>,
+        number: Option<bool>,
+    ) -> Result<(), RpcError> {
         let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
         let wrap = wrap.map(Value::from).unwrap_or(Value::Nil);
+        let number = number.map(Value::from).unwrap_or(Value::Nil);
         self.lua(
             &format!(
                 "{CLOSE_DIFF}
              close()
-             local p, l, w = ...
+             local p, l, w, nu = ...
              -- Missing values arrive as vim.NIL, which is truthy.
              if l == vim.NIL then l = nil end
              if w == vim.NIL then w = nil end
+             if nu == vim.NIL then nu = nil end
              vim.cmd.edit(vim.fn.fnameescape(p))
              if w ~= nil then vim.wo.wrap = w end
+             if nu ~= nil then vim.wo.number = nu end
              if l then pcall(vim.api.nvim_win_set_cursor, 0, {{ l, 0 }}) end"
             ),
-            vec![Value::from(path.to_string_lossy().as_ref()), line, wrap],
+            vec![Value::from(path.to_string_lossy().as_ref()), line, wrap, number],
         )?;
         Ok(())
     }
@@ -406,7 +415,7 @@ mod tests {
             },
         )
         .unwrap();
-        nvim.open(&file, Some(1), None).unwrap();
+        nvim.open(&file, Some(1), None, None).unwrap();
         nvim.input("A world<Esc>").unwrap();
         let mut grid = Grid::default();
         let mut modified = false;

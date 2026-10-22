@@ -32,7 +32,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 | Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` or double-click diff |
 | Diff | `]`/`[` changes (past the last one: press again for the next file; it stops, without wrapping, at the end of the last changed file) · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `←`/`→`, shift+wheel or trackpad scroll sideways · `w` wrap · `u` unified · `i` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit side by side (Neovim diff mode: HEAD read-only left, working file right, re-diffed as you type; opens where the diff was, with line numbers; the sides stay aligned row by row — wrapped lines included — with blank rows on the shorter side and ╱ rows for missing lines, and scroll together; `:q` returns to the diff; it follows the diff's wrap and collapse settings, and `:set wrap` / `zi` there carry back) |
 
-Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge, and show a scrollbar measured in screen rows (wrapped lines count once per row). Markdown files (and their diffs) open wrapped; code opens scrolling sideways.
+`Shift-L` shows/hides line numbers (code, and source lines of each block in rendered Markdown). Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge, and show a scrollbar measured in screen rows (wrapped lines count once per row). Markdown files (and their diffs) open wrapped; code opens scrolling sideways.
 
 ## Configuration
 
@@ -57,6 +57,10 @@ folder_colours = true
 "ctrl+o" = "goto-file"       # bind
 "q" = "none"                 # unbind
 ```
+
+### Remembered settings
+
+View settings you change in the app are saved to `state.toml` next to `config.toml` and restored on the next run: line numbers, wrapping (separately for Markdown and code), the diff's unified/collapse/whitespace options, Commit-window grouping, showing ignored files, Find in Files case/words/regex, and the look picked with `Ctrl-T`. Until you change one, the default comes from `config.toml` (or vista's built-in). `--theme` and `VISTA_THEME` still win over the remembered look. Delete `state.toml` to reset.
 
 ## Looks
 

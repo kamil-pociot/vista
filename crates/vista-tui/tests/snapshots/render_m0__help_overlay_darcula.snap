@@ -26,13 +26,13 @@ expression: "vista_tui::testing::text(&buf)"
                        │               Ctrl-K  Commit                       │
                        │           F5, Ctrl-R  Refresh                      │
                        │                    i  Show/hide ignored files      │
+                       │              Shift-L  Show/hide line numbers       │
                        │       Alt-F1, Ctrl-L  Reveal current file in tree  │
                        │                    -  Collapse all folders         │
                        │               Ctrl-T  Switch to next look          │
                        │           Ctrl-Alt-↓  Next Find result             │
                        │           Ctrl-Alt-↑  Previous Find result         │
                        └ any key to close ──────────────────────────────────┘
-                            │
                             │
                             │
  1: Project   0: Commit   3: Find   ?: Help                                         Darcula Classic

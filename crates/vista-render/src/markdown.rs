@@ -27,6 +27,9 @@ pub struct MdLine {
     /// Background token for the whole row (code blocks).
     pub fill: Option<&'static str>,
     pub image: Option<ImageSlot>,
+    /// The source line (1-based) this row starts, for line numbers: set on
+    /// the first row of each block (and every row of a code block).
+    pub src_line: Option<usize>,
 }
 
 impl MdLine {
@@ -35,6 +38,7 @@ impl MdLine {
             line,
             fill: None,
             image: None,
+            src_line: None,
         }
     }
 }
@@ -48,6 +52,8 @@ enum Container {
 struct Table {
     aligns: Vec<Alignment>,
     rows: Vec<Vec<StyledLine>>,
+    /// Source line of each row.
+    row_lines: Vec<usize>,
     head_rows: usize,
 }
 
@@ -74,6 +80,14 @@ struct Renderer<'a> {
     code: Option<(String, String)>,
     table: Option<Table>,
     image: Option<(String, String)>,
+    /// Byte offset where each source line starts.
+    line_starts: Vec<usize>,
+    /// Source line of the event being handled.
+    cur_line: usize,
+    /// Source line for the next row written (a block just started).
+    pending_line: Option<usize>,
+    /// First source line of the code block being collected.
+    code_line: usize,
 }
 
 const BULLETS: &[&str] = &["• ", "◦ ", "▪ "];
@@ -114,6 +128,19 @@ impl<'a> Renderer<'a> {
             }
         }
         p
+    }
+
+    /// Writes a row; the first one after a block starts carries its line.
+    fn emit(&mut self, mut l: MdLine) {
+        if l.src_line.is_none() {
+            l.src_line = self.pending_line.take();
+        }
+        self.out.push(l);
+    }
+
+    /// The next row starts a block at the current source line.
+    fn block_starts(&mut self) {
+        self.pending_line = Some(self.cur_line);
     }
 
     fn blank(&mut self) {
@@ -169,7 +196,7 @@ impl<'a> Renderer<'a> {
             };
             first = false;
             line.extend(row);
-            self.out.push(MdLine::text(line));
+            self.emit(MdLine::text(line));
         }
     }
 
@@ -177,7 +204,7 @@ impl<'a> Renderer<'a> {
         let mut line = self.prefix(false);
         let w = self.width.saturating_sub(line_width(&line));
         line.push(StyledSpan::new(ch.repeat(w), TokStyle::fg(token)));
-        self.out.push(MdLine::text(line));
+        self.emit(MdLine::text(line));
     }
 
     fn code_block(&mut self, lang: &str, code: &str) {
@@ -186,15 +213,17 @@ impl<'a> Renderer<'a> {
         } else {
             self.hl.highlight_lang(lang, code)
         };
-        for l in lines {
+        self.pending_line = None;
+        for (k, l) in lines.into_iter().enumerate() {
             let mut line = self.prefix(true);
             line.push(StyledSpan::new("  ", TokStyle::default()));
             let avail = self.width.saturating_sub(line_width(&line));
             line.extend(slice_cols(&l, 0, avail));
-            self.out.push(MdLine {
+            self.emit(MdLine {
                 line,
                 fill: Some("ui.panel.alt"),
                 image: None,
+                src_line: Some(self.code_line + k),
             });
         }
     }
@@ -208,9 +237,10 @@ impl<'a> Renderer<'a> {
                     if row == 0 {
                         line.push(StyledSpan::new(format!("[image: {alt}]"), TokStyle::fg("ui.dim")));
                     }
-                    self.out.push(MdLine {
+                    self.emit(MdLine {
                         line,
                         fill: None,
+                        src_line: None,
                         image: Some(ImageSlot {
                             src: src.clone(),
                             alt: alt.clone(),
@@ -260,7 +290,7 @@ impl<'a> Renderer<'a> {
             }
             vec![StyledSpan::new(s, border)]
         };
-        let mut lines: Vec<StyledLine> = vec![edge("┌", "┬", "┐", "─")];
+        let mut lines: Vec<(StyledLine, Option<usize>)> = vec![(edge("┌", "┬", "┐", "─"), None)];
         for (ri, row) in table.rows.iter().enumerate() {
             // Each cell as rows of at most its column's width.
             let cells: Vec<Vec<StyledLine>> = widths
@@ -297,19 +327,24 @@ impl<'a> Renderer<'a> {
                     line.push(StyledSpan::new(" ".repeat(right + 1), TokStyle::default()));
                     line.push(StyledSpan::new("│", border));
                 }
-                lines.push(line);
+                let src = (k == 0).then(|| table.row_lines.get(ri).copied()).flatten();
+                lines.push((line, src));
             }
             if ri + 1 == table.head_rows {
-                lines.push(edge("╞", "╪", "╡", "═"));
+                lines.push((edge("╞", "╪", "╡", "═"), None));
             } else if ri + 1 < table.rows.len() {
-                lines.push(edge("├", "┼", "┤", "─"));
+                lines.push((edge("├", "┼", "┤", "─"), None));
             }
         }
-        lines.push(edge("└", "┴", "┘", "─"));
-        for l in lines {
+        lines.push((edge("└", "┴", "┘", "─"), None));
+        self.pending_line = None;
+        for (l, src) in lines {
             let mut line = self.prefix(true);
             line.extend(l);
-            self.out.push(MdLine::text(line));
+            self.emit(MdLine {
+                src_line: src,
+                ..MdLine::text(line)
+            });
         }
     }
 
@@ -340,9 +375,13 @@ impl<'a> Renderer<'a> {
             Event::Rule => {
                 self.flush();
                 self.maybe_blank();
+                self.block_starts();
                 self.rule("─", "ui.dim");
             }
             Event::Html(t) | Event::InlineHtml(t) => {
+                if self.inline.is_empty() && self.pending_line.is_none() {
+                    self.block_starts();
+                }
                 for (i, part) in t.trim_end_matches('\n').split('\n').enumerate() {
                     if i > 0 {
                         self.flush();
@@ -373,10 +412,14 @@ impl<'a> Renderer<'a> {
 
     fn start(&mut self, tag: Tag) {
         match tag {
-            Tag::Paragraph => self.maybe_blank(),
+            Tag::Paragraph => {
+                self.maybe_blank();
+                self.block_starts();
+            }
             Tag::Heading { level, .. } => {
                 self.flush();
                 self.maybe_blank();
+                self.block_starts();
                 self.heading = Some(level);
                 let style = match level {
                     HeadingLevel::H1 | HeadingLevel::H2 | HeadingLevel::H3 => TokStyle::fg("syntax.heading").bold(),
@@ -393,6 +436,8 @@ impl<'a> Renderer<'a> {
             Tag::CodeBlock(kind) => {
                 self.flush();
                 self.maybe_blank();
+                // Fenced code starts on the line after the fence.
+                self.code_line = self.cur_line + usize::from(matches!(kind, CodeBlockKind::Fenced(_)));
                 let lang = match kind {
                     CodeBlockKind::Fenced(l) => l.to_string(),
                     CodeBlockKind::Indented => String::new(),
@@ -426,6 +471,7 @@ impl<'a> Renderer<'a> {
                     None => BULLETS[0].to_string(),
                 };
                 self.containers.push(Container::Item { marker, used: false });
+                self.block_starts();
             }
             Tag::Emphasis => self.push_style(|s| s.italic()),
             Tag::Strong => self.push_style(|s| s.bold()),
@@ -441,12 +487,15 @@ impl<'a> Renderer<'a> {
                 self.table = Some(Table {
                     aligns,
                     rows: Vec::new(),
+                    row_lines: Vec::new(),
                     head_rows: 0,
                 });
             }
             Tag::TableHead | Tag::TableRow => {
+                let line = self.cur_line;
                 if let Some(t) = self.table.as_mut() {
                     t.rows.push(Vec::new());
+                    t.row_lines.push(line);
                 }
             }
             Tag::TableCell => {
@@ -490,7 +539,7 @@ impl<'a> Renderer<'a> {
                 if self.in_item_unused() {
                     // Empty item: still show its marker.
                     let line = self.prefix(true);
-                    self.out.push(MdLine::text(line));
+                    self.emit(MdLine::text(line));
                 }
                 self.containers.pop();
             }
@@ -618,8 +667,15 @@ pub fn render_with(
         code: None,
         table: None,
         image: None,
+        line_starts: std::iter::once(0)
+            .chain(src.match_indices('\n').map(|(i, _)| i + 1))
+            .collect(),
+        cur_line: 1,
+        pending_line: None,
+        code_line: 1,
     };
-    for ev in Parser::new_ext(src, opts) {
+    for (ev, range) in Parser::new_ext(src, opts).into_offset_iter() {
+        r.cur_line = r.line_starts.partition_point(|&s| s <= range.start);
         r.event(ev);
     }
     r.flush();
@@ -736,6 +792,36 @@ mod tests {
         assert!(t.iter().any(|l| l.chars().count() > 24), "wider than the view: {t:#?}");
         let widths: Vec<usize> = t.iter().map(|l| l.chars().count()).collect();
         assert!(widths.iter().all(|w| *w == widths[0]), "all rows line up: {t:#?}");
+    }
+
+    #[test]
+    fn rows_carry_the_source_line_of_their_block() {
+        let src = "# Title\n\nA paragraph that is long enough to wrap onto a second row here.\n\n- one\n- two\n\n```rust\nfn a() {}\nfn b() {}\n```\n\n| K | V |\n|---|---|\n| a | 1 |\n| b | 2 |\n";
+        let out = md(src, 30);
+        let by_line = |n: usize| {
+            out.iter()
+                .find(|l| l.src_line == Some(n))
+                .map(|l| line_text(&l.line))
+                .unwrap_or_default()
+        };
+        assert!(by_line(1).contains("Title"), "{:?}", by_line(1));
+        assert!(by_line(3).contains("A paragraph"));
+        assert!(by_line(5).contains("one"));
+        assert!(by_line(6).contains("two"));
+        assert!(by_line(9).contains("fn a"));
+        assert!(by_line(10).contains("fn b"));
+        assert!(by_line(13).contains('K'));
+        assert!(by_line(15).contains('a'));
+        assert!(by_line(16).contains('b'));
+        // Wrapped rows and spacing rows have no number; each number appears once.
+        let numbered: Vec<usize> = out.iter().filter_map(|l| l.src_line).collect();
+        let mut dedup = numbered.clone();
+        dedup.dedup();
+        assert_eq!(numbered, dedup, "{numbered:?}");
+        assert!(
+            out.iter()
+                .any(|l| l.src_line.is_none() && line_text(&l.line).contains("second"))
+        );
     }
 
     #[test]

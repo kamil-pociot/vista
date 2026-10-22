@@ -84,11 +84,11 @@ fn viewer_scrolls_sideways_with_shift_wheel_and_wraps() {
     }
     vista.expect_text("TAILMARK");
     vista.press("w");
-    vista.expect_text("Long lines: wrap");
+    vista.expect_text("Long lines wrap (code");
     vista.expect_text("start word");
     vista.expect_text("TAILMARK");
     vista.press("w");
-    vista.expect_text("Long lines: scroll sideways");
+    vista.expect_text("Long lines scroll sideways (code)");
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn wrapped_viewer_reaches_the_last_line() {
     let mut vista = Vista::launch(BIN, &repo).size(120, 30).open("notes.txt").start();
     vista.expect_text("P01");
     vista.press("w");
-    vista.expect_text("Long lines: wrap");
+    vista.expect_text("Long lines wrap (code");
     vista.expect_text("END01");
     assert!(!thumb_rows(&vista).is_empty(), "scrollbar:\n{}", vista.screen_text());
     for _ in 0..150 {
