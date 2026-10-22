@@ -226,6 +226,9 @@ impl Nvim {
                 "{CLOSE_DIFF}
              close()
              local p, l, w = ...
+             -- Missing values arrive as vim.NIL, which is truthy.
+             if l == vim.NIL then l = nil end
+             if w == vim.NIL then w = nil end
              vim.cmd.edit(vim.fn.fnameescape(p))
              if w ~= nil then vim.wo.wrap = w end
              if l then pcall(vim.api.nvim_win_set_cursor, 0, {{ l, 0 }}) end"

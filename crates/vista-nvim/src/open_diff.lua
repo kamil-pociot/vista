@@ -4,6 +4,12 @@
 -- top line (working file, or HEAD when only HEAD has the top row), left
 -- column, wrap, collapse.
 local p, head, label, l, top, top_head, leftcol, wrap, collapse = ...
+-- Missing values arrive as vim.NIL, which is truthy.
+local function given(v)
+  if v == vim.NIL then return nil end
+  return v
+end
+l, top, top_head, leftcol = given(l), given(top), given(top_head), given(leftcol)
 close()
 vim.g.vista_stal = vim.o.showtabline
 vim.o.showtabline = 0
@@ -11,6 +17,9 @@ vim.o.showtabline = 0
 -- filler can't account for wrapping, so it's off while the diff is open.
 vim.g.vista_dip = vim.o.diffopt
 vim.opt.diffopt:remove('filler')
+-- linematch adds Neovim's filler regardless; vista's pairing still uses it
+-- (from the saved diffopt).
+vim.o.diffopt = vim.o.diffopt:gsub(',?linematch:%d+', '')
 
 vim.cmd.tabedit(vim.fn.fnameescape(p))
 vim.t.vista_diff = true
@@ -174,10 +183,17 @@ local function sync(from)
   local cur = vim.api.nvim_win_call(to, vim.fn.winsaveview)
   if cur.topline == want.topline and (cur.topfill or 0) == topfill and cur.leftcol == v.leftcol then return end
   programmatic[to] = true
+  -- Keep that side's cursor on a line fully in view (counting wrapped rows
+  -- and padding), or Neovim scrolls back to it.
+  local height = vim.api.nvim_win_get_height(to)
+  local last, used = lo, topfill + T.h[lo]
+  while last < T.n and used + T.pad[last + 1] + T.h[last + 1] <= height do
+    last = last + 1
+    used = used + T.pad[last] + T.h[last]
+  end
+  local lnum = math.max(lo, math.min(cur.lnum, last))
   vim.api.nvim_win_call(to, function()
-    -- Keep that side's cursor inside its view, or Neovim scrolls back to it.
-    local lnum = math.max(lo, math.min(cur.lnum, lo + vim.api.nvim_win_get_height(to) - 1))
-    vim.fn.winrestview({ topline = lo, topfill = topfill, leftcol = v.leftcol, lnum = math.min(lnum, T.n) })
+    vim.fn.winrestview({ topline = lo, topfill = topfill, leftcol = v.leftcol, lnum = lnum })
   end)
 end
 

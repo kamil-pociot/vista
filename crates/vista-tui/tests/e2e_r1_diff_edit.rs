@@ -299,3 +299,59 @@ fn diff_editor_aligns_wrapped_lines_and_opens_where_the_diff_was() {
         s.contents().lines().any(|l| labels(l) == ["P09", "P09"])
     });
 }
+
+/// A long file: every third line wraps; line 20 changes, and two lines are
+/// inserted after a changed line 190.
+fn long_doc_repo() -> Repo {
+    let line = |i: usize| {
+        if i.is_multiple_of(3) {
+            format!("Line {i} {}end{i}\n", "some prose words ".repeat(8))
+        } else {
+            format!("Line {i} short\n")
+        }
+    };
+    let old: String = (1..=260).map(line).collect();
+    let new = old
+        .replace("Line 20 short\n", "Line 20 CHANGED\n")
+        .replace("Line 190 short\n", "Line 190 CHANGED\nInserted A\nInserted B\n");
+    Fixture::git()
+        .file("doc.md", old)
+        .commit("init")
+        .modify("doc.md", new)
+        .build()
+}
+
+#[test]
+fn diff_editor_opens_on_the_cursor_line_of_a_long_file_with_exact_filler() {
+    if !vista_nvim::available("nvim") {
+        eprintln!("nvim not installed; skipping");
+        return;
+    }
+    let repo = long_doc_repo();
+    let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).size(150, 40).start();
+    vista.expect_text("doc.md");
+    vista.press("alt+0");
+    vista.expect_text("Changes  ");
+    let (row, col) = vista.expect_text_in("doc.md", 0..44).position();
+    vista.click(col, row);
+    vista.press("enter");
+    vista.expect_text("change 1 of 2");
+    // Change 2, then down to "Inserted B" (working-tree line 192).
+    vista.press("]");
+    vista.press("down");
+    vista.press("down");
+    vista.expect_text("192:1");
+    vista.press("e");
+    vista.expect_text("HEAD ");
+    // Same cursor line and the same top line as the diff (it used to open
+    // around line 35: a missing value read as "start from HEAD line").
+    vista.expect_text("192,1");
+    expect_side_by_side(&mut vista, "187 Line 187 short", "187 Line 187 short");
+    // Two inserted lines → exactly two ╱ rows opposite, and none of Neovim's
+    // own filler on top (linematch used to add a second set).
+    expect_side_by_side(&mut vista, "190 Line 190 short", "190 Line 190 CHANGED");
+    expect_side_by_side(&mut vista, "╱╱╱", "191 Inserted A");
+    expect_side_by_side(&mut vista, "╱╱╱", "192 Inserted B");
+    expect_side_by_side(&mut vista, "191 Line 191 short", "193 Line 191 short");
+    vista.expect_no_text("-----");
+}
