@@ -374,6 +374,23 @@ impl Vista {
         self.send_raw(&keys::mouse(65, col, row, true));
     }
 
+    /// A trackpad swipe to the right (horizontal wheel).
+    pub fn scroll_right(&mut self, col: u16, row: u16) {
+        self.record(format!("scroll right ({col}, {row})"));
+        self.send_raw(&keys::mouse(67, col, row, true));
+    }
+
+    pub fn scroll_left(&mut self, col: u16, row: u16) {
+        self.record(format!("scroll left ({col}, {row})"));
+        self.send_raw(&keys::mouse(66, col, row, true));
+    }
+
+    /// Shift + wheel down: sideways in most editors.
+    pub fn shift_scroll_down(&mut self, col: u16, row: u16) {
+        self.record(format!("shift+scroll down ({col}, {row})"));
+        self.send_raw(&keys::mouse(65 | 4, col, row, true));
+    }
+
     pub fn scroll_up(&mut self, col: u16, row: u16) {
         self.record(format!("scroll up ({col}, {row})"));
         self.send_raw(&keys::mouse(64, col, row, true));

@@ -138,6 +138,24 @@ impl DiffDoc {
         (0..self.len()).find(|i| self.row_of(*i).and_then(|r| self.sbs.rows[r].hunk) == Some(idx))
     }
 
+    /// Width of the widest line on either side among `count` display rows
+    /// from `from` (limits sideways scrolling).
+    pub fn widest(&self, from: usize, count: usize) -> usize {
+        let width = |lines: &[StyledLine], i: Option<usize>| {
+            i.and_then(|i| lines.get(i))
+                .map(vista_render::styled::line_width)
+                .unwrap_or(0)
+        };
+        (from..(from + count).min(self.len()))
+            .filter_map(|i| self.row_of(i))
+            .map(|r| {
+                let row = &self.sbs.rows[r];
+                width(&self.old_hl, row.left).max(width(&self.new_hl, row.right))
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
     /// The working-tree line (0-based) for a display row, if any.
     pub fn new_line_at(&self, i: usize) -> Option<usize> {
         let r = self.row_of(i)?;
@@ -171,7 +189,7 @@ pub fn handle_key(doc: &mut DiffDoc, key: &KeyEvent, cursor: usize) -> DiffKey {
     }
     match key.code {
         KeyCode::Char('u') => doc.unified = !doc.unified,
-        KeyCode::Char('w') => {
+        KeyCode::Char('i') => {
             doc.opts.ignore_whitespace = !doc.opts.ignore_whitespace;
             doc.rebuild();
         }
@@ -181,7 +199,7 @@ pub fn handle_key(doc: &mut DiffDoc, key: &KeyEvent, cursor: usize) -> DiffKey {
         }
         KeyCode::Char(' ') => {
             if doc.opts.ignore_whitespace {
-                return DiffKey::Info("Turn off ignore-whitespace (w) to pick changes");
+                return DiffKey::Info("Turn off ignore-whitespace (i) to pick changes");
             }
             return match doc.hunk_at(cursor) {
                 Some(id) => DiffKey::ToggleHunk(id, doc.sbs.hunks.iter().map(|h| h.id).collect()),
@@ -313,7 +331,7 @@ mod tests {
     fn whitespace_toggle_hides_indent_only_changes() {
         let mut d = doc("a\n  b\n", "a\n    b\n");
         assert_eq!(d.hunk_starts().len(), 1);
-        handle_key(&mut d, &KeyEvent::from(KeyCode::Char('w')), 0);
+        handle_key(&mut d, &KeyEvent::from(KeyCode::Char('i')), 0);
         assert!(d.hunk_starts().is_empty());
     }
 }

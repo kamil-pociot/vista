@@ -361,6 +361,16 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Commit only the selected changes, working tree untouched. Instead of a patch and `apply --cached`, vista rebuilds the file from HEAD plus the ticked changes (`vista_diff::partial_content`), stores it with `hash-object -w` and puts that blob in the temporary commit index. No patch context can go stale or fail to apply. Exclusions are stable content-hash ids, so they survive edits elsewhere in the file, and they reset after a successful commit.
 - [x] Tests: proptest: no exclusions gives the new text, all excluded gives the old text, and excluding a change keeps exactly its old lines. E2e: tick 1 of 3 changes, commit, and `show HEAD:` holds exactly that change while the working tree still has all three and the diff shows "2 of 2". Also: tick a single change of an unticked file, and picking is blocked while ignoring whitespace.
 
+### Feedback round 1 ✅
+- [x] Long lines: `w` toggles wrap ⇄ scroll sideways in the viewer **and** the diff (both diff sides scroll together; wrapped diff rows stay aligned). Sideways: `←`/`→`, shift+wheel, trackpad. Ignore-whitespace in the diff moved to `i`.
+- [x] Markdown tables show every value: cells wrap to fit with a rule between rows (default), or `w` keeps full-width rows that scroll sideways. Nothing is cut to `…` any more.
+- [x] Scroll past the end: the last line can rise to ~30% above the bottom edge (viewer, rendered Markdown, diff).
+- [x] Double-click opens from every list (tree, Commit window, Find results, Go to File); one 500 ms detector.
+- [x] IntelliJ-style next/previous change across files: at the last change a popup says "Press ] again to go to b.txt"; the second press opens it on its first change (backwards: the previous file's last change). Works in diffs and in the plain viewer. Any other key dismisses the offer.
+- [x] No F-keys needed: `]`/`[` changes, `?` help, `Ctrl-R` refresh, `Ctrl-L` reveal in tree. Hints and help show the short key first.
+- [x] Fixed: clicking below the last Commit-list row panicked in debug builds (overflow).
+- [x] Tests: Markdown table units (wrap, rules, alignment, wide), scroll-limit and landing units, `e2e_r1_feedback` (7 PTY tests: diff sideways + wrap, viewer shift-wheel, tables both modes, scroll past end, double-click, cross-file changes in diff and viewer).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

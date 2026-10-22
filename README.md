@@ -24,15 +24,15 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 | Where | Keys |
 |---|---|
 | Anywhere | `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-0` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
-| Project tree | arrows / `hjkl`, `Enter` open, `e` edit in Neovim, `i` show/hide ignored, `-` collapse all, `F5` refresh |
-| Viewer | `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap, `m` Markdown raw/rendered, `d` diff vs HEAD, `F7`/`Shift-F7` next/previous change, `e` edit, `Alt-F1` reveal in tree |
+| Project tree | arrows / `hjkl`, `Enter` or double-click open, `e` edit in Neovim, `i` show/hide ignored, `-` collapse all, `Ctrl-R` refresh |
+| Viewer | `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
 | Editor (Neovim) | everything goes to Neovim; `Ctrl-\` back to the tree; `:w` saves and refreshes git colours |
 | Go to File | type a few letters (`FoBaCo`, `stat`, `name:42`), `Enter` view, `Alt-Enter` edit, `Tab` scopes, `Alt-I` include ignored |
 | Find in Files | `Alt-C` case · `Alt-W` words · `Alt-X` regex · `Alt-S` scope · `Tab` file mask (`*.md, !archive/**`) · `Alt-↑↓` history · `Enter` open · `Alt-O` to the Find window · `Ctrl-Alt-↓/↑` next/previous result |
-| Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` diff |
-| Diff | `F7`/`Shift-F7` changes · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `u` unified · `w` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit |
+| Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` or double-click diff |
+| Diff | `]`/`[` changes (past the last one: press again for the next file) · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `←`/`→`, shift+wheel or trackpad scroll sideways · `w` wrap · `u` unified · `i` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit |
 
-Every shortcut can be changed in the config.
+Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge.
 
 ## Configuration
 

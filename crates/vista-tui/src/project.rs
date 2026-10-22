@@ -18,7 +18,7 @@ pub enum Outcome {
     Unhandled,
 }
 
-const DOUBLE_CLICK: Duration = Duration::from_millis(450);
+const DOUBLE_CLICK: Duration = Duration::from_millis(500);
 
 pub struct ProjectView {
     pub tree: FileTree,

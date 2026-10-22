@@ -130,13 +130,20 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             let base = tab.path.parent().map(Path::to_path_buf).unwrap_or_default();
             let width = area.width.saturating_sub(2);
             let images_on = picker.is_some();
+            let wide = !tab.wrap;
             if let Content::Markdown { source, rendered, .. } = &mut tab.content
-                && rendered.as_ref().is_none_or(|(w, _)| *w != width)
+                && rendered.as_ref().is_none_or(|(w, wd, _)| *w != width || *wd != wide)
             {
                 let rows = |src: &str| md_image_rows(&base, src, width, font, images_on);
+                let tables = if wide {
+                    markdown::Tables::Wide
+                } else {
+                    markdown::Tables::Wrap
+                };
                 *rendered = Some((
                     width,
-                    markdown::render(source, width as usize, Highlighter::global(), &rows),
+                    wide,
+                    markdown::render_with(source, width as usize, tables, Highlighter::global(), &rows),
                 ));
                 crate::viewer::refresh_search(tab);
             }
@@ -423,23 +430,39 @@ fn draw_markdown(
     tx: &std::sync::mpsc::Sender<crate::event::AppEvent>,
 ) {
     let Content::Markdown {
-        rendered: Some((_, rows)),
+        rendered: Some((_, _, rows)),
         ..
     } = &tab.content
     else {
         return;
     };
-    let max_scroll = rows.len().saturating_sub(area.height as usize);
-    tab.scroll = tab.scroll.min(max_scroll);
+    tab.scroll = tab
+        .scroll
+        .min(crate::viewer::max_scroll(rows.len(), area.height as usize));
     let text_area = Rect {
         x: area.x + 1,
         width: area.width.saturating_sub(2),
         ..area
     };
+    // Wide tables scroll sideways; stop once the widest visible row is shown.
+    let widest = rows
+        .iter()
+        .skip(tab.scroll)
+        .take(area.height as usize)
+        .map(|r| line_width(&r.line))
+        .max()
+        .unwrap_or(0);
+    tab.hscroll = tab.hscroll.min(widest.saturating_sub(text_area.width as usize));
+    let hscroll = tab.hscroll;
     let mut out: Vec<Line> = Vec::new();
     let mut image_rects: Vec<(PathBuf, Rect)> = Vec::new();
     for (i, row) in rows.iter().enumerate().skip(tab.scroll).take(area.height as usize) {
         let decorated = decorate(&row.line, tab, i);
+        let decorated = if hscroll > 0 {
+            slice_cols(&decorated, hscroll, text_area.width as usize)
+        } else {
+            decorated
+        };
         let mut line = styled_line(t, &decorated);
         if let Some(fill) = row.fill {
             let used = line_width(&decorated);
@@ -449,6 +472,7 @@ fn draw_markdown(
         }
         if let Some(slot) = &row.image
             && slot.row == 0
+            && hscroll == 0
         {
             let y = area.y + (i - tab.scroll) as u16;
             let fits = (y + slot.rows) <= area.y + area.height;
@@ -530,4 +554,31 @@ pub fn draw_recent(f: &mut Frame, area: Rect, app: &App) {
         lines.push(Line::styled(" No recent files", t.fg("ui.dim")));
     }
     f.render_widget(Paragraph::new(lines), inner);
+}
+
+/// "Press ] again to go to <file>" near the bottom of the editor area.
+pub fn draw_change_hop(f: &mut Frame, area: Rect, app: &App) {
+    let Some(hop) = &app.change_hop else { return };
+    let t = &app.theme;
+    let w = (unicode_width::UnicodeWidthStr::width(hop.text.as_str()) as u16 + 4).min(area.width);
+    if area.height < 5 || w < 10 {
+        return;
+    }
+    let rect = Rect {
+        x: area.x + (area.width - w) / 2,
+        y: area.y + area.height - 4,
+        width: w,
+        height: 3,
+    };
+    f.render_widget(ratatui::widgets::Clear, rect);
+    let block = ratatui::widgets::Block::new()
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(t.fg("ui.popup.border"))
+        .style(t.fg_bg("ui.text", "ui.popup"));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    f.render_widget(
+        Paragraph::new(Span::styled(format!(" {}", hop.text), t.fg("ui.text"))),
+        inner,
+    );
 }

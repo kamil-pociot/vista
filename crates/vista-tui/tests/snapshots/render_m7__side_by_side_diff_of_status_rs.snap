@@ -4,7 +4,7 @@ expression: snap
 ---
  <root>                                                                                   Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  Δ status.rs
- status.rs  crates/fb-git/src                                                                         5 of 5 in commit (␣)   ⇧F7 ◂ change 1 of 5 ▸ F7
+ status.rs  crates/fb-git/src                                                                            5 of 5 in commit (␣)   [ ◂ change 1 of 5 ▸ ]
  HEAD · c22c251 (read-only)                                                  Working tree
   1 use std::path::{Path, PathBuf};                                           1 use std::path::{Path, PathBuf};
   2                                                                           2
@@ -40,7 +40,7 @@ expression: snap
 
 
 
- u unified  w whitespace  z collapse  J/K file  ⏎ open  e edit                                     side-by-side · whitespace: compare · collapse: off
+ u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit             side-by-side · whitespace: compare · lines: scroll · collapse: off
  1: Project   0: Commit   3: Find   ?: Help                                                                    4 changed · 2 unversioned   3:1   Diff
 --- styles ---
   0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..120 fg=ui.text bg=ui.panel] [120..126 fg=ui.dim bg=ui.panel] [126..143 fg=ui.text bg=ui.panel] [143..145 fg=ui.dim bg=ui.panel] [145..150 fg=ui.text bg=ui.panel]
@@ -77,5 +77,5 @@ expression: snap
  31: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..89 fg=ui.text bg=diff.inserted] [89..93 fg=syntax.keyword bg=diff.inserted] [93..102 fg=ui.text bg=diff.inserted] [102..110 fg=syntax.function bg=diff.inserted] [110..150 fg=ui.text bg=diff.inserted]
  32: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..150 fg=ui.text bg=diff.inserted]
  33: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 38: [0..62 fg=ui.dim bg=ui.panel] [62..99 fg=ui.text bg=ui.panel] [99..150 fg=ui.dim bg=ui.panel]
+ 38: [0..70 fg=ui.dim bg=ui.panel] [70..83 fg=ui.text bg=ui.panel] [83..150 fg=ui.dim bg=ui.panel]
  39: [0..45 fg=ui.header bg=ui.panel] [45..111 fg=ui.text bg=ui.panel] [111..120 fg=git.modified bg=ui.panel] [120..123 fg=ui.dim bg=ui.panel] [123..136 fg=git.unversioned bg=ui.panel] [136..145 fg=ui.text bg=ui.panel] [145..150 fg=ui.dim bg=ui.panel]

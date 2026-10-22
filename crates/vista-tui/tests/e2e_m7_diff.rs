@@ -59,10 +59,10 @@ fn unified_whitespace_and_collapse_toggles() {
     diff_of(&mut vista, "a.rs");
     vista.expect_text("change 1 of 2");
     // Ignore whitespace: the indentation-only change disappears.
-    vista.press("w");
+    vista.press("i");
     vista.expect_text("whitespace: ignore");
     vista.expect_text("change 1 of 1");
-    vista.press("w");
+    vista.press("i");
     // Collapse unchanged regions.
     vista.press("z");
     vista.expect_text("unchanged lines");

@@ -40,8 +40,8 @@ pub enum Content {
         lines: Vec<StyledLine>,
         markers: Markers,
         raw: bool,
-        /// Rendered for a width: (width, lines).
-        rendered: Option<(u16, Vec<MdLine>)>,
+        /// Rendered for a width and table mode: (width, wide tables, lines).
+        rendered: Option<(u16, bool, Vec<MdLine>)>,
     },
     Image {
         info: String,
@@ -87,7 +87,11 @@ pub struct Tab {
     /// Cursor line.
     pub cursor: usize,
     pub hscroll: usize,
+    /// Long lines wrap (`w`); otherwise they scroll sideways. In rendered
+    /// Markdown this also decides whether tables wrap or keep full width.
     pub wrap: bool,
+    /// After the next load, put the cursor on the first (true) or last change.
+    pub land: Option<bool>,
     pub search: Option<Search>,
     pub view_height: usize,
     pub view_width: usize,
@@ -142,7 +146,8 @@ pub fn line_count(content: &Content) -> usize {
         Content::Text { lines, .. } => lines.len(),
         Content::Markdown { raw: true, lines, .. } => lines.len(),
         Content::Markdown {
-            rendered: Some((_, r)), ..
+            rendered: Some((_, _, r)),
+            ..
         } => r.len(),
         Content::Markdown { lines, .. } => lines.len(),
         Content::Binary { dump, .. } => dump.len(),
@@ -270,6 +275,7 @@ impl Viewer {
             cursor: 0,
             hscroll: 0,
             wrap: false,
+            land: None,
             search: None,
             view_height: 20,
             view_width: 80,
@@ -301,6 +307,13 @@ impl Viewer {
             }
         }
     }
+}
+
+/// Scroll limit for `lines` lines in a view `height` rows tall: the last
+/// line can rise to about 30% above the bottom edge.
+pub fn max_scroll(lines: usize, height: usize) -> usize {
+    let h = height.max(1);
+    (lines + h * 3 / 10).saturating_sub(h)
 }
 
 /// What loading needs from the app.
@@ -371,6 +384,9 @@ pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
                 Content::Markdown { markers, rendered, .. } => (markers.clone(), rendered.clone()),
                 _ => (Markers::default(), None),
             };
+            if kind == FileKind::Markdown && !matches!(tab.content, Content::Markdown { .. }) {
+                tab.wrap = true;
+            }
             tab.content = if kind == FileKind::Markdown {
                 Content::Markdown {
                     source: text.clone(),
@@ -484,6 +500,9 @@ pub fn apply_loaded(tab: &mut Tab, generation: u64, loaded: Loaded) {
         _ => {}
     }
     refresh_search(tab);
+    if let Some(first) = tab.land.take() {
+        tab.land_on_change(first);
+    }
 }
 
 fn find_matches(lines: &[StyledLine], query: &str) -> Vec<(usize, usize, usize)> {
@@ -526,7 +545,7 @@ pub fn searchable_lines(tab: &Tab) -> Vec<StyledLine> {
         Content::Text { lines, .. } => lines.clone(),
         Content::Markdown {
             raw: false,
-            rendered: Some((_, r)),
+            rendered: Some((_, _, r)),
             ..
         } => r.iter().map(|l| l.line.clone()).collect(),
         Content::Markdown { lines, .. } => lines.clone(),
@@ -571,13 +590,19 @@ impl Tab {
         if self.has_cursor() {
             self.scroll_into_view();
         } else {
-            self.scroll = self.cursor.min(n.saturating_sub(self.view_height.max(1)));
+            self.scroll = self.cursor.min(self.max_scroll());
         }
+    }
+
+    /// How far the view can scroll: past the end, until the last line sits
+    /// about 30% above the bottom edge (like an IDE's "scroll past end").
+    pub fn max_scroll(&self) -> usize {
+        max_scroll(self.total_lines(), self.view_height)
     }
 
     pub fn scroll_by(&mut self, delta: isize) {
         let n = self.total_lines();
-        let max = n.saturating_sub(self.view_height.max(1));
+        let max = self.max_scroll();
         self.scroll = (self.scroll as isize + delta).clamp(0, max as isize) as usize;
         if self.has_cursor() {
             let h = self.view_height.max(1);
@@ -586,6 +611,31 @@ impl Tab {
                 .clamp(self.scroll, (self.scroll + h - 1).min(n.saturating_sub(1)));
         } else {
             self.cursor = self.scroll;
+        }
+    }
+
+    /// Scrolls sideways (no-op while wrapping); drawing clamps the far end.
+    pub fn hscroll_by(&mut self, delta: isize) {
+        if !self.wrap {
+            self.hscroll = (self.hscroll as isize + delta).max(0) as usize;
+        }
+    }
+
+    /// Moves the cursor to the first or last change, if there is one.
+    pub fn land_on_change(&mut self, first: bool) -> bool {
+        let starts = match &self.content {
+            Content::Diff(d) => d.hunk_starts(),
+            Content::Text { markers, .. } | Content::Markdown { markers, raw: true, .. } => markers.change_starts(),
+            _ => return false,
+        };
+        let target = if first { starts.first() } else { starts.last() };
+        match target.copied() {
+            Some(t) => {
+                self.set_cursor(t);
+                self.scroll = t.saturating_sub(3);
+                true
+            }
+            None => false,
         }
     }
 
@@ -737,13 +787,16 @@ impl Tab {
             KeyCode::Char('g') if ctrl => return ViewerOutcome::GotoLinePrompt,
             KeyCode::Home | KeyCode::Char('g') if !ctrl => self.set_cursor(0),
             KeyCode::End | KeyCode::Char('G') if !ctrl => self.set_cursor(usize::MAX / 2),
-            KeyCode::Left | KeyCode::Char('h') if !ctrl && !self.wrap => {
-                self.hscroll = self.hscroll.saturating_sub(4);
-            }
-            KeyCode::Right | KeyCode::Char('l') if !ctrl && !self.wrap => self.hscroll += 4,
+            KeyCode::Left | KeyCode::Char('h') if !ctrl && !self.wrap => self.hscroll_by(-4),
+            KeyCode::Right | KeyCode::Char('l') if !ctrl && !self.wrap => self.hscroll_by(4),
             KeyCode::Char('w') if !ctrl => {
                 self.wrap = !self.wrap;
                 self.hscroll = 0;
+                return ViewerOutcome::Info(if self.wrap {
+                    "Long lines: wrap (w to scroll sideways)"
+                } else {
+                    "Long lines: scroll sideways with ←/→, shift+wheel or the trackpad (w to wrap)"
+                });
             }
             KeyCode::Char('m') if !ctrl => {
                 if let Content::Markdown { raw, .. } = &mut self.content {
@@ -943,5 +996,73 @@ mod tests {
             },
         );
         assert_ne!(t.language, "X");
+    }
+
+    #[test]
+    fn scrolls_past_the_end_until_the_last_line_is_30_percent_up() {
+        // 100 lines in a 20-row view: the last line can rise 6 rows.
+        assert_eq!(max_scroll(100, 20), 86);
+        assert_eq!(max_scroll(100, 10), 93);
+        // Files shorter than the view never scroll.
+        assert_eq!(max_scroll(5, 20), 0);
+        assert_eq!(max_scroll(14, 20), 0);
+        assert_eq!(max_scroll(0, 0), 0);
+    }
+
+    #[test]
+    fn wheel_and_sideways_scrolling_respect_limits_and_wrap() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "x\n".repeat(100)).unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        t.view_height = 20;
+        t.scroll_by(1000);
+        assert_eq!(t.scroll, 86);
+        assert!(t.cursor >= 86 && t.cursor < 100, "cursor stays on a real line");
+        t.hscroll_by(-5);
+        assert_eq!(t.hscroll, 0);
+        t.hscroll_by(12);
+        assert_eq!(t.hscroll, 12);
+        t.wrap = true;
+        t.hscroll = 0;
+        t.hscroll_by(12);
+        assert_eq!(t.hscroll, 0, "no sideways scrolling while wrapping");
+    }
+
+    #[test]
+    fn diff_tabs_land_on_the_first_or_last_change() {
+        let old: String = (0..40).map(|i| format!("l{i}\n")).collect();
+        let new = old.replace("l5\n", "five\n").replace("l30\n", "thirty\n");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, &new).unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        t.content = Content::Diff(Box::new(DiffDoc::text(old, new, &p, "abc".into())));
+        assert!(t.land_on_change(false));
+        assert_eq!(t.cursor, 30);
+        assert!(t.land_on_change(true));
+        assert_eq!(t.cursor, 5);
+        assert!(!t.jump_to_change(false), "nothing before the first change");
+    }
+
+    #[test]
+    fn markdown_opens_wrapped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        let md = dir.path().join("a.md");
+        std::fs::write(&md, "# x\n").unwrap();
+        v.open(&md, &ctx);
+        assert!(v.active_tab().unwrap().wrap);
+        let rs = dir.path().join("a.rs");
+        std::fs::write(&rs, "fn x() {}\n").unwrap();
+        v.open(&rs, &ctx);
+        assert!(!v.active_tab().unwrap().wrap);
     }
 }

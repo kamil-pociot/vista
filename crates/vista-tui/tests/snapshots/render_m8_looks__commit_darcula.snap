@@ -4,7 +4,7 @@ expression: "commit_with_diff(&repo, look)"
 ---
  <root>                                                               Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  0: Commit                          │ Δ diff.rs
- ␣ tick  r rollback  a add  g group │ diff.rs  crates/fb-git/src                  1 of 1 in commit (␣)   ⇧F7 ◂ change 1 of 1 ▸ F7
+ ␣ tick  r rollback  a add  g group │ diff.rs  crates/fb-git/src                     1 of 1 in commit (␣)   [ ◂ change 1 of 1 ▸ ]
  ▾ [x] Changes  4 files             │ HEAD · c22c251 (read-only)                     Working tree
    [x] Cargo.lock                   │  1 pub fn diff() {}                         ☑   1 pub fn diff() -> usize { 0 }
    [x] ROADMAP.md                   │
@@ -30,7 +30,7 @@ expression: "commit_with_diff(&repo, look)"
  │                                │ │
  └────────────────────────────────┘ │
  [ ] Amend   4 of 6 files           │
-  Commit ^K    Commit & Push (P)    │ u unified  w whitespace  z collapse  J/K side-by-side · whitespace: compare · collapse: off
+  Commit ^K    Commit & Push (P)    │ u unified  i whitespace  side-by-side · whitespace: compare · lines: scroll · collapse: off
  1: Project   0: Commit   3: Find   ?: Help                                                4 changed · 2 unversioned   1:1   Diff
 --- styles ---
   0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..123 fg=ui.text bg=ui.panel] [123..125 fg=ui.dim bg=ui.panel] [125..130 fg=ui.text bg=ui.panel]

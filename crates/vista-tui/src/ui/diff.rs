@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 use vista_diff::{DisplayRow, RowKind, Unified};
 use vista_render::StyledLine;
 use vista_render::filetype::human_size;
-use vista_render::styled::{line_width, overlay, slice_cols};
+use vista_render::styled::{line_width, overlay, slice_cols, wrap_cols};
 use vista_theme::Theme;
 
 use crate::commit::CommitView;
@@ -19,7 +19,15 @@ use crate::diffview::{DiffBody, DiffDoc};
 use crate::style::{ThemeStyle, styled_line};
 use crate::viewer::{Content, ImageState, Tab};
 
-/// One side of a row: number + content, `width` columns wide.
+/// How long lines are shown: scrolled sideways by `hscroll`, or wrapped.
+#[derive(Clone, Copy)]
+struct View {
+    hscroll: usize,
+    wrap: bool,
+}
+
+/// One side of a row: number + content, `width` columns wide. One entry per
+/// screen row: a single one when scrolling sideways, several when wrapping.
 #[allow(clippy::too_many_arguments)]
 fn cell(
     t: &Theme,
@@ -30,17 +38,17 @@ fn cell(
     words: &[(usize, usize)],
     word_bg: &'static str,
     cursor: bool,
-) -> Vec<Span<'static>> {
+    view: View,
+) -> Vec<Vec<Span<'static>>> {
     let Some((n, styled, has_tab)) = line else {
         // Filler for lines that exist only on the other side.
-        return vec![Span::styled("╱".repeat(width), t.fg("ui.filler"))];
+        return vec![filler(t, width)];
     };
     let num_style = if cursor {
         t.fg("ui.text.strong")
     } else {
         t.fg("ui.linenr")
     };
-    let mut spans = vec![Span::styled(format!("{:>ln_w$} ", n + 1), num_style)];
     let content_w = width.saturating_sub(ln_w + 1);
     let mut l = if has_tab || words.is_empty() {
         styled.clone()
@@ -54,15 +62,44 @@ fn cell(
             }
         }
     }
-    let l = slice_cols(&l, 0, content_w);
-    let used = line_width(&l);
-    spans.extend(styled_line(t, &l).spans);
-    let pad = " ".repeat(content_w.saturating_sub(used));
-    spans.push(match bg {
+    let parts = if view.wrap {
+        wrap_cols(&l, content_w.max(1))
+    } else {
+        vec![slice_cols(&l, view.hscroll, content_w)]
+    };
+    parts
+        .into_iter()
+        .enumerate()
+        .map(|(k, part)| {
+            let num = if k == 0 {
+                format!("{:>ln_w$} ", n + 1)
+            } else {
+                " ".repeat(ln_w + 1)
+            };
+            let mut spans = vec![Span::styled(num, num_style)];
+            let used = line_width(&part);
+            spans.extend(styled_line(t, &part).spans);
+            let pad = " ".repeat(content_w.saturating_sub(used));
+            spans.push(match bg {
+                Some(bg) => Span::styled(pad, t.bg(bg)),
+                None => Span::raw(pad),
+            });
+            spans
+        })
+        .collect()
+}
+
+fn filler(t: &Theme, width: usize) -> Vec<Span<'static>> {
+    vec![Span::styled("╱".repeat(width), t.fg("ui.filler"))]
+}
+
+/// A continuation row for the side whose line wrapped to fewer rows.
+fn blank(t: &Theme, width: usize, bg: Option<&'static str>) -> Vec<Span<'static>> {
+    let pad = " ".repeat(width);
+    vec![match bg {
         Some(bg) => Span::styled(pad, t.bg(bg)),
         None => Span::raw(pad),
-    });
-    spans
+    }]
 }
 
 fn has_tab(text: &str, i: usize) -> bool {
@@ -107,7 +144,7 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
     let position = if n == 0 {
         "no changes ".to_string()
     } else {
-        format!("{ticked} of {n} in commit (␣)   ⇧F7 ◂ change {k} of {n} ▸ F7 ")
+        format!("{ticked} of {n} in commit (␣)   [ ◂ change {k} of {n} ▸ ] ")
     };
     f.render_widget(
         Paragraph::new(Span::styled(position, t.fg("ui.text"))).right_aligned(),
@@ -126,20 +163,21 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
     };
     f.render_widget(
         Paragraph::new(Span::styled(
-            " u unified  w whitespace  z collapse  J/K file  ⏎ open  e edit",
+            " u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit",
             t.fg("ui.dim"),
         ))
         .style(t.bg("ui.panel")),
         hints,
     );
     let opts = format!(
-        "{} · whitespace: {} · collapse: {} ",
+        "{} · whitespace: {} · lines: {} · collapse: {} ",
         if doc.unified { "unified" } else { "side-by-side" },
         if doc.opts.ignore_whitespace {
             "ignore"
         } else {
             "compare"
         },
+        if tab.wrap { "wrap" } else { "scroll" },
         if doc.collapse { "on" } else { "off" },
     );
     f.render_widget(
@@ -183,6 +221,15 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         .to_string()
         .len()
         .max(3);
+    // Sideways scroll stops once the widest visible line is fully shown.
+    let content_w = if doc.unified {
+        (body.width as usize).saturating_sub(ln_w * 2 + 6)
+    } else {
+        ((body.width as usize).saturating_sub(2) / 2).saturating_sub(ln_w + 1)
+    };
+    let widest = doc.widest(tab.scroll, body.height as usize);
+    tab.hscroll = tab.hscroll.min(widest.saturating_sub(content_w));
+    let Content::Diff(doc) = &tab.content else { return };
     if doc.unified {
         draw_unified(f, cols, body, tab, doc, t, ln_w, focused, commit);
     } else {
@@ -224,14 +271,16 @@ fn draw_side_by_side(
         .style(t.bg("ui.panel.alt")),
         cols,
     );
-    let mut lines = Vec::with_capacity(body.height as usize);
-    for (di, d) in doc
-        .display
-        .iter()
-        .enumerate()
-        .skip(tab.scroll)
-        .take(body.height as usize)
-    {
+    let view = View {
+        hscroll: tab.hscroll,
+        wrap: tab.wrap,
+    };
+    let height = body.height as usize;
+    let mut lines = Vec::with_capacity(height);
+    for (di, d) in doc.display.iter().enumerate().skip(tab.scroll) {
+        if lines.len() >= height {
+            break;
+        }
         let row_i = match d {
             DisplayRow::Fold { len, .. } => {
                 lines.push(fold_line(t, *len, body.width as usize));
@@ -258,7 +307,22 @@ fn draw_side_by_side(
         let right = row
             .right
             .and_then(|i| doc.new_hl.get(i).map(|l| (i, l, has_tab(&doc.new_text, i))));
-        let mut spans = cell(t, left, ln_w, half, lbg, &row.left_words, word_bg, cursor);
+        let has_left = left.is_some();
+        let has_right = right.is_some();
+        let mut lrows = cell(t, left, ln_w, half, lbg, &row.left_words, word_bg, cursor, view);
+        let mut rrows = cell(t, right, ln_w, right_w, rbg, &row.right_words, word_bg, cursor, view);
+        // Wrapped lines: pad the shorter side so both stay aligned.
+        let n = lrows.len().max(rrows.len());
+        while lrows.len() < n {
+            lrows.push(if has_left { blank(t, half, lbg) } else { filler(t, half) });
+        }
+        while rrows.len() < n {
+            rrows.push(if has_right {
+                blank(t, right_w, rbg)
+            } else {
+                filler(t, right_w)
+            });
+        }
         // A checkbox where each change starts (partial commits), else the cursor.
         let g = match starts.iter().find(|(r, _)| *r == di) {
             Some((_, id)) if !doc.opts.ignore_whitespace => {
@@ -271,17 +335,21 @@ fn draw_side_by_side(
             _ if cursor => "▶ ",
             _ => "  ",
         };
-        spans.push(match gutter_tok {
-            Some(tok) => Span::styled(g, t.fg_bg("ui.text.strong", tok)),
-            None => Span::styled(g, t.fg_bg("ui.text.strong", "ui.panel.alt")),
-        });
-        spans.extend(cell(t, right, ln_w, right_w, rbg, &row.right_words, word_bg, cursor));
-        let mut line = Line::from(spans);
-        if cursor && row.kind == RowKind::Context {
-            line = line.style(t.bg("ui.cursorline"));
+        for (k, (mut spans, rspans)) in lrows.into_iter().zip(rrows).enumerate() {
+            let g = if k == 0 { g } else { "  " };
+            spans.push(match gutter_tok {
+                Some(tok) => Span::styled(g, t.fg_bg("ui.text.strong", tok)),
+                None => Span::styled(g, t.fg_bg("ui.text.strong", "ui.panel.alt")),
+            });
+            spans.extend(rspans);
+            let mut line = Line::from(spans);
+            if cursor && row.kind == RowKind::Context {
+                line = line.style(t.bg("ui.cursorline"));
+            }
+            lines.push(line);
         }
-        lines.push(line);
     }
+    lines.truncate(height);
     if doc.display.is_empty() {
         lines.push(Line::styled(" No differences", t.fg("ui.dim")));
     }
@@ -319,14 +387,16 @@ fn draw_unified(
         cols,
     );
     let width = body.width as usize;
-    let mut lines = Vec::with_capacity(body.height as usize);
-    for (di, u) in doc
-        .udisplay
-        .iter()
-        .enumerate()
-        .skip(tab.scroll)
-        .take(body.height as usize)
-    {
+    let view = View {
+        hscroll: tab.hscroll,
+        wrap: tab.wrap,
+    };
+    let height = body.height as usize;
+    let mut lines = Vec::with_capacity(height);
+    for (di, u) in doc.udisplay.iter().enumerate().skip(tab.scroll) {
+        if lines.len() >= height {
+            break;
+        }
         let cursor = focused && di == tab.cursor;
         let (old_n, new_n, sign, text, bg, words, word_bg, tab_flag) = match *u {
             Unified::Fold { len } => {
@@ -395,7 +465,7 @@ fn draw_unified(
             }
             _ => "  ",
         };
-        let mut spans = vec![
+        let prefix = vec![
             Span::styled(tick, t.fg("ui.text.strong")),
             Span::styled(format!("{} {} ", num(old_n), num(new_n)), num_style),
             Span::styled(
@@ -407,9 +477,8 @@ fn draw_unified(
             ),
         ];
         let used = ln_w * 2 + 6;
-        if let Some(styled) = text {
-            let empty: StyledLine = Vec::new();
-            let cell_spans = cell(
+        let rows = match text {
+            Some(styled) => cell(
                 t,
                 Some((0, styled, tab_flag)),
                 0,
@@ -418,17 +487,26 @@ fn draw_unified(
                 words,
                 word_bg,
                 false,
-            );
+                view,
+            ),
+            None => vec![Vec::new()],
+        };
+        for (k, row) in rows.into_iter().enumerate() {
+            let mut spans = if k == 0 {
+                prefix.clone()
+            } else {
+                vec![Span::raw(" ".repeat(used))]
+            };
             // `cell` adds a 1-column number field; drop it.
-            spans.extend(cell_spans.into_iter().skip(1));
-            let _ = empty;
+            spans.extend(row.into_iter().skip(1));
+            let mut line = Line::from(spans);
+            if cursor && bg.is_none() {
+                line = line.style(t.bg("ui.cursorline"));
+            }
+            lines.push(line);
         }
-        let mut line = Line::from(spans);
-        if cursor && bg.is_none() {
-            line = line.style(t.bg("ui.cursorline"));
-        }
-        lines.push(line);
     }
+    lines.truncate(height);
     f.render_widget(Paragraph::new(lines), body);
 }
 

@@ -5,7 +5,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
-use ratatui::crossterm::event::{Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::{Position, Rect};
 use vista_core::{Config, FsChange, Paths, Watcher};
 use vista_git::{Git, StatusSnapshot};
@@ -90,6 +92,30 @@ struct StatusJob {
     pending: bool,
 }
 
+/// The popup offered at the last (first) change of a file: pressing the
+/// same key again moves to the next (previous) changed file.
+#[derive(Debug, Clone)]
+pub struct ChangeHop {
+    pub forward: bool,
+    pub at: Instant,
+    pub text: String,
+}
+
+/// How long the "press again" offer stays.
+pub const HOP_TTL: Duration = Duration::from_secs(4);
+
+/// Two clicks on the same row within this time open it.
+const DOUBLE_CLICK: Duration = Duration::from_millis(500);
+
+/// Lists that open their row on a double click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClickList {
+    Commit,
+    FindPopup,
+    FindWindow,
+    Goto,
+}
+
 pub struct App {
     pub root: PathBuf,
     pub project_name: String,
@@ -128,6 +154,10 @@ pub struct App {
     /// Files with unsaved changes in the editor.
     pub dirty: HashSet<PathBuf>,
     quit_confirm: Option<Instant>,
+    /// Armed "press again for the next file" step (next/previous change).
+    pub change_hop: Option<ChangeHop>,
+    /// Last left click: (list, row, when), to spot double clicks.
+    last_click: Option<(ClickList, usize, Instant)>,
     /// A command to run with the terminal handed over (`$EDITOR` fallback).
     pending_external: Option<(String, PathBuf)>,
     pub goto: Option<GotoPopup>,
@@ -213,6 +243,8 @@ impl App {
             grid: Grid::default(),
             dirty: HashSet::new(),
             quit_confirm: None,
+            change_hop: None,
+            last_click: None,
             pending_external: None,
             goto: None,
             file_index: None,
@@ -816,29 +848,105 @@ impl App {
     }
 
     /// Shows the diff of the next/previous file in the Commit list.
-    fn step_diff_file(&mut self, forward: bool) {
-        let Some(cur) = self.viewer.active_tab().map(|t| t.path.clone()) else {
-            return;
-        };
-        let files: Vec<Change> = self
-            .commit
+    /// Changed files in Commit-window order.
+    fn changed_files(&self) -> Vec<Change> {
+        self.commit
             .rows
             .iter()
             .filter_map(|r| match r {
                 crate::commit::Row::File { change, .. } => Some(change.clone()),
                 _ => None,
             })
-            .collect();
-        if files.is_empty() {
-            return;
-        }
+            .collect()
+    }
+
+    /// The changed file after (before) `cur`, wrapping around; `files` must
+    /// not be empty.
+    fn neighbour(files: &[Change], cur: &Path, forward: bool) -> Change {
         let i = files.iter().position(|c| c.path == cur);
         let next = match (i, forward) {
             (Some(i), true) => (i + 1) % files.len(),
             (Some(i), false) => (i + files.len() - 1) % files.len(),
-            (None, _) => 0,
+            (None, true) => 0,
+            (None, false) => files.len() - 1,
         };
-        let change = files[next].clone();
+        files[next].clone()
+    }
+
+    /// Past the last (first) change of a file, like IntelliJ: the first press
+    /// offers the next (previous) changed file, a second press goes there.
+    fn hop_to_changed_file(&mut self, forward: bool) {
+        let Some(tab) = self.viewer.active_tab() else { return };
+        let (cur, is_diff) = (tab.path.clone(), tab.diff.is_some());
+        // The plain viewer can't show deleted files; diffs can.
+        let files: Vec<Change> = self
+            .changed_files()
+            .into_iter()
+            .filter(|c| is_diff || c.path.is_file())
+            .collect();
+        if files.iter().all(|c| c.path == cur) {
+            self.change_hop = None;
+            self.notify("No more changes", MsgKind::Info);
+            return;
+        }
+        let target = Self::neighbour(&files, &cur, forward);
+        let armed = self
+            .change_hop
+            .as_ref()
+            .is_some_and(|h| h.forward == forward && h.at.elapsed() < HOP_TTL);
+        if !armed {
+            let key = self.keymap.hint(if forward {
+                Action::NextChange
+            } else {
+                Action::PrevChange
+            });
+            let name = target
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let text = if forward {
+                format!("Last change in this file. Press {key} again to go to {name}")
+            } else {
+                format!("First change in this file. Press {key} again to go to {name}")
+            };
+            self.change_hop = Some(ChangeHop {
+                forward,
+                at: Instant::now(),
+                text,
+            });
+            return;
+        }
+        self.change_hop = None;
+        // Forward lands on the file's first change, backward on its last.
+        if is_diff {
+            self.show_diff_of(&target, forward);
+        } else {
+            self.open_file(&target.path);
+            if let Some(t) = self.viewer.active_tab_mut()
+                && !t.land_on_change(forward)
+            {
+                t.land = Some(forward);
+            }
+        }
+    }
+
+    /// `J`/`K` in a diff: the next/previous changed file, on its first change.
+    fn step_diff_file(&mut self, forward: bool) {
+        let Some(cur) = self.viewer.active_tab().map(|t| t.path.clone()) else {
+            return;
+        };
+        let files = self.changed_files();
+        if files.is_empty() {
+            return;
+        }
+        let change = Self::neighbour(&files, &cur, forward);
+        self.show_diff_of(&change, true);
+    }
+
+    /// Shows `change` in the active diff tab (selecting it in the Commit
+    /// list) and puts the cursor on its first or last change once loaded.
+    fn show_diff_of(&mut self, change: &Change, first: bool) {
         if let Some(row) = self
             .commit
             .rows
@@ -852,6 +960,9 @@ impl App {
             orig_path: change.orig_path.clone(),
         };
         self.viewer.retarget_diff(&change.path, spec, &ctx);
+        if let Some(t) = self.viewer.active_tab_mut() {
+            t.land = Some(first);
+        }
     }
 
     fn run_confirmed(&mut self, action: ConfirmAction) {
@@ -954,14 +1065,12 @@ impl App {
                                 d.rebuild();
                             }
                             let n = d.len();
-                            let first = d.hunk_starts().first().copied();
                             t.content = Content::Diff(Box::new(d));
-                            if let (true, Some(first)) = (fresh, first) {
-                                t.cursor = first;
-                                t.scroll = first.saturating_sub(3);
-                            }
                             t.cursor = t.cursor.min(n.saturating_sub(1));
                             t.scroll = t.scroll.min(n.saturating_sub(1));
+                            if let Some(first) = t.land.take().or(fresh.then_some(true)) {
+                                t.land_on_change(first);
+                            }
                         }
                         (None, e) => t.content = Content::Error(e.unwrap_or_default()),
                     }
@@ -1069,6 +1178,13 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        // Anything but next/previous change drops a "press again" offer.
+        if !matches!(
+            self.keymap.action_for(&key),
+            Some(Action::NextChange | Action::PrevChange)
+        ) {
+            self.change_hop = None;
+        }
         if self.show_help {
             // Any key closes help; the key itself is consumed.
             self.show_help = false;
@@ -1184,6 +1300,15 @@ impl App {
         }
     }
 
+    /// True when this click repeats the previous one on the same row soon enough.
+    fn is_double_click(&mut self, list: ClickList, row: usize) -> bool {
+        let now = Instant::now();
+        let double =
+            matches!(self.last_click, Some((l, r, t)) if l == list && r == row && now.duration_since(t) < DOUBLE_CLICK);
+        self.last_click = if double { None } else { Some((list, row, now)) };
+        double
+    }
+
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
@@ -1204,8 +1329,11 @@ impl App {
                     Some(_) => 3,
                     None => usize::MAX,
                 };
-                let on_box = (checkbox_at..checkbox_at + 3).contains(&col);
+                let on_box = (checkbox_at..checkbox_at.saturating_add(3)).contains(&col);
                 self.commit.click(row, &self.status, on_box);
+                if !on_box && self.is_double_click(ClickList::Commit, i) {
+                    self.commit_key(&KeyEvent::from(KeyCode::Enter));
+                }
             }
             return;
         }
@@ -1216,19 +1344,27 @@ impl App {
             }
             return;
         }
-        if let Some(p) = self.find.as_mut() {
+        if self.find.is_some() {
             if let Some(r) = self.areas.find_list.filter(|r| r.contains(pos)) {
+                let row = (m.row - r.y) as usize;
+                let double = matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                    && self.is_double_click(ClickList::FindPopup, row);
+                let Some(p) = self.find.as_mut() else { return };
                 match m.kind {
-                    MouseEventKind::Down(MouseButton::Left) => p.click((m.row - r.y) as usize),
+                    MouseEventKind::Down(MouseButton::Left) => p.click(row),
                     MouseEventKind::ScrollDown => p.scroll_by(3),
                     MouseEventKind::ScrollUp => p.scroll_by(-3),
                     _ => {}
+                }
+                if double {
+                    self.handle_key(KeyEvent::from(KeyCode::Enter));
                 }
             }
             return;
         }
         if let Some(r) = self.areas.find_window.filter(|r| r.contains(pos)) {
             let h = self.find_window.view_height;
+            let mut open = false;
             if let Some(tab) = self.find_window.active_tab_mut() {
                 match m.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
@@ -1236,6 +1372,7 @@ impl App {
                         let i = tab.scroll + (m.row - r.y) as usize;
                         if i < tab.rows.len() {
                             tab.selected = i;
+                            open = true;
                         }
                     }
                     MouseEventKind::ScrollDown => tab.move_by(3, h),
@@ -1243,15 +1380,26 @@ impl App {
                     _ => {}
                 }
             }
+            let row = (m.row - r.y) as usize;
+            if open && self.is_double_click(ClickList::FindWindow, row) {
+                self.handle_key(KeyEvent::from(KeyCode::Enter));
+            }
             return;
         }
-        if let Some(g) = self.goto.as_mut() {
+        if self.goto.is_some() {
             if let Some(r) = self.areas.goto_list.filter(|r| r.contains(pos)) {
+                let row = (m.row - r.y) as usize;
+                let double = matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                    && self.is_double_click(ClickList::Goto, row);
+                let Some(g) = self.goto.as_mut() else { return };
                 match m.kind {
-                    MouseEventKind::Down(MouseButton::Left) => g.click((m.row - r.y) as usize),
+                    MouseEventKind::Down(MouseButton::Left) => g.click(row),
                     MouseEventKind::ScrollDown => g.scroll_by(3),
                     MouseEventKind::ScrollUp => g.scroll_by(-3),
                     _ => {}
+                }
+                if double {
+                    self.handle_key(KeyEvent::from(KeyCode::Enter));
                 }
             }
             return;
@@ -1285,14 +1433,22 @@ impl App {
                     tab.set_cursor(line);
                 }
             }
-            MouseEventKind::ScrollDown if inside(viewer) => {
+            MouseEventKind::ScrollDown
+            | MouseEventKind::ScrollUp
+            | MouseEventKind::ScrollLeft
+            | MouseEventKind::ScrollRight
+                if inside(viewer) =>
+            {
+                // Shift+wheel scrolls sideways, like most editors; trackpads
+                // send left/right directly.
+                let shift = m.modifiers.contains(KeyModifiers::SHIFT);
                 if let Some(t) = self.viewer.active_tab_mut() {
-                    t.scroll_by(3);
-                }
-            }
-            MouseEventKind::ScrollUp if inside(viewer) => {
-                if let Some(t) = self.viewer.active_tab_mut() {
-                    t.scroll_by(-3);
+                    match (m.kind, shift) {
+                        (MouseEventKind::ScrollDown, false) => t.scroll_by(3),
+                        (MouseEventKind::ScrollUp, false) => t.scroll_by(-3),
+                        (MouseEventKind::ScrollRight, _) | (MouseEventKind::ScrollDown, true) => t.hscroll_by(6),
+                        _ => t.hscroll_by(-6),
+                    }
                 }
             }
             MouseEventKind::Down(MouseButton::Left) => {
@@ -1422,10 +1578,10 @@ impl App {
             }
             Action::NextChange | Action::PrevChange => {
                 let forward = action == Action::NextChange;
-                if let Some(t) = self.viewer.active_tab_mut()
-                    && !t.jump_to_change(forward)
-                {
-                    self.notify("No more changes", MsgKind::Info);
+                match self.viewer.active_tab_mut().map(|t| t.jump_to_change(forward)) {
+                    Some(true) => self.change_hop = None,
+                    Some(false) => self.hop_to_changed_file(forward),
+                    None => {}
                 }
             }
         }
@@ -1529,6 +1685,9 @@ impl App {
     pub fn tick(&mut self) {
         self.last_tick = Instant::now();
         self.reload_theme_if_changed();
+        if self.change_hop.as_ref().is_some_and(|h| h.at.elapsed() > HOP_TTL) {
+            self.change_hop = None;
+        }
         if self.message.as_ref().is_some_and(|s| s.at.elapsed() > STATUS_TTL) {
             self.message = None;
         }

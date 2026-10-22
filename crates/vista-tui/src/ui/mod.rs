@@ -158,6 +158,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     app.areas.viewer = None;
     app.areas.find_window = None;
     main_area(f, areas.main, app);
+    if app.change_hop.is_some() {
+        viewer::draw_change_hop(f, areas.main, app);
+    }
     if let Some(b) = areas.panel_bottom {
         find::draw_window(f, b, app);
     }

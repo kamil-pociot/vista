@@ -51,8 +51,19 @@ struct Table {
     head_rows: usize,
 }
 
+/// How tables wider than the view are laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tables {
+    /// Cells wrap so the table fits the width; a rule separates rows.
+    #[default]
+    Wrap,
+    /// Every cell at full width; the table may be wider than the view.
+    Wide,
+}
+
 struct Renderer<'a> {
     width: usize,
+    tables: Tables,
     hl: &'a Highlighter,
     image_rows: &'a dyn Fn(&str) -> Option<u16>,
     out: Vec<MdLine>,
@@ -233,54 +244,68 @@ impl<'a> Renderer<'a> {
         }
         let prefix = self.prefix(true);
         let avail = self.width.saturating_sub(line_width(&prefix) + 3 * ncols + 1);
-        while widths.iter().sum::<usize>() > avail && widths.iter().any(|w| *w > 3) {
-            let i = (0..ncols).max_by_key(|i| widths[*i]).unwrap_or(0);
-            widths[i] -= 1;
+        if self.tables == Tables::Wrap {
+            // Narrow the widest column first, so short columns stay intact.
+            while widths.iter().sum::<usize>() > avail && widths.iter().any(|w| *w > 3) {
+                let i = (0..ncols).max_by_key(|i| widths[*i]).unwrap_or(0);
+                widths[i] -= 1;
+            }
         }
         let border = TokStyle::fg("ui.dim");
-        let edge = |l: &str, m: &str, r: &str| -> StyledLine {
+        let edge = |l: &str, m: &str, r: &str, fill: &str| -> StyledLine {
             let mut s = String::from(l);
             for (i, w) in widths.iter().enumerate() {
-                s.push_str(&"─".repeat(w + 2));
+                s.push_str(&fill.repeat(w + 2));
                 s.push_str(if i + 1 == ncols { r } else { m });
             }
             vec![StyledSpan::new(s, border)]
         };
-        let mut lines: Vec<StyledLine> = vec![edge("┌", "┬", "┐")];
+        let mut lines: Vec<StyledLine> = vec![edge("┌", "┬", "┐", "─")];
         for (ri, row) in table.rows.iter().enumerate() {
-            let mut line: StyledLine = vec![StyledSpan::new("│", border)];
-            for (i, w) in widths.iter().enumerate() {
-                let empty = Vec::new();
-                let cell = row.get(i).unwrap_or(&empty);
-                let mut content = if line_width(cell) > *w {
-                    let mut c = slice_cols(cell, 0, w.saturating_sub(1));
-                    c.push(StyledSpan::new("…", TokStyle::fg("ui.dim")));
-                    c
-                } else {
-                    cell.clone()
-                };
-                if ri < table.head_rows {
-                    for s in &mut content {
-                        s.style.bold = true;
+            // Each cell as rows of at most its column's width.
+            let cells: Vec<Vec<StyledLine>> = widths
+                .iter()
+                .enumerate()
+                .map(|(i, w)| {
+                    let mut cell = row.get(i).cloned().unwrap_or_default();
+                    if ri < table.head_rows {
+                        for s in &mut cell {
+                            s.style.bold = true;
+                        }
                     }
+                    let rows = if line_width(&cell) > *w {
+                        wrap_words(&cell, *w)
+                    } else {
+                        vec![cell]
+                    };
+                    if rows.is_empty() { vec![Vec::new()] } else { rows }
+                })
+                .collect();
+            let height = cells.iter().map(Vec::len).max().unwrap_or(1);
+            for k in 0..height {
+                let mut line: StyledLine = vec![StyledSpan::new("│", border)];
+                for (i, w) in widths.iter().enumerate() {
+                    let content = cells[i].get(k).cloned().unwrap_or_default();
+                    let pad = w - line_width(&content).min(*w);
+                    let (left, right) = match table.aligns.get(i) {
+                        Some(Alignment::Right) => (pad, 0),
+                        Some(Alignment::Center) => (pad / 2, pad - pad / 2),
+                        _ => (0, pad),
+                    };
+                    line.push(StyledSpan::new(" ".repeat(left + 1), TokStyle::default()));
+                    line.extend(content);
+                    line.push(StyledSpan::new(" ".repeat(right + 1), TokStyle::default()));
+                    line.push(StyledSpan::new("│", border));
                 }
-                let pad = w - line_width(&content).min(*w);
-                let (left, right) = match table.aligns.get(i) {
-                    Some(Alignment::Right) => (pad, 0),
-                    Some(Alignment::Center) => (pad / 2, pad - pad / 2),
-                    _ => (0, pad),
-                };
-                line.push(StyledSpan::new(" ".repeat(left + 1), TokStyle::default()));
-                line.extend(content);
-                line.push(StyledSpan::new(" ".repeat(right + 1), TokStyle::default()));
-                line.push(StyledSpan::new("│", border));
+                lines.push(line);
             }
-            lines.push(line);
             if ri + 1 == table.head_rows {
-                lines.push(edge("├", "┼", "┤"));
+                lines.push(edge("╞", "╪", "╡", "═"));
+            } else if ri + 1 < table.rows.len() {
+                lines.push(edge("├", "┼", "┤", "─"));
             }
         }
-        lines.push(edge("└", "┴", "┘"));
+        lines.push(edge("└", "┴", "┘", "─"));
         for l in lines {
             let mut line = self.prefix(true);
             line.extend(l);
@@ -564,6 +589,17 @@ pub fn wrap_words(spans: &StyledLine, width: usize) -> Vec<StyledLine> {
 /// Renders Markdown to lines no wider than `width`. `image_rows(src)` says how
 /// many rows to reserve for an image (`None` shows a text placeholder).
 pub fn render(src: &str, width: usize, hl: &Highlighter, image_rows: &dyn Fn(&str) -> Option<u16>) -> Vec<MdLine> {
+    render_with(src, width, Tables::Wrap, hl, image_rows)
+}
+
+/// [`render`] with a table layout; `Tables::Wide` tables may exceed `width`.
+pub fn render_with(
+    src: &str,
+    width: usize,
+    tables: Tables,
+    hl: &Highlighter,
+    image_rows: &dyn Fn(&str) -> Option<u16>,
+) -> Vec<MdLine> {
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
     opts.insert(Options::ENABLE_TASKLISTS);
@@ -571,6 +607,7 @@ pub fn render(src: &str, width: usize, hl: &Highlighter, image_rows: &dyn Fn(&st
     opts.insert(Options::ENABLE_FOOTNOTES);
     let mut r = Renderer {
         width: width.max(10),
+        tables,
         hl,
         image_rows,
         out: Vec::new(),
@@ -658,21 +695,47 @@ mod tests {
         );
     }
 
+    const TABLE: &str = "| Name | Size |\n|:-----|-----:|\n| a.rs | 10 |\n| a very long file name.txt | 2000 |\n";
+
     #[test]
     fn tables_are_boxed_and_fit() {
-        let out = md(
-            "| Name | Size |\n|:-----|-----:|\n| a.rs | 10 |\n| verylongname.txt | 2000 |\n",
-            24,
-        );
+        let out = md(TABLE, 24);
         let t = texts(&out);
         assert!(t[0].starts_with('┌') && t[0].ends_with('┐'));
         assert!(t[1].contains("Name") && t[1].contains("Size"));
-        assert!(t[2].starts_with('├'));
+        assert!(t[2].starts_with('╞'), "header rule: {t:#?}");
         assert!(t.iter().all(|l| l.chars().count() <= 24), "{t:#?}");
-        assert!(t.iter().any(|l| l.contains('…')), "long cells are truncated: {t:#?}");
         assert!(t.last().unwrap().starts_with('└'));
         let header = out[1].line.iter().find(|s| s.text.contains("Name")).unwrap();
         assert!(header.style.bold);
+    }
+
+    #[test]
+    fn long_cells_wrap_with_rules_between_rows() {
+        let t = texts(&md(TABLE, 24));
+        assert!(!t.iter().any(|l| l.contains('…')), "nothing is cut: {t:#?}");
+        // Every word of the long cell is shown, spread over several rows.
+        let body = t.join(" ");
+        for word in ["a", "very", "long", "file", "name.txt", "2000"] {
+            assert!(body.contains(word), "{word} missing: {t:#?}");
+        }
+        let cell_rows = t.iter().filter(|l| l.starts_with('│')).count();
+        assert!(cell_rows > 3, "the long row wraps: {t:#?}");
+        // A rule between the two body rows.
+        assert_eq!(t.iter().filter(|l| l.starts_with('├')).count(), 1, "{t:#?}");
+        // The right-aligned column stays right-aligned.
+        let row = t.iter().find(|l| l.contains("2000")).unwrap();
+        assert!(row.trim_end().ends_with("2000 │"), "{row}");
+    }
+
+    #[test]
+    fn wide_tables_keep_cells_whole() {
+        let out = render_with(TABLE, 24, Tables::Wide, Highlighter::global(), &|_| None);
+        let t = texts(&out);
+        assert!(t.iter().any(|l| l.contains("a very long file name.txt")), "{t:#?}");
+        assert!(t.iter().any(|l| l.chars().count() > 24), "wider than the view: {t:#?}");
+        let widths: Vec<usize> = t.iter().map(|l| l.chars().count()).collect();
+        assert!(widths.iter().all(|w| *w == widths[0]), "all rows line up: {t:#?}");
     }
 
     #[test]

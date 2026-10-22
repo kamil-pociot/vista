@@ -90,10 +90,10 @@ fn picking_is_disabled_while_ignoring_whitespace() {
     let repo = repo();
     let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
     open_diff(&mut vista);
-    vista.press("w");
+    vista.press("i");
     vista.press("space");
     vista.expect_text("Turn off ignore-whitespace");
-    vista.press("w");
+    vista.press("i");
     vista.press("space");
     vista.expect_text("2 of 3 in commit");
 }

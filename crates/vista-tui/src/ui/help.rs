@@ -26,7 +26,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     let rows: Vec<(String, &str)> = Action::ALL
         .iter()
         .map(|a| {
-            let keys: Vec<String> = app.keymap.chords_for(*a).iter().map(|c| c.to_string()).collect();
+            let mut keys: Vec<String> = app.keymap.chords_for(*a).iter().map(|c| c.to_string()).collect();
+            // Shortest first, so `]` leads before `F7` (as in the key hints).
+            keys.sort_by_key(|k| (k.len(), k.clone()));
             (keys.join(", "), a.description())
         })
         .filter(|(k, _)| !k.is_empty())
