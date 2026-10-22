@@ -99,6 +99,9 @@ pub struct ChangeHop {
     pub forward: bool,
     pub at: Instant,
     pub text: String,
+    /// A second press goes on to another file; `false` when this is the
+    /// end (no further file in that direction).
+    pub armed: bool,
 }
 
 /// How long the "press again" offer stays.
@@ -860,17 +863,17 @@ impl App {
             .collect()
     }
 
-    /// The changed file after (before) `cur`, wrapping around; `files` must
-    /// not be empty.
-    fn neighbour(files: &[Change], cur: &Path, forward: bool) -> Change {
+    /// The changed file after (before) `cur`; `None` at either end (no
+    /// wrapping around, so the end of the changes is visible).
+    fn neighbour(files: &[Change], cur: &Path, forward: bool) -> Option<Change> {
         let i = files.iter().position(|c| c.path == cur);
         let next = match (i, forward) {
-            (Some(i), true) => (i + 1) % files.len(),
-            (Some(i), false) => (i + files.len() - 1) % files.len(),
+            (Some(i), true) => i + 1,
+            (Some(i), false) => i.checked_sub(1)?,
             (None, true) => 0,
-            (None, false) => files.len() - 1,
+            (None, false) => files.len().checked_sub(1)?,
         };
-        files[next].clone()
+        files.get(next).cloned()
     }
 
     /// Past the last (first) change of a file, like IntelliJ: the first press
@@ -884,16 +887,25 @@ impl App {
             .into_iter()
             .filter(|c| is_diff || c.path.is_file())
             .collect();
-        if files.iter().all(|c| c.path == cur) {
-            self.change_hop = None;
-            self.notify("No more changes", MsgKind::Info);
+        let Some(target) = Self::neighbour(&files, &cur, forward) else {
+            // The end: say so instead of wrapping around.
+            let text = if forward {
+                "Last change: no more changed files after this one"
+            } else {
+                "First change: no changed files before this one"
+            };
+            self.change_hop = Some(ChangeHop {
+                forward,
+                at: Instant::now(),
+                text: text.into(),
+                armed: false,
+            });
             return;
-        }
-        let target = Self::neighbour(&files, &cur, forward);
+        };
         let armed = self
             .change_hop
             .as_ref()
-            .is_some_and(|h| h.forward == forward && h.at.elapsed() < HOP_TTL);
+            .is_some_and(|h| h.armed && h.forward == forward && h.at.elapsed() < HOP_TTL);
         if !armed {
             let key = self.keymap.hint(if forward {
                 Action::NextChange
@@ -914,6 +926,7 @@ impl App {
                 forward,
                 at: Instant::now(),
                 text,
+                armed: true,
             });
             return;
         }
@@ -937,11 +950,11 @@ impl App {
             return;
         };
         let files = self.changed_files();
-        if files.is_empty() {
-            return;
+        match Self::neighbour(&files, &cur, forward) {
+            Some(change) => self.show_diff_of(&change, true),
+            None if forward => self.notify("This is the last changed file", MsgKind::Info),
+            None => self.notify("This is the first changed file", MsgKind::Info),
         }
-        let change = Self::neighbour(&files, &cur, forward);
-        self.show_diff_of(&change, true);
     }
 
     /// Shows `change` in the active diff tab (selecting it in the Commit

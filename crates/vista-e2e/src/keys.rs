@@ -4,6 +4,13 @@
 /// Encodes one key chord. Panics on names it doesn't know, so typos in tests
 /// fail loudly.
 pub fn encode(key: &str) -> Vec<u8> {
+    // A single character is typed as is (`J` is Shift-J, not `j`).
+    let mut chars = key.chars();
+    if let (Some(c), None) = (chars.next(), chars.next())
+        && !c.is_whitespace()
+    {
+        return c.to_string().into_bytes();
+    }
     let lower = key.trim().to_ascii_lowercase();
     let mut parts: Vec<&str> = lower.split('+').collect();
     let name = if lower.ends_with("++") {
@@ -126,6 +133,8 @@ mod tests {
     #[test]
     fn encodes_common_keys() {
         assert_eq!(encode("ctrl+p"), vec![0x10]);
+        assert_eq!(encode("J"), b"J".to_vec(), "single characters keep their case");
+        assert_eq!(encode("]"), b"]".to_vec());
         assert_eq!(encode("ctrl+\\"), vec![0x1c]);
         assert_eq!(encode("alt+1"), b"\x1b1".to_vec());
         assert_eq!(encode("enter"), b"\r".to_vec());

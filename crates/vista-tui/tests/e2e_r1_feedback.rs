@@ -201,6 +201,25 @@ fn next_change_continues_into_the_next_file() {
     vista.press("[");
     vista.expect_text("Δ a.txt");
     vista.expect_text("change 1 of 1");
+    // No wrapping around: before the first file is the start of the changes…
+    vista.press("[");
+    vista.expect_text("First change: no changed files before this one");
+    vista.press("[");
+    vista.expect_text("First change: no changed files before this one");
+    vista.expect_text("Δ a.txt");
+    // …and after the last change of the last file is the end.
+    vista.press("J");
+    vista.expect_text("Δ b.txt");
+    vista.press("]");
+    vista.expect_text("change 2 of 2");
+    vista.press("]");
+    vista.expect_text("Last change: no more changed files after this one");
+    vista.press("]");
+    vista.expect_text("Δ b.txt");
+    vista.expect_text("change 2 of 2");
+    vista.press("J");
+    vista.expect_text("This is the last changed file");
+    vista.expect_text("Δ b.txt");
 }
 
 #[test]
