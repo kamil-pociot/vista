@@ -58,6 +58,13 @@ pub fn highlight_groups(t: &Theme) -> Vec<(&'static str, HlSpec)> {
         ("PmenuSel", fg_bg("ui.text.strong", "ui.selection")),
         ("NonText", fg("ui.dim")),
         ("EndOfBuffer", fg("ui.dim")),
+        // Side-by-side diff editing (`e` in a diff): the same colours as
+        // vista's diff; the HEAD side maps DiffAdd to VistaDiffDeleted.
+        ("DiffAdd", bg("diff.inserted")),
+        ("DiffChange", bg("diff.modified")),
+        ("DiffText", bg("diff.word.modified")),
+        ("DiffDelete", fg_bg("ui.filler", "ui.bg")),
+        ("VistaDiffDeleted", bg("diff.deleted")),
         (
             "Comment",
             HlSpec {

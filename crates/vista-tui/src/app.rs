@@ -334,6 +334,16 @@ impl App {
     }
 
     fn edit_action(&mut self) {
+        // In a text diff, edit side by side (HEAD | working tree), like IntelliJ.
+        if self.focus == Focus::Main
+            && self.viewer.active_tab().is_some_and(|t| {
+                !t.editing
+                    && matches!(&t.content, Content::Diff(d) if matches!(d.body, crate::diffview::DiffBody::Text))
+            })
+        {
+            self.start_diff_editing();
+            return;
+        }
         let target = match self.focus {
             Focus::Left if self.left == Some(LeftPanel::Project) => self
                 .project
@@ -356,6 +366,69 @@ impl App {
     /// Opens `path` in the embedded Neovim (starting it if needed), or hands
     /// the terminal to `$EDITOR` when Neovim isn't available.
     pub fn start_editing(&mut self, path: &Path, line: Option<usize>) {
+        if !self.ensure_nvim(path) {
+            return;
+        }
+        match self.viewer.position(path) {
+            Some(i) => self.viewer.activate(i),
+            None => self.open_file(path),
+        }
+        let res = self.nvim.as_ref().map(|n| n.open(path, line));
+        if let Some(Err(e)) = res {
+            self.notify(format!("editor: {e}"), MsgKind::Error);
+            return;
+        }
+        // Opening a file ends any side-by-side diff editing in Neovim.
+        self.stop_diff_editing_tabs();
+        if let Some(t) = self.viewer.active_tab_mut() {
+            t.editing = true;
+        }
+        self.focus = Focus::Main;
+    }
+
+    /// Edits the active diff tab's file side by side with its HEAD version
+    /// (Neovim's diff mode: aligned, scroll-bound, re-diffed as you type).
+    fn start_diff_editing(&mut self) {
+        let Some((path, head, label, line)) = self.diff_edit_target() else {
+            return;
+        };
+        if !self.ensure_nvim(&path) {
+            return;
+        }
+        let res = self.nvim.as_ref().map(|n| n.open_diff(&path, &head, &label, line));
+        if let Some(Err(e)) = res {
+            self.notify(format!("editor: {e}"), MsgKind::Error);
+            return;
+        }
+        self.stop_diff_editing_tabs();
+        if let Some(t) = self.viewer.active_tab_mut() {
+            t.editing = true;
+        }
+        self.focus = Focus::Main;
+    }
+
+    /// (path, HEAD text, HEAD buffer name, 1-based line) of the active diff tab.
+    fn diff_edit_target(&self) -> Option<(PathBuf, String, String, Option<usize>)> {
+        let t = self.viewer.active_tab()?;
+        let Content::Diff(d) = &t.content else { return None };
+        let rel = t.path.strip_prefix(&self.root).unwrap_or(&t.path);
+        let label = format!("HEAD {} · {}", d.head, rel.display());
+        let line = d.new_line_at(t.cursor).map(|l| l + 1);
+        Some((t.path.clone(), d.old_text.clone(), label, line))
+    }
+
+    /// Neovim shows one thing at a time: diff tabs stop being edited.
+    fn stop_diff_editing_tabs(&mut self) {
+        for t in &mut self.viewer.tabs {
+            if t.diff.is_some() {
+                t.editing = false;
+            }
+        }
+    }
+
+    /// Starts the embedded Neovim if needed; on failure falls back to
+    /// `$EDITOR` for `path` and returns false.
+    fn ensure_nvim(&mut self, path: &Path) -> bool {
         if self.nvim.is_none() {
             let size = self.areas.viewer.map(|r| (r.width, r.height)).unwrap_or((80, 24));
             let minimal = self.config.editor.config == vista_core::EditorConfigMode::Minimal;
@@ -370,23 +443,11 @@ impl App {
                     let ed = editor::external_editor();
                     self.notify(format!("{e}; using {ed}"), MsgKind::Error);
                     self.pending_external = Some((ed, path.to_path_buf()));
-                    return;
+                    return false;
                 }
             }
         }
-        match self.viewer.position(path) {
-            Some(i) => self.viewer.activate(i),
-            None => self.open_file(path),
-        }
-        let res = self.nvim.as_ref().map(|n| n.open(path, line));
-        if let Some(Err(e)) = res {
-            self.notify(format!("editor: {e}"), MsgKind::Error);
-            return;
-        }
-        if let Some(t) = self.viewer.active_tab_mut() {
-            t.editing = true;
-        }
-        self.focus = Focus::Main;
+        true
     }
 
     fn leave_editor(&mut self) {
@@ -398,10 +459,16 @@ impl App {
 
     /// Keeps Neovim on the buffer of the active tab.
     fn sync_editor_buffer(&mut self) {
-        if let (Some(n), Some(t)) = (&self.nvim, self.viewer.active_tab())
-            && t.editing
-        {
+        let Some(t) = self.viewer.active_tab().filter(|t| t.editing) else {
+            return;
+        };
+        if t.diff.is_some() {
+            if let (Some(n), Some((path, head, label, line))) = (&self.nvim, self.diff_edit_target()) {
+                let _ = n.open_diff(&path, &head, &label, line);
+            }
+        } else if let Some(n) = &self.nvim {
             let _ = n.open(&t.path, None);
+            self.stop_diff_editing_tabs();
         }
     }
 
@@ -422,6 +489,11 @@ impl App {
                 self.project.tree.refresh(&[p]);
                 self.project.rebuild(&self.status);
                 self.request_status();
+            }
+            NvimEvent::DiffClosed => {
+                // `:q` in the side-by-side editor: back to vista's diff.
+                self.stop_diff_editing_tabs();
+                self.notify("Diff editor closed", MsgKind::Info);
             }
             NvimEvent::Exited => {
                 self.nvim = None;

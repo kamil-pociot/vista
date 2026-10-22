@@ -29,6 +29,8 @@ pub enum NvimEvent {
     Modified(PathBuf, bool),
     /// The process ended (`:q`, crash, …).
     Exited,
+    /// The side-by-side diff editor was closed from inside Neovim (`:q`).
+    DiffClosed,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,6 +72,26 @@ augroup vista
   autocmd BufWritePost * call rpcnotify(0, 'vista_written', expand('<afile>:p'))
   autocmd BufModifiedSet * call rpcnotify(0, 'vista_modified', expand('<afile>:p'), &modified)
 augroup END
+"#;
+
+/// Lua that defines `close()`: ends vista's diff tab page, if any, without
+/// reporting it (the caller already knows).
+const CLOSE_DIFF: &str = r#"
+local function close()
+  pcall(vim.api.nvim_del_augroup_by_name, 'vista_diff')
+  for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+    local ok, v = pcall(vim.api.nvim_tabpage_get_var, tp, 'vista_diff')
+    if ok and v then
+      vim.api.nvim_set_current_tabpage(tp)
+      vim.cmd('diffoff!')
+      pcall(vim.cmd, 'tabclose')
+    end
+  end
+  if vim.g.vista_stal ~= nil then
+    vim.o.showtabline = vim.g.vista_stal
+    vim.g.vista_stal = nil
+  end
+end
 "#;
 
 const MINIMAL: &str = "set number cursorline noswapfile hidden shortmess+=I laststatus=2";
@@ -120,6 +142,7 @@ impl Nvim {
                             .unwrap_or(false);
                         NvimEvent::Modified(PathBuf::from(path), modified)
                     }
+                    "vista_diff_closed" => NvimEvent::DiffClosed,
                     _ => return,
                 };
                 notify(ev);
@@ -170,9 +193,13 @@ impl Nvim {
     pub fn open(&self, path: &Path, line: Option<usize>) -> Result<(), RpcError> {
         let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
         self.lua(
-            "local p, l = ...
+            &format!(
+                "{CLOSE_DIFF}
+             close()
+             local p, l = ...
              vim.cmd.edit(vim.fn.fnameescape(p))
-             if l then pcall(vim.api.nvim_win_set_cursor, 0, { l, 0 }) end",
+             if l then pcall(vim.api.nvim_win_set_cursor, 0, {{ l, 0 }}) end"
+            ),
             vec![Value::from(path.to_string_lossy().as_ref()), line],
         )?;
         Ok(())
@@ -233,6 +260,74 @@ impl Nvim {
             self.rpc
                 .request_async("nvim_set_hl", vec![Value::from(0), Value::from(*name), Value::Map(m)])?;
         }
+        Ok(())
+    }
+
+    /// Opens `path` side by side with its HEAD version (`head`, read-only,
+    /// named `label`) in Neovim's diff mode, on a tab page of its own:
+    /// aligned, scroll-bound, and re-diffed as you type. `:q` on either side
+    /// closes both and sends [`NvimEvent::DiffClosed`].
+    pub fn open_diff(&self, path: &Path, head: &str, label: &str, line: Option<usize>) -> Result<(), RpcError> {
+        let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
+        let code = format!(
+            "{CLOSE_DIFF}
+local p, head, label, l = ...
+close()
+vim.g.vista_stal = vim.o.showtabline
+vim.o.showtabline = 0
+vim.cmd.tabedit(vim.fn.fnameescape(p))
+vim.t.vista_diff = true
+local work = vim.api.nvim_get_current_win()
+vim.cmd('leftabove vnew')
+local head_win = vim.api.nvim_get_current_win()
+local buf = vim.api.nvim_get_current_buf()
+local lines = vim.split(head, '\\n', {{ plain = true }})
+if lines[#lines] == '' then table.remove(lines) end
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+vim.bo[buf].buftype = 'nofile'
+vim.bo[buf].bufhidden = 'wipe'
+vim.bo[buf].swapfile = false
+vim.bo[buf].modifiable = false
+vim.bo[buf].readonly = true
+pcall(vim.api.nvim_buf_set_name, buf, label)
+local ft = vim.filetype.match({{ filename = p }})
+if ft then vim.bo[buf].filetype = ft end
+-- Lines only in HEAD read as deleted (IntelliJ), not as added.
+vim.wo[head_win].winhighlight = 'DiffAdd:VistaDiffDeleted'
+for _, w in ipairs({{ head_win, work }}) do
+  vim.wo[w].fillchars = 'diff:╱'
+end
+vim.cmd('diffthis')
+vim.api.nvim_set_current_win(work)
+vim.cmd('diffthis')
+if l then pcall(vim.api.nvim_win_set_cursor, work, {{ l, 0 }}) end
+local g = vim.api.nvim_create_augroup('vista_diff', {{ clear = true }})
+vim.api.nvim_create_autocmd('WinClosed', {{
+  group = g,
+  pattern = {{ tostring(work), tostring(head_win) }},
+  callback = function()
+    vim.schedule(function()
+      close()
+      vim.rpcnotify(0, 'vista_diff_closed')
+    end)
+  end,
+}})"
+        );
+        self.lua(
+            &code,
+            vec![
+                Value::from(path.to_string_lossy().as_ref()),
+                Value::from(head),
+                Value::from(label),
+                line,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Closes the side-by-side diff editor, if open.
+    pub fn close_diff(&self) -> Result<(), RpcError> {
+        self.lua(&format!("{CLOSE_DIFF}\nclose()"), vec![])?;
         Ok(())
     }
 
