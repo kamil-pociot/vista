@@ -26,6 +26,9 @@ const CONFIRM: Duration = Duration::from_secs(4);
 pub struct Project {
     pub id: ProjectId,
     pub app: App,
+    /// Its Terminal tool window's program asked for a notification while the
+    /// project wasn't on screen; the tab is marked until shown.
+    pub waiting: bool,
 }
 
 pub struct Workspace {
@@ -126,7 +129,11 @@ impl Workspace {
         if self.picker.is_some() {
             app.picker = self.picker.clone();
         }
-        self.projects.push(Project { id, app });
+        self.projects.push(Project {
+            id,
+            app,
+            waiting: false,
+        });
         let i = self.projects.len() - 1;
         self.refresh_bars();
         Ok(i)
@@ -208,6 +215,15 @@ impl Workspace {
             recent,
             terminals: self.terminals.iter().map(|t| t.title.clone()).collect(),
             terminal: self.terminal,
+            waiting: (self.projects.iter().enumerate())
+                .filter(|(_, p)| p.waiting)
+                .map(|(i, _)| TabTarget::Project(i))
+                .chain(
+                    (self.terminals.iter().enumerate())
+                        .filter(|(_, t)| t.waiting)
+                        .map(|(i, _)| TabTarget::Terminal(i)),
+                )
+                .collect(),
             commands: self.config.terminal.commands.clone(),
         };
         for p in &mut self.projects {
@@ -246,6 +262,13 @@ impl Workspace {
                 // Drawn after this; the reader may wake us again.
                 AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
                 AppEvent::TermExited => self.terminals[ti].mark_exited(),
+                AppEvent::TermNotify(seq) => {
+                    crate::terminal::pass_through(&seq);
+                    if self.terminal != Some(ti) {
+                        self.terminals[ti].waiting = true;
+                        self.refresh_bars();
+                    }
+                }
                 _ => {}
             }
             return;
@@ -269,6 +292,10 @@ impl Workspace {
         };
         // Events of a project closed meanwhile are dropped.
         let Some(i) = i else { return };
+        if matches!(ev, AppEvent::TermNotify(_)) && (i != self.active || self.terminal.is_some()) {
+            self.projects[i].waiting = true;
+            self.refresh_bars();
+        }
         self.projects[i].app.handle_event(ev);
         if i == self.active {
             self.look = Some(self.projects[i].app.theme.id.clone());
@@ -494,6 +521,7 @@ impl Workspace {
 
     /// Draws the screen: a terminal tab full size, or the active project.
     pub fn draw(&mut self, f: &mut ratatui::Frame) {
+        self.unmark_shown();
         let Some(ti) = self.terminal.filter(|t| *t < self.terminals.len()) else {
             crate::ui::draw(f, self.active_app());
             self.top_hits = self.active_app().project_hits.clone();
@@ -520,6 +548,19 @@ impl Workspace {
             true,
             "Enter closes the tab, Ctrl-\\ goes back",
         );
+    }
+
+    /// The tab on screen no longer needs attention.
+    fn unmark_shown(&mut self) {
+        let flag = match self.terminal {
+            Some(ti) => self.terminals.get_mut(ti).map(|t| &mut t.waiting),
+            None => self.projects.get_mut(self.active).map(|p| &mut p.waiting),
+        };
+        if let Some(flag) = flag
+            && std::mem::take(flag)
+        {
+            self.refresh_bars();
+        }
     }
 
     /// The window title: the active project or terminal.

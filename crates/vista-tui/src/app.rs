@@ -1528,6 +1528,7 @@ impl App {
                     s.mark_exited();
                 }
             }
+            AppEvent::TermNotify(seq) => crate::terminal::pass_through(&seq),
             AppEvent::Log { generation, result } => {
                 if generation == self.log.generation {
                     match result {

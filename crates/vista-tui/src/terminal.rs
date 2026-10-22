@@ -44,6 +44,29 @@ pub fn set_title(title: &str) {
     let _ = execute!(io::stdout(), SetTitle(title));
 }
 
+/// Writes an escape sequence a terminal tab's program meant for the real
+/// terminal (a desktop notification). Inside tmux it's wrapped so tmux hands
+/// it on (that needs `set -g allow-passthrough on`).
+pub fn pass_through(seq: &[u8]) {
+    use std::io::Write;
+    let mut out = io::stdout();
+    let _ = if std::env::var_os("TMUX").is_some_and(|v| !v.is_empty()) {
+        let mut wrapped = b"\x1bPtmux;".to_vec();
+        for &b in seq {
+            wrapped.extend_from_slice(if b == 0x1b {
+                b"\x1b\x1b"
+            } else {
+                std::slice::from_ref(&b)
+            });
+        }
+        wrapped.extend_from_slice(b"\x1b\\");
+        out.write_all(&wrapped)
+    } else {
+        out.write_all(seq)
+    };
+    let _ = out.flush();
+}
+
 pub fn setup(title: &str) -> io::Result<(Term, TermGuard)> {
     enable_raw_mode()?;
     let kitty = keyboard_enhancement_wanted() && supports_keyboard_enhancement().unwrap_or(false);

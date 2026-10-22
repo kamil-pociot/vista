@@ -19,6 +19,9 @@ pub struct ProjectsBar {
     pub terminals: Vec<String>,
     /// The terminal tab on screen, if any (then no project is).
     pub terminal: Option<usize>,
+    /// Tabs whose program asked for a notification (Claude Code waiting for
+    /// input) since they were last on screen.
+    pub waiting: Vec<TabTarget>,
     /// Commands offered for new terminal tabs (`[terminal] commands`).
     pub commands: Vec<String>,
 }

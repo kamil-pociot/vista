@@ -27,10 +27,17 @@ pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
     let mut x = area.x + 1;
     for (i, (name, _)) in open.iter().enumerate() {
         let active = i == app.projects.active && app.projects.terminal.is_none();
-        let label = format!(" {name} ");
+        let waiting = app.projects.waiting.contains(&TabTarget::Project(i));
+        let label = if waiting {
+            format!(" ● {name} ")
+        } else {
+            format!(" {name} ")
+        };
         let style = if active {
             t.fg_bg("ui.text.strong", "ui.selection.inactive")
                 .add_modifier(Modifier::BOLD)
+        } else if waiting {
+            t.fg("ui.warning").add_modifier(Modifier::BOLD)
         } else {
             t.fg("ui.dim")
         };
@@ -57,10 +64,14 @@ pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
     // Terminal tabs, after the projects: always closable.
     for (i, title) in app.projects.terminals.iter().enumerate() {
         let active = app.projects.terminal == Some(i);
-        let label = format!(" ▶ {title} ");
+        // ● instead of ▶ while its program waits for input (Claude Code).
+        let waiting = app.projects.waiting.contains(&TabTarget::Terminal(i));
+        let label = format!(" {} {title} ", if waiting { '●' } else { '▶' });
         let style = if active {
             t.fg_bg("ui.text.strong", "ui.selection.inactive")
                 .add_modifier(Modifier::BOLD)
+        } else if waiting {
+            t.fg("ui.warning").add_modifier(Modifier::BOLD)
         } else {
             t.fg("ui.dim")
         };

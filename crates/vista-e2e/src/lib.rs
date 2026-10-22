@@ -168,6 +168,8 @@ impl<'a> Launcher<'a> {
             ("VISTA_CACHE_DIR".into(), s(&home.join(".cache/vista"))),
             ("VISTA_LOG_FILE".into(), s(&log_file)),
             ("VISTA_LOG".into(), "debug".into()),
+            // Escape sequences vista passes on stay unwrapped when tests run in tmux.
+            ("TMUX".into(), String::new()),
             ("VISTA_KEYBOARD".into(), "legacy".into()),
             ("VISTA_IMAGE_PROTOCOL".into(), "halfblocks".into()),
             ("VISTA_THEME".into(), self.theme.clone()),
@@ -477,6 +479,23 @@ impl Vista {
             trace.map(|p| p.display().to_string()).unwrap_or_else(|| "-".into()),
             self.log_file.display()
         );
+    }
+
+    /// Waits until vista has written `bytes` to its terminal: escape
+    /// sequences the screen doesn't show (desktop notifications, …).
+    pub fn expect_output(&mut self, bytes: &[u8]) {
+        let desc = format!("output {:?}", String::from_utf8_lossy(bytes));
+        let start = Instant::now();
+        while !self.raw.lock().expect("raw").windows(bytes.len()).any(|w| w == bytes) {
+            if start.elapsed() > self.timeout {
+                self.fail(&format!("timed out after {:?} waiting for {desc}", self.timeout));
+            }
+            if self.eof.load(Ordering::SeqCst) && !self.exited {
+                self.fail(&format!("vista exited while waiting for {desc}"));
+            }
+            thread::sleep(Duration::from_millis(15));
+        }
+        self.record(format!("✓ {desc}"));
     }
 
     /// Polls until `pred(screen)` holds or the timeout passes.

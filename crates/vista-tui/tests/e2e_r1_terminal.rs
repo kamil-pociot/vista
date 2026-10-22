@@ -170,3 +170,71 @@ fn terminal_tabs_can_be_dragged_into_a_new_order() {
     vista.press("enter");
     vista.wait_until("cat echoes", |s| s.contents().matches("still here").count() >= 2);
 }
+
+/// Claude Code asks the terminal for a desktop notification when it waits
+/// for input; vista passes it on and marks the tab until it's looked at.
+#[test]
+fn a_notification_reaches_the_outer_terminal_and_marks_the_tab() {
+    let repo = Fixture::git()
+        .file(
+            "notify.sh",
+            "while [ ! -e go ]; do sleep 0.1; done\nprintf '\\033]777;notify;Claude Code;needs input\\007'\ncat\n",
+        )
+        .commit("init")
+        .build();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .size(140, 30)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("ctrl+o");
+    vista.type_text(">sh notify.sh");
+    vista.press("enter");
+    vista.expect_text("▶ sh notify.sh × ");
+    // Back to the project before the script notifies.
+    vista.press("ctrl+\\");
+    vista.expect_text("1: Project");
+    repo.write("go", "");
+    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x1b\\");
+    vista.expect_text("● sh notify.sh").to_have_fg("ui.warning");
+    // Shown once: the mark goes.
+    click_tab(&mut vista, "● sh notify.sh");
+    vista.expect_text("▶ sh notify.sh");
+    vista.expect_no_text("● sh notify.sh");
+    vista.press("ctrl+\\");
+    vista.expect_text("1: Project");
+    vista.expect_text("▶ sh notify.sh");
+}
+
+/// The same for the Terminal tool window's shell: its project's tab is
+/// marked while something else is on screen.
+#[test]
+fn a_notification_from_the_tool_window_marks_the_project_tab() {
+    let repo = repo();
+    let name = repo.path().file_name().unwrap().to_string_lossy().into_owned();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .size(140, 36)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("alt+t");
+    vista.expect_text("T: Terminal");
+    vista.type_text("while [ ! -e go ]; do sleep 0.1; done; printf '\\033]9;shell wants you\\007'");
+    vista.press("enter");
+    // A terminal tab covers the project.
+    vista.press("ctrl+\\");
+    vista.press("ctrl+o");
+    vista.type_text("cat");
+    vista.expect_text("▷ cat");
+    vista.press("enter");
+    vista.expect_text("▶ cat × ");
+    vista.expect_no_text("1: Project");
+    repo.write("go", "");
+    vista.expect_output(b"\x1b]9;shell wants you\x1b\\");
+    vista.expect_text(&format!("● {name}")).to_have_fg("ui.warning");
+    vista.press("ctrl+\\");
+    vista.expect_text("1: Project");
+    vista.expect_no_text(&format!("● {name}"));
+}

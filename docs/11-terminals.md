@@ -25,8 +25,17 @@ commands = ["claude agents", "htop"]
 - `Alt-T` again hides it; the shell keeps running. If the shell exits, `Enter` starts a new one.
 - It shares the bottom area with the Find and Git windows: opening one hides the others.
 
+## Notifications
+
+Programs ask the terminal for desktop notifications with escape sequences. Claude Code sends one when it is waiting for your input or a permission. vista passes these on to the terminal it runs in, so Ghostty (or iTerm2, kitty) still shows them. This works for both kinds of terminal.
+
+- Passed on: `OSC 9 ; text` (iTerm2, Ghostty), `OSC 777 ; notify ; title ; body` (rxvt, Ghostty) and kitty's `OSC 99`. ConEmu-style `OSC 9 ; 4 ; …` progress reports and other OSCs stay inside.
+- Claude Code picks its kind of notification from `TERM_PROGRAM`. Programs in vista inherit it from the terminal vista runs in, so nothing needs configuring.
+- Inside tmux the sequence is wrapped for tmux to hand on, which needs `set -g allow-passthrough on`.
+- A tab that isn't on screen when its program sends one is marked until you look at it. A terminal tab shows `● claude agents` instead of `▶`. A project shows `● name` when its Terminal tool window's shell sent the notification while another project or a terminal tab was on screen. The mark uses the look's `ui.warning` colour.
+
 ## Code and tests
 
-- `vista-tui/src/term_tab.rs` (PTY, reader thread, key and mouse encoding), `ui/term.rs`, `workspace.rs` (terminal tabs), `app.rs` (bottom terminal).
-- Unit: xterm key encoding, mouse reporting only when the program asks, a real program round trip.
-- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding), `e2e_r1_tabs.rs` (dragging terminal tabs).
+- `vista-tui/src/term_tab.rs` (PTY, reader thread, key and mouse encoding, picking notifications out of the output), `ui/term.rs`, `workspace.rs` (terminal tabs, marking tabs), `app.rs` (bottom terminal), `terminal.rs` (`pass_through`), `ui/projects.rs` (the `●` mark).
+- Unit: xterm key encoding, mouse reporting only when the program asks, a real program round trip, which OSCs count as notifications.
+- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding, a notification reaching the outer terminal and marking a terminal tab or a project tab), `e2e_r1_tabs.rs` (dragging terminal tabs). The harness's `expect_output` waits for raw bytes vista writes, such as the passed-on notification.

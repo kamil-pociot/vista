@@ -373,6 +373,11 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Scrollbar on code, rendered Markdown and diffs, sized and placed by screen rows, so it stays right with wrapped lines.
 - [x] Tests: Markdown table units (wrap, rules, alignment, wide), scroll-limit and landing units, `e2e_r1_feedback` (7 PTY tests: diff sideways + wrap, viewer shift-wheel, tables both modes, scroll past end, double-click, cross-file changes in diff and viewer).
 
+### Terminal notifications ✅
+- [x] Desktop notifications from programs in terminal tabs and the Terminal tool window (`OSC 9`, `OSC 777;notify`, `OSC 99`) are passed on to the outer terminal (wrapped for tmux). Before this, the vt100 parser dropped them, so Claude Code's notifications never reached Ghostty.
+- [x] A tab whose program notified while off screen is marked `●` (terminal tab, or the project for its tool-window shell) until shown. vista uses the notification itself as the signal, where herdr guesses agent state from process names and output.
+- [x] Tests: OSC filtering units, `e2e_r1_terminal` (passed-on bytes via `expect_output`, both marks).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

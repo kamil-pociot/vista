@@ -72,7 +72,7 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 
 ### Terminal tabs
 
-Programs such as `claude agents` run in terminal tabs (`▶ claude agents`) next to the project tabs, full screen. Open one from `Ctrl-O`: the commands in `[terminal] commands` are listed (`claude agents` by default), or type `>` and any command (`>` alone opens your shell). It runs through your login shell (your `PATH`) in the active project's folder. Every key goes to the program except `Ctrl-\` (back to the project); click a tab in the top bar to switch, its `×` to close it. When the program ends, `Enter` closes the tab. Quitting vista with terminal tabs still running asks first.
+Programs such as `claude agents` run in terminal tabs (`▶ claude agents`) next to the project tabs, full screen. Open one from `Ctrl-O`: the commands in `[terminal] commands` are listed (`claude agents` by default), or type `>` and any command (`>` alone opens your shell). It runs through your login shell (your `PATH`) in the active project's folder. Every key goes to the program except `Ctrl-\` (back to the project); click a tab in the top bar to switch, its `×` to close it. When the program ends, `Enter` closes the tab. Quitting vista with terminal tabs still running asks first. Desktop notifications from programs in vista's terminals reach the terminal vista runs in, so Claude Code's "waiting for input" still pops up from Ghostty. A tab that sends one while you're looking elsewhere is marked `●` until you open it.
 
 ```toml
 [terminal]
