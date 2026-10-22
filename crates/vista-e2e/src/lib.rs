@@ -493,10 +493,18 @@ impl Vista {
     }
 
     fn wait_for_pos(&mut self, text: &str) -> (u16, u16) {
+        // Take the position from the same screen the check matched: the
+        // screen may change before it could be looked up again.
         let t = text.to_string();
-        self.wait_until(&format!("text {text:?}"), move |s| find(s, &t).is_some());
-        let p = self.parser.lock().expect("parser");
-        find(p.screen(), text).expect("found")
+        let at = std::sync::Mutex::new(None);
+        self.wait_until(&format!("text {text:?}"), |s| {
+            let p = find(s, &t);
+            if p.is_some() {
+                *at.lock().expect("position") = p;
+            }
+            p.is_some()
+        });
+        at.into_inner().expect("position").expect("found")
     }
 
     /// Waits for `text` to be visible; returns a locator for further checks.

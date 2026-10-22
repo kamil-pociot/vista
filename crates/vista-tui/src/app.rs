@@ -124,14 +124,12 @@ struct DiffEdit {
     path: PathBuf,
     head: String,
     label: String,
-    line: Option<usize>,
-    wrap: bool,
-    collapse: bool,
+    view: vista_nvim::DiffView,
 }
 
 impl DiffEdit {
     fn open_in(&self, n: &vista_nvim::Nvim) -> Result<(), vista_nvim::RpcError> {
-        n.open_diff(&self.path, &self.head, &self.label, self.line, self.wrap, self.collapse)
+        n.open_diff(&self.path, &self.head, &self.label, self.view)
     }
 }
 
@@ -431,14 +429,21 @@ impl App {
         let Content::Diff(d) = &t.content else { return None };
         let rel = t.path.strip_prefix(&self.root).unwrap_or(&t.path);
         let label = format!("HEAD {} · {}", d.head, rel.display());
-        let line = d.new_line_at(t.cursor).map(|l| l + 1);
+        // Open where the diff is: the cursor's line and the top visible line
+        // of the working-tree side, and the same sideways scroll.
+        let view = vista_nvim::DiffView {
+            line: d.new_line_at(t.cursor).map(|l| l + 1),
+            top: d.new_line_at(t.scroll).map(|l| l + 1),
+            top_head: d.head_only_line_at(t.scroll).map(|l| l + 1),
+            leftcol: t.hscroll,
+            wrap: t.wrap,
+            collapse: d.collapse,
+        };
         Some(DiffEdit {
             path: t.path.clone(),
             head: d.old_text.clone(),
             label,
-            line,
-            wrap: t.wrap,
-            collapse: d.collapse,
+            view,
         })
     }
 

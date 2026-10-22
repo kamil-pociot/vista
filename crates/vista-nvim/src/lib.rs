@@ -80,33 +80,29 @@ augroup vista
 augroup END
 "#;
 
-/// Lua that defines `close()`: ends vista's diff tab page, if any, without
-/// reporting it (the caller already knows).
-const CLOSE_DIFF: &str = r#"
-local function close()
-  pcall(vim.api.nvim_del_augroup_by_name, 'vista_diff')
-  for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
-    local ok, v = pcall(vim.api.nvim_tabpage_get_var, tp, 'vista_diff')
-    local okb, b = pcall(vim.api.nvim_tabpage_get_var, tp, 'vista_diff_buf')
-    if okb and vim.api.nvim_buf_is_valid(b) then
-      for _, k in ipairs({ 'zi', 'zn', 'zN' }) do
-        pcall(vim.keymap.del, 'n', k, { buffer = b })
-      end
-    end
-    if ok and v then
-      vim.api.nvim_set_current_tabpage(tp)
-      vim.cmd('diffoff!')
-      pcall(vim.cmd, 'tabclose')
-    end
-  end
-  if vim.g.vista_stal ~= nil then
-    vim.o.showtabline = vim.g.vista_stal
-    vim.g.vista_stal = nil
-  end
-end
-"#;
+/// Lua that defines `close()` (ends vista's diff tab page, if any).
+const CLOSE_DIFF: &str = include_str!("close_diff.lua");
+
+/// Lua that opens the side-by-side diff editor (after [`CLOSE_DIFF`]).
+const OPEN_DIFF: &str = include_str!("open_diff.lua");
 
 const MINIMAL: &str = "set number cursorline noswapfile hidden shortmess+=I laststatus=2";
+
+/// Where and how the side-by-side diff editor opens.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DiffView {
+    /// Cursor line (1-based).
+    pub line: Option<usize>,
+    /// First visible line (1-based).
+    pub top: Option<usize>,
+    /// First visible line on the HEAD side instead (1-based), when the view
+    /// starts on lines only HEAD has.
+    pub top_head: Option<usize>,
+    pub leftcol: usize,
+    pub wrap: bool,
+    /// Fold unchanged lines.
+    pub collapse: bool,
+}
 
 pub struct Nvim {
     rpc: Rpc,
@@ -298,117 +294,26 @@ impl Nvim {
     }
 
     /// Opens `path` side by side with its HEAD version (`head`, read-only,
-    /// named `label`) in Neovim's diff mode, on a tab page of its own:
-    /// aligned, scroll-bound, and re-diffed as you type. `:q` on either side
-    /// closes both and sends [`NvimEvent::DiffClosed`].
-    pub fn open_diff(
-        &self,
-        path: &Path,
-        head: &str,
-        label: &str,
-        line: Option<usize>,
-        wrap: bool,
-        collapse: bool,
-    ) -> Result<(), RpcError> {
-        let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
-        let code = format!(
-            "{CLOSE_DIFF}
-local p, head, label, l, wrap, collapse = ...
-close()
-vim.g.vista_stal = vim.o.showtabline
-vim.o.showtabline = 0
-vim.cmd.tabedit(vim.fn.fnameescape(p))
-vim.t.vista_diff = true
-local work = vim.api.nvim_get_current_win()
-vim.cmd('leftabove vnew')
-local head_win = vim.api.nvim_get_current_win()
-local buf = vim.api.nvim_get_current_buf()
-local lines = vim.split(head, '\\n', {{ plain = true }})
-if lines[#lines] == '' then table.remove(lines) end
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-vim.bo[buf].buftype = 'nofile'
-vim.bo[buf].bufhidden = 'wipe'
-vim.bo[buf].swapfile = false
-vim.bo[buf].modifiable = false
-vim.bo[buf].readonly = true
-pcall(vim.api.nvim_buf_set_name, buf, label)
-local ft = vim.filetype.match({{ filename = p }})
-if ft then vim.bo[buf].filetype = ft end
--- Lines only in HEAD read as deleted (IntelliJ), not as added.
-vim.wo[head_win].winhighlight = 'DiffAdd:VistaDiffDeleted'
-for _, w in ipairs({{ head_win, work }}) do
-  vim.wo[w].fillchars = 'diff:╱'
-end
-vim.cmd('diffthis')
-vim.api.nvim_set_current_win(work)
-vim.cmd('diffthis')
--- Diff mode turns wrapping off and folds unchanged lines; follow the
--- viewer's wrap and collapse settings instead.
-for _, w in ipairs({{ head_win, work }}) do
-  vim.wo[w].wrap = wrap
-  vim.wo[w].foldenable = collapse
-end
-if l then pcall(vim.api.nvim_win_set_cursor, work, {{ l, 0 }}) end
-local g = vim.api.nvim_create_augroup('vista_diff', {{ clear = true }})
--- `:set wrap` on one side applies to both, so they stay aligned.
-vim.api.nvim_create_autocmd('OptionSet', {{
-  group = g,
-  pattern = 'wrap',
-  callback = function()
-    local v = vim.wo.wrap
-    for _, w in ipairs({{ head_win, work }}) do
-      if vim.api.nvim_win_is_valid(w) then vim.wo[w].wrap = v end
-    end
-  end,
-}})
--- `zi`/`zn`/`zN` don't fire OptionSet: map them (diff buffers only) so they
--- also reach the other side and vista.
-local work_buf = vim.api.nvim_win_get_buf(work)
-vim.t.vista_diff_buf = work_buf
-for _, b in ipairs({{ buf, work_buf }}) do
-  for _, k in ipairs({{ 'zi', 'zn', 'zN' }}) do
-    vim.keymap.set('n', k, function()
-      vim.cmd('normal! ' .. k)
-      local v = vim.wo.foldenable
-      for _, w in ipairs({{ head_win, work }}) do
-        if vim.api.nvim_win_is_valid(w) then vim.wo[w].foldenable = v end
-      end
-      vim.rpcnotify(0, 'vista_collapse', v)
-    end, {{ buffer = b, desc = 'vista: fold unchanged lines' }})
-  end
-end
--- `:set foldenable` on one side applies to both, and to vista's collapse.
-vim.api.nvim_create_autocmd('OptionSet', {{
-  group = g,
-  pattern = 'foldenable',
-  callback = function()
-    local v = vim.wo.foldenable
-    for _, w in ipairs({{ head_win, work }}) do
-      if vim.api.nvim_win_is_valid(w) then vim.wo[w].foldenable = v end
-    end
-    vim.rpcnotify(0, 'vista_collapse', v)
-  end,
-}})
-vim.api.nvim_create_autocmd('WinClosed', {{
-  group = g,
-  pattern = {{ tostring(work), tostring(head_win) }},
-  callback = function()
-    vim.schedule(function()
-      close()
-      vim.rpcnotify(0, 'vista_diff_closed')
-    end)
-  end,
-}})"
-        );
+    /// named `label`) in Neovim's diff mode, on a tab page of its own,
+    /// re-diffed as you type. vista aligns the sides itself, so wrapped lines
+    /// line up too (blank rows on the shorter side, ╱ rows for missing lines).
+    /// `view` places it like vista's diff was: 1-based cursor and top line,
+    /// and left column. `:q` on either side closes both and sends
+    /// [`NvimEvent::DiffClosed`].
+    pub fn open_diff(&self, path: &Path, head: &str, label: &str, view: DiffView) -> Result<(), RpcError> {
+        let opt = |v: Option<usize>| v.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
         self.lua(
-            &code,
+            &format!("{CLOSE_DIFF}\n{OPEN_DIFF}"),
             vec![
                 Value::from(path.to_string_lossy().as_ref()),
                 Value::from(head),
                 Value::from(label),
-                line,
-                Value::from(wrap),
-                Value::from(collapse),
+                opt(view.line),
+                opt(view.top),
+                opt(view.top_head),
+                Value::from(view.leftcol as u64),
+                Value::from(view.wrap),
+                Value::from(view.collapse),
             ],
         )?;
         Ok(())

@@ -200,6 +200,12 @@ impl DiffDoc {
             self.sbs.rows[r..].iter().find_map(|x| x.right)
         })
     }
+
+    /// The HEAD line (0-based) of a display row that exists only in HEAD.
+    pub fn head_only_line_at(&self, i: usize) -> Option<usize> {
+        let row = &self.sbs.rows[self.row_of(i)?];
+        if row.right.is_none() { row.left } else { None }
+    }
 }
 
 /// What a key in a diff tab asks for.

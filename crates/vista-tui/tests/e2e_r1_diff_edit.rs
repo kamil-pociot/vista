@@ -207,3 +207,95 @@ fn plain_editing_follows_the_viewer_wrap_both_ways() {
     vista.expect_text("short");
     vista.expect_no_text("TAIL");
 }
+
+/// 30 wrapped paragraphs `Pnn …ENDnn`; the working copy adds a line before
+/// P03, deletes P05 and changes P08.
+fn paragraphs_repo() -> Repo {
+    let para = |i: usize, w: &str| format!("P{i:02} {}END{i:02}\n", w.repeat(12));
+    let old: String = (1..=30).map(|i| para(i, "lorem ipsum ")).collect();
+    let mut new = String::new();
+    for i in 1..=30 {
+        if i == 3 {
+            new.push_str("ADDED line\n");
+        }
+        if i != 5 {
+            new.push_str(&para(i, if i == 8 { "LOREM ipsum " } else { "lorem ipsum " }));
+        }
+    }
+    Fixture::git()
+        .file("taste.md", old)
+        .commit("init")
+        .modify("taste.md", new)
+        .build()
+}
+
+/// Paragraph labels (`P07`) on a screen row, left to right.
+fn labels(line: &str) -> Vec<String> {
+    let c: Vec<char> = line.chars().collect();
+    (0..c.len().saturating_sub(2))
+        .filter(|&i| c[i] == 'P' && c[i + 1].is_ascii_digit() && c[i + 2].is_ascii_digit())
+        .map(|i| c[i..i + 3].iter().collect())
+        .collect()
+}
+
+/// Every row that shows a paragraph start on both sides shows the same one
+/// (wrapped rows and padding included), and there are a few such rows.
+fn expect_aligned(vista: &mut Vista) {
+    vista.wait_until("both sides aligned row by row", |s| {
+        let pairs: Vec<Vec<String>> = s.contents().lines().map(labels).filter(|l| l.len() == 2).collect();
+        pairs.len() >= 3 && pairs.iter().all(|p| p[0] == p[1])
+    });
+}
+
+#[test]
+fn diff_editor_aligns_wrapped_lines_and_opens_where_the_diff_was() {
+    if !vista_nvim::available("nvim") {
+        eprintln!("nvim not installed; skipping");
+        return;
+    }
+    let repo = paragraphs_repo();
+    let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).size(150, 40).start();
+    vista.expect_text("taste.md");
+    vista.press("alt+0");
+    vista.expect_text("Changes  ");
+    let (row, col) = vista.expect_text_in("taste.md", 0..44).position();
+    vista.click(col, row);
+    vista.press("enter");
+    vista.expect_text("lines: wrap");
+    // Change 3 (P08); the diff view then starts at the deleted P05.
+    vista.press("]");
+    vista.press("]");
+    vista.expect_text("change 3 of 3");
+    vista.press("e");
+    vista.expect_text("HEAD ");
+    // Same place as the diff: P05 (only in HEAD) on top with ╱ opposite,
+    // line numbers on both sides, cursor on line 8 (P08).
+    vista.wait_until("P05 on top, filler opposite", |s| {
+        s.contents()
+            .lines()
+            .find(|l| !labels(l).is_empty())
+            .is_some_and(|l| l.contains("5 P05") && l.contains("╱╱╱"))
+    });
+    vista.expect_text("8,1");
+    expect_aligned(&mut vista);
+    // Scrolling keeps the sides together, wrapped rows and padding included.
+    for _ in 0..5 {
+        vista.scroll_down(100, 20);
+    }
+    vista.expect_no_text("P05");
+    expect_aligned(&mut vista);
+    for _ in 0..3 {
+        vista.press("ctrl+e");
+    }
+    expect_aligned(&mut vista);
+    // Editing realigns: make P08 two rows longer; P09 still lines up.
+    vista.type_text(":8");
+    vista.press("enter");
+    vista.type_text(&format!("A {}", "more words ".repeat(10)));
+    vista.press("esc");
+    vista.type_text("zt");
+    expect_aligned(&mut vista);
+    vista.wait_until("P09 on both sides of one row", |s| {
+        s.contents().lines().any(|l| labels(l) == ["P09", "P09"])
+    });
+}
