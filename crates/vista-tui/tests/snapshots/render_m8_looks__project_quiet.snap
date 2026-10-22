@@ -31,7 +31,7 @@ expression: "project_with_code(&repo, look)"
                                25       }
                                26 ▌
  VIEW                                                                  4 changed · 2 unversioned   1:1   Rust
- Ctrl-P files    Ctrl-F find in files    Alt-0 changes    Tab focus    ? help
+ Ctrl-P files    Ctrl-F find in files    Alt-2 changes    Tab focus    ? help
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.header bg=ui.panel] [66..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.header bg=ui.panel] [86..103 fg=ui.text bg=ui.panel] [103..105 fg=ui.header bg=ui.panel] [105..110 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.header bg=ui.bg] [27..30 fg=ui.border.focused bg=ui.bg] [30..41 fg=ui.border.focused bg=ui.bg +bold] [41..43 fg=ui.header bg=ui.bg]

@@ -62,7 +62,7 @@ fn view_settings_survive_a_restart() {
     vista.press("i");
     vista.expect_text("Ignored files hidden");
     // Commit: group by folder; diff: unified, collapsed, ignoring whitespace.
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     vista.press("g");
     vista.expect_text("[x] src");
@@ -112,7 +112,7 @@ fn view_settings_survive_a_restart() {
     vista.expect_no_text("3  Para one.");
     vista.expect_text_in("README.md", 0..40);
     vista.expect_no_text("build");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     vista.expect_text("[x] src");
     let (row, col) = vista.expect_text_in("lib.rs", 0..44).position();

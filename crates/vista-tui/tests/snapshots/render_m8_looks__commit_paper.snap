@@ -3,7 +3,7 @@ source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "commit_with_diff(&repo, look)"
 ---
   <root>   +                                                          Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
- ◫   ╭ 0: Commit ─────────────────────╮ ╭───────────────────────────────────────────────────────────────────────────────────────╮
+ ◫   ╭ 2: Commit ─────────────────────╮ ╭───────────────────────────────────────────────────────────────────────────────────────╮
      │ ␣ tick  r rollback  a add  g gr│ │ Δ diff.rs ×                                                                           │
  ⎇   │ ▾ [x] Changes  4 files         │ │ diff.rs  crates/fb-git/src               1 of 1 in commit (␣)   [ ◂ change 1 of 1 ▸ ] │
      │   [x] Cargo.lock               │ │ HEAD · c22c251 (read-only)                  Working tree                              │

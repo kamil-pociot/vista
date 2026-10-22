@@ -11,7 +11,7 @@ fn launches_into_design_a_layout_and_quits_cleanly() {
 
     vista.expect_text("No file open");
     vista.expect_text("1: Project").to_be_bold();
-    vista.expect_text("0: Commit");
+    vista.expect_text("2: Commit");
     vista.expect_text("Go to File");
     // The top bar sits on the panel background.
     vista.expect_text("Go to File").to_have_bg("ui.panel");
@@ -79,8 +79,8 @@ fn alt_1_hides_and_shows_the_project_tool_window() {
     vista.press("alt+1");
     vista.expect_row(1, "1: Project");
     // Alt-0 swaps the left side to the Commit tool window.
-    vista.press("alt+0");
-    vista.expect_row(1, "0: Commit");
+    vista.press("alt+2");
+    vista.expect_row(1, "2: Commit");
 }
 
 #[test]

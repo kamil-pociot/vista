@@ -24,7 +24,7 @@ fn wait_for_file(repo: &Repo, rel: &str, pred: impl Fn(&str) -> bool) -> String 
 
 fn open_diff(vista: &mut Vista) {
     vista.expect_text("notes.txt");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     let (row, col) = vista.expect_text_in("notes.txt", 0..44).position();
     vista.click(col, row);
@@ -256,7 +256,7 @@ fn diff_editor_aligns_wrapped_lines_and_opens_where_the_diff_was() {
     let repo = paragraphs_repo();
     let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).size(150, 40).start();
     vista.expect_text("taste.md");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     let (row, col) = vista.expect_text_in("taste.md", 0..44).position();
     vista.click(col, row);
@@ -330,7 +330,7 @@ fn diff_editor_opens_on_the_cursor_line_of_a_long_file_with_exact_filler() {
     let repo = long_doc_repo();
     let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).size(150, 40).start();
     vista.expect_text("doc.md");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     let (row, col) = vista.expect_text_in("doc.md", 0..44).position();
     vista.click(col, row);

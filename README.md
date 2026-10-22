@@ -23,7 +23,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 
 | Where | Keys |
 |---|---|
-| Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-0` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
+| Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-2` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
 | Project tree | `⌖` in the header (or `Ctrl-L`) shows the opened file in the tree · arrows / `hjkl`, `Enter` or double-click open, `e` edit in Neovim, `i` show/hide ignored, `-` collapse all, `Ctrl-R` refresh |
 | Viewer | `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
 | Editor (Neovim) | everything goes to Neovim; `Ctrl-\` back to the tree; `:w` saves and refreshes git colours; long lines wrap if the viewer wrapped them, and `:set wrap` / `:set nowrap` carry back to the viewer |

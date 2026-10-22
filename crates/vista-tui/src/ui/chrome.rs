@@ -267,10 +267,26 @@ pub fn bottom_bar(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(Block::new().style(t.bg("ui.panel")), area);
     if t.chrome.tool_windows == ToolWindows::BottomBar {
         let left_active = |p| app.left == Some(p) && app.focus == Focus::Left;
+        let km = &app.keymap;
         let spans = vec![
-            tool_label(app, "1", "Project", left_active(LeftPanel::Project)),
-            tool_label(app, "0", "Commit", left_active(LeftPanel::Commit)),
-            tool_label(app, "3", "Find", app.focus == Focus::Bottom),
+            tool_label(
+                app,
+                &km.tool_number(Action::ToggleProject),
+                "Project",
+                left_active(LeftPanel::Project),
+            ),
+            tool_label(
+                app,
+                &km.tool_number(Action::ToggleCommit),
+                "Commit",
+                left_active(LeftPanel::Commit),
+            ),
+            tool_label(
+                app,
+                &km.tool_number(Action::ToggleFind),
+                "Find",
+                app.focus == Focus::Bottom,
+            ),
             tool_label(app, "?", "Help", app.show_help),
         ];
         f.render_widget(Paragraph::new(Line::from(spans)), area);

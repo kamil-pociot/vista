@@ -17,7 +17,7 @@ expression: snap
    ▸ docs                │                       Ctrl-P  Go to File
    ▸ target              │                       Ctrl-F  Find in Files
      .gitignore          │                        Alt-1  Project
-     build.log           │                        Alt-0  Commit
+     build.log           │                        Alt-2  Commit
      Cargo.lock          │                            ?  Help
      Cargo.toml          │
      README.md           │
@@ -27,7 +27,7 @@ expression: snap
                          │
                          │
                          │
- 1: Project   0: Commit   3: Find   ?: Help   4 changed · 2 unversioned   Darcula Classic
+ 1: Project   2: Commit   3: Find   ?: Help   4 changed · 2 unversioned   Darcula Classic
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..40 fg=ui.text bg=ui.panel] [40..46 fg=ui.dim bg=ui.panel] [46..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.dim bg=ui.panel] [66..83 fg=ui.text bg=ui.panel] [83..85 fg=ui.dim bg=ui.panel] [85..90 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.text.strong bg=ui.selection.inactive +bold] [11..22 fg=ui.text bg=ui.selection.inactive] [22..25 fg=ui.dim bg=ui.selection.inactive] [25..26 fg=ui.border bg=ui.bg] [26..90 fg=ui.text bg=ui.panel]

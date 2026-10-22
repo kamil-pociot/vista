@@ -14,7 +14,7 @@ fn long_line(tail: &str) -> String {
 /// Opens the Commit window and shows the diff of `name`.
 fn diff_of(vista: &mut Vista, name: &str) {
     vista.expect_text(name);
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  ");
     let (row, col) = vista.expect_text_in(name, 0..44).position();
     vista.click(col, row);
@@ -149,7 +149,7 @@ fn double_click_opens_from_the_commit_list() {
         .build();
     let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
     vista.expect_text("notes.txt");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  1 file");
     let (row, col) = vista.expect_text_in("notes.txt", 0..44).position();
     vista.double_click(col, row);
@@ -210,6 +210,8 @@ fn next_change_continues_into_the_next_file() {
     // …and after the last change of the last file is the end.
     vista.press("J");
     vista.expect_text("Δ b.txt");
+    // The tab switches at once; wait for b.txt's diff before stepping in it.
+    vista.expect_text("change 1 of 2");
     vista.press("]");
     vista.expect_text("change 2 of 2");
     vista.press("]");

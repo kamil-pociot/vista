@@ -9,7 +9,7 @@ expression: "vista_tui::testing::text(&buf)"
                        │                  Tab  Focus next panel             │
                        │            Shift-Tab  Focus previous panel         │
                        │                Alt-1  Project tool window          │
-                       │                Alt-0  Commit tool window           │
+                       │                Alt-2  Commit tool window           │
                        │                Alt-3  Find tool window             │
                        │ Ctrl-P, Ctrl-Shift-N  Go to File                   │
                        │ Ctrl-F, Ctrl-Shift-F  Find in Files                │
@@ -35,4 +35,4 @@ expression: "vista_tui::testing::text(&buf)"
                        │           Ctrl-Alt-↑  Previous Find result         │
                        └ any key to close ──────────────────────────────────┘
                             │
- 1: Project   0: Commit   3: Find   ?: Help                                         Darcula Classic
+ 1: Project   2: Commit   3: Find   ?: Help                                         Darcula Classic

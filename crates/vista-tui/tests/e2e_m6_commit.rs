@@ -6,7 +6,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_vista");
 
 fn open_commit(vista: &mut Vista) {
     vista.expect_text("README.md");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Unversioned Files");
 }
 

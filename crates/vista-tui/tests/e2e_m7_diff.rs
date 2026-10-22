@@ -7,7 +7,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_vista");
 /// Opens the Commit window and shows the diff of `name`.
 fn diff_of(vista: &mut Vista, name: &str) {
     vista.expect_text("README.md");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Unversioned Files");
     let (row, col) = vista.expect_text_in(name, 0..44).position();
     vista.click(col, row);
@@ -81,14 +81,14 @@ fn new_deleted_and_image_files() {
     diff_of(&mut vista, "ROADMAP.md");
     vista.expect_text("# Roadmap").to_have_bg("diff.inserted");
     // Deleted file: everything on the left.
-    vista.press("alt+0");
+    vista.press("alt+2");
     let (row, col) = vista.expect_text_in("guide.md", 0..44).position();
     vista.click(col, row);
     vista.press("enter");
     vista.expect_text("Δ guide.md");
     vista.expect_text("# Guide").to_have_bg("diff.deleted");
     // Image: both sides as pictures (HEAD absent for a new image).
-    vista.press("alt+0");
+    vista.press("alt+2");
     let (row, col) = vista.expect_text_in("screenshot.png", 0..44).position();
     vista.click(col, row);
     vista.press("enter");

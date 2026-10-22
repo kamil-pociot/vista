@@ -252,11 +252,18 @@ fn right_of_top_bar(f: &mut Frame, area: Rect, app: &App) {
 
 fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
     let focused = app.focus == Focus::Left;
+    // The number is the window's key (Alt-1, Alt-2), as in IntelliJ.
     let (title, bg) = match app.left {
-        Some(LeftPanel::Commit) => ("0: Commit", "ui.panel.alt"),
-        _ => ("1: Project", "ui.panel.alt"),
+        Some(LeftPanel::Commit) => (
+            format!("{}: Commit", app.keymap.tool_number(Action::ToggleCommit)),
+            "ui.panel.alt",
+        ),
+        _ => (
+            format!("{}: Project", app.keymap.tool_number(Action::ToggleProject)),
+            "ui.panel.alt",
+        ),
     };
-    let inner = chrome::panel(f, area, title, focused, bg, &app.theme);
+    let inner = chrome::panel(f, area, &title, focused, bg, &app.theme);
     app.areas.reveal_button = None;
     if app.left == Some(LeftPanel::Project) {
         app.areas.reveal_button = reveal_button(f, area, app);

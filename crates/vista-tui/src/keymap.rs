@@ -280,7 +280,7 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("tab", Action::FocusNext),
     ("shift+tab", Action::FocusPrev),
     ("alt+1", Action::ToggleProject),
-    ("alt+0", Action::ToggleCommit),
+    ("alt+2", Action::ToggleCommit),
     ("alt+3", Action::ToggleFind),
     ("ctrl+p", Action::GotoFile),
     ("ctrl+shift+n", Action::GotoFile),
@@ -372,6 +372,16 @@ impl Keymap {
     }
 
     /// The shortest chord for an action, for hints in the UI.
+    /// The number a tool window goes by (`2` for Alt-2), from its binding;
+    /// the full key when it isn't Alt plus one character.
+    pub fn tool_number(&self, action: Action) -> String {
+        let hint = self.hint(action);
+        match hint.strip_prefix("Alt-") {
+            Some(k) if k.chars().count() == 1 => k.to_string(),
+            _ => hint,
+        }
+    }
+
     pub fn hint(&self, action: Action) -> String {
         self.chords_for(action)
             .into_iter()
@@ -496,5 +506,25 @@ mod tests {
             Keymap::defaults().action_for(&ev(KeyCode::Char('l'), KeyModifiers::NONE)),
             None
         );
+    }
+
+    #[test]
+    fn commit_window_is_alt_2_and_labels_follow_the_binding() {
+        let km = Keymap::defaults();
+        assert_eq!(
+            km.action_for(&ev(KeyCode::Char('2'), KeyModifiers::ALT)),
+            Some(Action::ToggleCommit)
+        );
+        assert_eq!(km.action_for(&ev(KeyCode::Char('0'), KeyModifiers::ALT)), None);
+        assert_eq!(km.tool_number(Action::ToggleProject), "1");
+        assert_eq!(km.tool_number(Action::ToggleCommit), "2");
+        assert_eq!(km.tool_number(Action::ToggleFind), "3");
+        // Rebound in the config: the label follows.
+        let mut keys = std::collections::BTreeMap::new();
+        keys.insert("alt+9".to_string(), "commit-window".to_string());
+        keys.insert("alt+2".to_string(), "none".to_string());
+        let (km, warnings) = Keymap::with_overrides(&keys);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(km.tool_number(Action::ToggleCommit), "9");
     }
 }

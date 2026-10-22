@@ -31,7 +31,7 @@ expression: "project_with_code(&repo, look)"
                               │ 25       }
                               │ 26 ▌
                               │ 27 ▌     pub fn is_dirty(&self) -> bool {
- 1: Project   0: Commit   3: Find   ?: Help                            4 changed · 2 unversioned   1:1   Rust
+ 1: Project   2: Commit   3: Find   ?: Help                            4 changed · 2 unversioned   1:1   Rust
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.dim bg=ui.panel] [66..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..103 fg=ui.text bg=ui.panel] [103..105 fg=ui.dim bg=ui.panel] [105..110 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.header bg=ui.panel +bold] [11..27 fg=ui.text bg=ui.panel] [27..30 fg=ui.border.focused bg=ui.panel] [30..31 fg=ui.border bg=ui.bg] [31..42 fg=git.modified bg=ui.bg +underline] [42..44 fg=ui.dim bg=ui.bg] [44..110 fg=ui.text bg=ui.panel]

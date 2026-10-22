@@ -3,7 +3,7 @@ source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "commit_with_diff(&repo, look)"
 ---
   <root>   +                                                          Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
- 0: Commit                          │ Δ diff.rs ×
+ 2: Commit                          │ Δ diff.rs ×
  ␣ tick  r rollback  a add  g group │ diff.rs  crates/fb-git/src                     1 of 1 in commit (␣)   [ ◂ change 1 of 1 ▸ ]
  ▾ [x] Changes  4 files             │ HEAD · c22c251 (read-only)                     Working tree
    [x] Cargo.lock                   │  1 pub fn diff() {}                         ☑   1 pub fn diff() -> usize { 0 }
@@ -31,7 +31,7 @@ expression: "commit_with_diff(&repo, look)"
  └────────────────────────────────┘ │
  [ ] Amend   4 of 6 files           │
   Commit ^K    Commit & Push (P)    │ u unified  i whitespace  side-by-side · whitespace: compare · lines: scroll · collapse: off
- 1: Project   0: Commit   3: Find   ?: Help                                                4 changed · 2 unversioned   1:1   Diff
+ 1: Project   2: Commit   3: Find   ?: Help                                                4 changed · 2 unversioned   1:1   Diff
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..123 fg=ui.text bg=ui.panel] [123..125 fg=ui.dim bg=ui.panel] [125..130 fg=ui.text bg=ui.panel]
   1: [0..10 fg=ui.header bg=ui.panel +bold] [10..36 fg=ui.text bg=ui.panel] [36..37 fg=ui.border bg=ui.bg] [37..48 fg=git.modified bg=ui.bg +underline] [48..50 fg=ui.dim bg=ui.bg] [50..130 fg=ui.text bg=ui.panel]

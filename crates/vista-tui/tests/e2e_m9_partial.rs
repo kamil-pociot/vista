@@ -18,7 +18,7 @@ fn repo() -> Repo {
 
 fn open_diff(vista: &mut Vista) {
     vista.expect_text("notes.txt");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("Changes  1 file");
     let (row, col) = vista.expect_text_in("notes.txt", 0..44).position();
     vista.click(col, row);
@@ -43,7 +43,7 @@ fn commit_one_of_three_changes() {
     vista.press("home");
     vista.expect_text("☑");
     // The Commit list shows the file as partly included.
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("[~] notes.txt");
     vista.press("tab");
     vista.type_text("Only the first change");
@@ -66,7 +66,7 @@ fn ticking_a_change_of_an_unticked_file() {
     let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
     open_diff(&mut vista);
     // Untick the whole file in the Commit list, then tick only change 3.
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.press("space");
     vista.expect_text("[ ] notes.txt");
     vista.press("enter");
@@ -75,7 +75,7 @@ fn ticking_a_change_of_an_unticked_file() {
     vista.press("f7");
     vista.press("space");
     vista.expect_text("1 of 3 in commit");
-    vista.press("alt+0");
+    vista.press("alt+2");
     vista.expect_text("[~] notes.txt");
     vista.press("tab");
     vista.type_text("Just eleven");

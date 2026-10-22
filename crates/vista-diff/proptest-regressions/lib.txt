@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f09d4974597c4f28870eca23d907a334b2beeadb9983fb9774bb89d5d9c574b7 # shrinks to old = ["a", "", "a", "   ", "", "  ", ""], new = ["", "", "b", "a ", "", "", "", "", "", "", "", "", "", "", "", "", "", "    ", "a", "", "", ""], ws = false
+cc f0660b381ca597e31bffecc263810b2e5972a0324e72f451bbb688ccc1fbe0d1 # shrinks to old = ["abb"], new = ["abb"], nl_old = false, nl_new = true, mask = 0
