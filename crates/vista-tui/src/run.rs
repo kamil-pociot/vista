@@ -3,54 +3,66 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, Sender};
+use std::sync::mpsc::RecvTimeoutError;
 use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
 use ratatui::crossterm::event;
 
-use crate::app::App;
-use crate::event::AppEvent;
+use crate::event::{AppEvent, EventTx};
+use crate::workspace::Workspace;
 use crate::{terminal, ui};
 
 const TICK: Duration = Duration::from_millis(500);
 const POLL: Duration = Duration::from_millis(250);
 
-pub fn run(mut app: App) -> Result<()> {
+pub fn run(mut ws: Workspace) -> Result<()> {
     let t = std::time::Instant::now();
-    let (mut term, _guard) = terminal::setup(&format!("vista — {}", app.project_name))?;
+    let title = |ws: &mut Workspace| format!("vista — {}", ws.active_app().project_name);
+    let mut shown_title = title(&mut ws);
+    let (mut term, _guard) = terminal::setup(&shown_title)?;
     tracing::info!("terminal ready in {:?}", t.elapsed());
-    if app.config.images.protocol == vista_core::ImageProtocol::Auto {
+    if ws.active_app().config.images.protocol == vista_core::ImageProtocol::Auto {
         // Must run before the input thread starts reading stdin.
         match ratatui_image::picker::Picker::from_query_stdio() {
             Ok(p) => {
                 tracing::info!("image protocol: {:?}, font {:?}", p.protocol_type(), p.font_size());
-                app.picker = Some(p);
+                ws.set_picker(Some(p));
             }
             Err(e) => tracing::warn!("image protocol query failed ({e}); using halfblocks"),
         }
+    } else {
+        let picker = ws.active_app().picker.clone();
+        ws.set_picker(picker);
     }
     let paused = Arc::new(AtomicBool::new(false));
-    spawn_input_thread(app.tx.clone(), paused.clone());
+    spawn_input_thread(ws.input_tx(), paused.clone());
     // Show the first frame before starting watchers and background jobs.
     let t = std::time::Instant::now();
-    term.draw(|f| ui::draw(f, &mut app))?;
+    term.draw(|f| ui::draw(f, ws.active_app()))?;
     tracing::info!("first frame drawn in {:?}", t.elapsed());
-    app.on_start();
+    let active = ws.active;
+    ws.activate(active);
     loop {
-        term.draw(|f| ui::draw(f, &mut app))?;
-        if app.should_quit {
+        term.draw(|f| ui::draw(f, ws.active_app()))?;
+        if ws.should_quit {
             break;
         }
-        match app.rx.recv_timeout(POLL) {
-            Ok(ev) => {
-                app.handle_event(ev);
-                app.drain_events();
+        match ws.rx.recv_timeout(POLL) {
+            Ok((id, ev)) => {
+                ws.handle(id, ev);
+                ws.drain();
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+        let now = title(&mut ws);
+        if now != shown_title {
+            terminal::set_title(&now);
+            shown_title = now;
+        }
+        let app = ws.active_app();
         if let Some((editor, path)) = app.take_external() {
             // Hand the terminal to the external editor; stop reading input meanwhile.
             paused.store(true, Ordering::SeqCst);
@@ -67,11 +79,11 @@ pub fn run(mut app: App) -> Result<()> {
         if app.tick_due(TICK) {
             app.tick();
         }
-        if app.should_quit {
+        if ws.should_quit {
             break;
         }
     }
-    app.on_exit();
+    ws.on_exit();
     Ok(())
 }
 
@@ -86,7 +98,7 @@ fn run_editor(editor: &str, path: &std::path::Path) -> std::io::Result<std::proc
         .status()
 }
 
-fn spawn_input_thread(tx: Sender<AppEvent>, paused: Arc<AtomicBool>) {
+fn spawn_input_thread(tx: EventTx, paused: Arc<AtomicBool>) {
     thread::Builder::new()
         .name("input".into())
         .spawn(move || {

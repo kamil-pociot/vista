@@ -39,6 +39,11 @@ pub fn kitty_keyboard_active() -> bool {
     KITTY_KEYBOARD.load(Ordering::SeqCst)
 }
 
+/// Sets the terminal window's title (the active project).
+pub fn set_title(title: &str) {
+    let _ = execute!(io::stdout(), SetTitle(title));
+}
+
 pub fn setup(title: &str) -> io::Result<(Term, TermGuard)> {
     enable_raw_mode()?;
     let kitty = keyboard_enhancement_wanted() && supports_keyboard_enhancement().unwrap_or(false);

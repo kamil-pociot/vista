@@ -27,6 +27,21 @@ pub struct UiState {
     pub tree: TreeState,
     #[serde(skip_serializing_if = "FindState::is_empty")]
     pub find: FindState,
+    #[serde(skip_serializing_if = "ProjectsState::is_empty")]
+    pub projects: ProjectsState,
+}
+
+/// Projects open at exit (restored on start) and opened before.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProjectsState {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open: Vec<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active: Option<PathBuf>,
+    /// Most recent first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub recent: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,7 +103,7 @@ macro_rules! is_empty {
         }
     )*};
 }
-is_empty!(ViewerState, DiffState, CommitState, TreeState, FindState);
+is_empty!(ViewerState, DiffState, CommitState, TreeState, FindState, ProjectsState);
 
 impl UiState {
     /// `state.toml` next to `config.toml`.
@@ -152,6 +167,8 @@ mod tests {
         s.diff.collapse = Some(true);
         s.commit.group_by_folder = Some(false);
         s.look = Some("paper".into());
+        s.projects.open = vec![PathBuf::from("/a"), PathBuf::from("/b")];
+        s.projects.active = Some(PathBuf::from("/b"));
         s.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("line_numbers = false"), "{text}");

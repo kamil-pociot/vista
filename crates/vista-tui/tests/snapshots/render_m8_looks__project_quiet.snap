@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "project_with_code(&repo, look)"
 ---
- <root>                                           Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+  <root>   +                                      Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  1: project                 ⌖  status.rs ×
  ▾ <root>         •   1   use std::path::{Path, PathBuf};                                          ┃
    ▾ crates                 •   2                                                                            ┃
@@ -33,7 +33,7 @@ expression: "project_with_code(&repo, look)"
  VIEW                                                                  4 changed · 2 unversioned   1:1   Rust
  Ctrl-P files    Ctrl-F find in files    Alt-0 changes    Tab focus    ? help
 --- styles ---
-  0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.header bg=ui.panel] [66..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.header bg=ui.panel] [86..103 fg=ui.text bg=ui.panel] [103..105 fg=ui.header bg=ui.panel] [105..110 fg=ui.text bg=ui.panel]
+  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.header bg=ui.panel] [66..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.header bg=ui.panel] [86..103 fg=ui.text bg=ui.panel] [103..105 fg=ui.header bg=ui.panel] [105..110 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.header bg=ui.bg] [27..30 fg=ui.border.focused bg=ui.bg] [30..41 fg=ui.border.focused bg=ui.bg +bold] [41..43 fg=ui.header bg=ui.bg]
   2: [0..3 fg=ui.header bg=ui.bg] [3..19 fg=ui.border.focused bg=ui.bg +bold] [28..30 fg=ui.border.focused bg=ui.bg] [30..34 fg=ui.text.strong bg=ui.panel] [34..35 fg=ui.header bg=ui.panel] [35..36 fg=ui.text bg=ui.panel] [36..39 fg=syntax.keyword bg=ui.panel] [39..43 fg=ui.text bg=ui.panel] [43..45 fg=syntax.punctuation bg=ui.panel] [45..49 fg=ui.text bg=ui.panel] [49..52 fg=syntax.punctuation bg=ui.panel] [52..56 fg=ui.text bg=ui.panel] [56..57 fg=syntax.punctuation bg=ui.panel] [57..65 fg=ui.text bg=ui.panel] [65..67 fg=syntax.punctuation bg=ui.panel] [67..109 fg=ui.text bg=ui.panel] [109..110 fg=ui.header bg=ui.bg]
   3: [0..5 fg=ui.header bg=ui.bg] [5..11 fg=ui.border.focused bg=ui.bg] [28..30 fg=ui.border.focused bg=ui.bg] [30..35 fg=ui.header bg=ui.bg] [109..110 fg=ui.header bg=ui.bg]

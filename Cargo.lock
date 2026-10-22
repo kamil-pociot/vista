@@ -3427,6 +3427,7 @@ name = "vista-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "image",
  "insta",
  "ratatui",

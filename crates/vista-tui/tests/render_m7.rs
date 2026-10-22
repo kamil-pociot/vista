@@ -16,7 +16,7 @@ fn side_by_side_diff_of_status_rs() {
     app.open_diff(&change);
     // Wait for the background diff load.
     loop {
-        let ev = app.rx.recv_timeout(Duration::from_secs(10)).expect("diff loaded");
+        let ev = app.recv_timeout(Duration::from_secs(10)).expect("diff loaded");
         let done = matches!(ev, AppEvent::DiffLoaded { .. });
         app.handle_event(ev);
         if done {

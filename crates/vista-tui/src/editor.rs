@@ -2,13 +2,12 @@
 //! and mouse translation, and the `$EDITOR` fallback.
 
 use std::path::Path;
-use std::sync::mpsc::Sender;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use vista_nvim::{HlSpec, Key, Mods, Nvim, NvimError, SpawnOptions, notation};
 use vista_theme::{Rgb, Theme};
 
-use crate::event::AppEvent;
+use crate::event::{AppEvent, EventTx};
 
 fn hex(rgb: Rgb) -> u32 {
     (u32::from(rgb.0) << 16) | (u32::from(rgb.1) << 8) | u32::from(rgb.2)
@@ -122,7 +121,7 @@ pub fn highlight_groups(t: &Theme) -> Vec<(&'static str, HlSpec)> {
 }
 
 /// Starts Neovim for the project; events go to the app's channel.
-pub fn spawn(bin: &str, minimal: bool, cwd: &Path, size: (u16, u16), tx: Sender<AppEvent>) -> Result<Nvim, NvimError> {
+pub fn spawn(bin: &str, minimal: bool, cwd: &Path, size: (u16, u16), tx: EventTx) -> Result<Nvim, NvimError> {
     Nvim::spawn(
         &SpawnOptions {
             bin: bin.to_string(),

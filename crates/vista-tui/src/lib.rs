@@ -11,6 +11,7 @@ pub mod goto;
 pub mod keymap;
 pub mod probe;
 pub mod project;
+pub mod projects;
 pub mod recent;
 pub mod run;
 pub mod style;
@@ -18,5 +19,7 @@ pub mod terminal;
 pub mod testing;
 pub mod ui;
 pub mod viewer;
+pub mod workspace;
 
 pub use app::{App, AppOptions};
+pub use workspace::Workspace;

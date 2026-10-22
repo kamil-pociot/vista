@@ -1,0 +1,271 @@
+//! Several projects in one vista: the tab row in the top bar, and the
+//! Projects popup (switch, reopen, add by path, close). The projects
+//! themselves live in [`crate::workspace::Workspace`]; a project's `App` only
+//! sees this summary and asks the workspace for changes.
+
+use std::path::{Path, PathBuf};
+
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+/// The open projects, as the active one shows them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectsBar {
+    /// (name, root) of every open project, in tab order.
+    pub open: Vec<(String, PathBuf)>,
+    pub active: usize,
+    /// Projects opened before (most recent first), not open now.
+    pub recent: Vec<PathBuf>,
+}
+
+/// Where a project tab (or the + button, `index: None`) was drawn in the top
+/// bar: screen columns of the whole tab and of its ×.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectHit {
+    pub index: Option<usize>,
+    pub x: (u16, u16),
+    pub close: Option<(u16, u16)>,
+}
+
+/// What a project asks the workspace to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WsRequest {
+    /// Show open project `i`.
+    Switch(usize),
+    /// The next (true) or previous open project.
+    Cycle(bool),
+    /// Open (or switch to) the project at this folder.
+    Open(PathBuf),
+    /// Close open project `i`.
+    Close(usize),
+}
+
+/// The name a project goes by: its folder's name.
+pub fn project_name(root: &Path) -> String {
+    root.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| root.display().to_string())
+}
+
+/// `~/x` → `$HOME/x`; relative paths are left alone.
+pub fn expand_home(input: &str) -> PathBuf {
+    match input.strip_prefix("~") {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            dirs::home_dir().unwrap_or_default().join(rest.trim_start_matches('/'))
+        }
+        _ => PathBuf::from(input),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entry {
+    /// An open project (index into `ProjectsBar::open`).
+    Open(usize),
+    /// A project opened before.
+    Recent(PathBuf),
+    /// A folder typed as a path, to add.
+    Add(PathBuf),
+}
+
+/// Ctrl-O: open projects first, then recent ones; type to filter, or type a
+/// folder path (`/…`, `~/…`, `./…`) to add it.
+pub struct ProjectsPopup {
+    pub query: String,
+    pub selected: usize,
+    pub entries: Vec<Entry>,
+    bar: ProjectsBar,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PopupOutcome {
+    Handled,
+    Close,
+    Request(WsRequest),
+}
+
+impl ProjectsPopup {
+    pub fn new(bar: ProjectsBar) -> ProjectsPopup {
+        let mut p = ProjectsPopup {
+            query: String::new(),
+            selected: 0,
+            entries: Vec::new(),
+            bar,
+        };
+        p.refilter();
+        // Start on the next project, so Ctrl-O Enter flips between two.
+        if p.bar.open.len() > 1 {
+            p.selected = (p.bar.active + 1) % p.bar.open.len();
+        }
+        p
+    }
+
+    /// (label, detail, is active) for an entry.
+    pub fn describe(&self, e: &Entry) -> (String, String, bool) {
+        match e {
+            Entry::Open(i) => {
+                let (name, root) = &self.bar.open[*i];
+                (name.clone(), root.display().to_string(), *i == self.bar.active)
+            }
+            Entry::Recent(p) => (project_name(p), p.display().to_string(), false),
+            Entry::Add(p) => (format!("Add {}", project_name(p)), p.display().to_string(), false),
+        }
+    }
+
+    fn refilter(&mut self) {
+        let q = self.query.trim().to_lowercase();
+        let matches = |name: &str, path: &Path| {
+            q.is_empty() || name.to_lowercase().contains(&q) || path.to_string_lossy().to_lowercase().contains(&q)
+        };
+        let mut entries: Vec<Entry> = Vec::new();
+        let looks_like_path = ["/", "~", "./", "../"].iter().any(|p| self.query.trim().starts_with(p));
+        if looks_like_path {
+            let path = expand_home(self.query.trim());
+            let path = path.canonicalize().unwrap_or(path);
+            let open = self.bar.open.iter().position(|(_, r)| *r == path);
+            match open {
+                Some(i) => entries.push(Entry::Open(i)),
+                None if path.is_dir() => entries.push(Entry::Add(path)),
+                None => {}
+            }
+        } else {
+            for (i, (name, root)) in self.bar.open.iter().enumerate() {
+                if matches(name, root) {
+                    entries.push(Entry::Open(i));
+                }
+            }
+            for r in &self.bar.recent {
+                if matches(&project_name(r), r) {
+                    entries.push(Entry::Recent(r.clone()));
+                }
+            }
+        }
+        self.entries = entries;
+        self.selected = self.selected.min(self.entries.len().saturating_sub(1));
+    }
+
+    pub fn handle_key(&mut self, key: &KeyEvent) -> PopupOutcome {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Esc => return PopupOutcome::Close,
+            KeyCode::Enter => {
+                return match self.entries.get(self.selected) {
+                    Some(Entry::Open(i)) => PopupOutcome::Request(WsRequest::Switch(*i)),
+                    Some(Entry::Recent(p) | Entry::Add(p)) => PopupOutcome::Request(WsRequest::Open(p.clone())),
+                    None => PopupOutcome::Handled,
+                };
+            }
+            // Ctrl-W closes the selected open project.
+            KeyCode::Char('w') if ctrl => {
+                if let Some(Entry::Open(i)) = self.entries.get(self.selected) {
+                    return PopupOutcome::Request(WsRequest::Close(*i));
+                }
+            }
+            KeyCode::Up => self.selected = self.selected.saturating_sub(1),
+            KeyCode::Down => {
+                self.selected = (self.selected + 1).min(self.entries.len().saturating_sub(1));
+            }
+            KeyCode::Backspace => {
+                self.query.pop();
+                self.selected = 0;
+                self.refilter();
+            }
+            KeyCode::Char(c) if !ctrl => {
+                self.query.push(c);
+                self.selected = 0;
+                self.refilter();
+            }
+            _ => {}
+        }
+        PopupOutcome::Handled
+    }
+
+    /// Clicking row `i` of the list opens that entry.
+    pub fn click(&mut self, i: usize) -> PopupOutcome {
+        if i < self.entries.len() {
+            self.selected = i;
+            return self.handle_key(&KeyEvent::from(KeyCode::Enter));
+        }
+        PopupOutcome::Handled
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bar(dir: &Path) -> ProjectsBar {
+        ProjectsBar {
+            open: vec![("alpha".into(), dir.join("alpha")), ("beta".into(), dir.join("beta"))],
+            active: 0,
+            recent: vec![dir.join("gamma")],
+        }
+    }
+
+    fn typed(p: &mut ProjectsPopup, s: &str) {
+        for c in s.chars() {
+            p.handle_key(&KeyEvent::from(KeyCode::Char(c)));
+        }
+    }
+
+    #[test]
+    fn lists_open_then_recent_and_starts_on_the_next_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = ProjectsPopup::new(bar(dir.path()));
+        assert_eq!(
+            p.entries,
+            vec![Entry::Open(0), Entry::Open(1), Entry::Recent(dir.path().join("gamma"))]
+        );
+        assert_eq!(p.selected, 1);
+        assert!(p.describe(&Entry::Open(0)).2, "the active project is marked");
+    }
+
+    #[test]
+    fn filters_switches_reopens_and_closes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = ProjectsPopup::new(bar(dir.path()));
+        typed(&mut p, "gam");
+        assert_eq!(p.entries, vec![Entry::Recent(dir.path().join("gamma"))]);
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Open(dir.path().join("gamma")))
+        );
+        let mut p = ProjectsPopup::new(bar(dir.path()));
+        typed(&mut p, "bet");
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Switch(1))
+        );
+        assert_eq!(
+            p.handle_key(&KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL)),
+            PopupOutcome::Request(WsRequest::Close(1))
+        );
+        assert_eq!(p.handle_key(&KeyEvent::from(KeyCode::Esc)), PopupOutcome::Close);
+    }
+
+    #[test]
+    fn a_typed_folder_path_is_offered_for_adding() {
+        let dir = tempfile::tempdir().unwrap();
+        let new = dir.path().join("newproj");
+        std::fs::create_dir(&new).unwrap();
+        let new = new.canonicalize().unwrap();
+        let mut p = ProjectsPopup::new(bar(dir.path()));
+        typed(&mut p, &new.display().to_string());
+        assert_eq!(p.entries, vec![Entry::Add(new.clone())]);
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Open(new))
+        );
+        // Not a folder: nothing to add.
+        let mut p = ProjectsPopup::new(bar(dir.path()));
+        typed(&mut p, "/definitely/not/here");
+        assert!(p.entries.is_empty());
+        assert_eq!(p.handle_key(&KeyEvent::from(KeyCode::Enter)), PopupOutcome::Handled);
+    }
+
+    #[test]
+    fn home_is_expanded() {
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(expand_home("~/x/y"), home.join("x/y"));
+        assert_eq!(expand_home("~"), home);
+        assert_eq!(expand_home("/abs"), PathBuf::from("/abs"));
+    }
+}

@@ -23,7 +23,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 
 | Where | Keys |
 |---|---|
-| Anywhere | `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-0` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
+| Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-0` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
 | Project tree | `⌖` in the header (or `Ctrl-L`) shows the opened file in the tree · arrows / `hjkl`, `Enter` or double-click open, `e` edit in Neovim, `i` show/hide ignored, `-` collapse all, `Ctrl-R` refresh |
 | Viewer | `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
 | Editor (Neovim) | everything goes to Neovim; `Ctrl-\` back to the tree; `:w` saves and refreshes git colours; long lines wrap if the viewer wrapped them, and `:set wrap` / `:set nowrap` carry back to the viewer |
@@ -57,6 +57,10 @@ folder_colours = true
 "ctrl+o" = "goto-file"       # bind
 "q" = "none"                 # unbind
 ```
+
+### Projects
+
+Several projects can be open at once, as tabs at the left of the top bar: click one to switch, its `×` to close it, `+` (or `Ctrl-O`) to open the Projects popup. There, type to filter open and recent projects, `Enter` to switch or reopen, type a folder path (`/…`, `~/…`) to add a new one, `Ctrl-W` to close the selected one. `Alt-.` / `Alt-,` step through open projects. Each project keeps its own tree, tabs, Commit window, git status, file watcher and editor; settings and the look are shared. The projects open when vista quits are reopened next time (alongside the one you start it in).
 
 ### Remembered settings
 

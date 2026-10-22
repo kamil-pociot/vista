@@ -10,7 +10,7 @@ fn wrapped_long_line() {
     let mut app = app_at(repo.path(), repo.home(), None);
     let path = app.root.join("wide.txt");
     app.open_file(&path);
-    let ev = app.rx.recv_timeout(std::time::Duration::from_secs(10)).expect("loaded");
+    let ev = app.recv_timeout(std::time::Duration::from_secs(10)).expect("loaded");
     app.handle_event(ev);
     app.viewer.active_tab_mut().unwrap().wrap = true;
     let buf = render(&mut app, 100, 20);
@@ -26,7 +26,7 @@ fn code_view_with_gutter_markers() {
     let path = app.root.join("crates/fb-git/src/status.rs");
     app.open_file(&path);
     // Wait for highlighting + markers.
-    let ev = app.rx.recv_timeout(std::time::Duration::from_secs(10)).expect("loaded");
+    let ev = app.recv_timeout(std::time::Duration::from_secs(10)).expect("loaded");
     app.handle_event(ev);
     let buf = render(&mut app, 100, 30);
     let snap = snapshot(&buf, &app.theme).replace(&app.project_name.clone(), "<root>");

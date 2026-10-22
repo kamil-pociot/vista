@@ -463,7 +463,7 @@ fn draw_markdown(
     base: &Path,
     images: &mut crate::viewer::MdImages,
     picker: Option<&ratatui_image::picker::Picker>,
-    tx: &std::sync::mpsc::Sender<crate::event::AppEvent>,
+    tx: &crate::event::EventTx,
 ) {
     let Content::Markdown {
         rendered: Some((_, _, rows)),

@@ -7,6 +7,7 @@ pub mod find;
 pub mod goto;
 pub mod help;
 pub mod project;
+pub mod projects;
 pub mod viewer;
 
 use ratatui::Frame;
@@ -41,6 +42,8 @@ pub struct Areas {
     pub commit_message: Option<Rect>,
     /// "Select Opened File" (⌖) in the Project panel's header.
     pub reveal_button: Option<Rect>,
+    /// The entry list of the Projects popup.
+    pub projects_list: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -97,6 +100,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             commit_list: None,
             commit_message: None,
             reveal_button: None,
+            projects_list: None,
             main: body,
             bottom,
             keyhints,
@@ -134,6 +138,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         commit_list: None,
         commit_message: None,
         reveal_button: None,
+        projects_list: None,
         main,
         bottom,
         keyhints,
@@ -183,6 +188,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.find.is_some() {
         find::draw_popup(f, area, app);
     }
+    app.areas.projects_list = None;
+    if app.projects_popup.is_some() {
+        projects::draw_popup(f, area, app);
+    }
     if app.confirm.is_some() {
         commit::draw_confirm(f, area, app);
     }
@@ -192,7 +201,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
-    let reveal_button = app.areas.reveal_button;
+    let (reveal_button, projects_list) = (app.areas.reveal_button, app.areas.projects_list);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
@@ -202,18 +211,21 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         commit_list,
         commit_message,
         reveal_button,
+        projects_list,
         ..areas
     };
 }
 
-fn top_bar(f: &mut Frame, area: Rect, app: &App) {
+fn top_bar(f: &mut Frame, area: Rect, app: &mut App) {
+    f.render_widget(Block::new().style(app.theme.bg("ui.panel")), area);
+    // The right side (hints, branch) first: project tabs draw over it when
+    // there are many.
+    right_of_top_bar(f, area, app);
+    app.project_hits = projects::tabs(f, area, app);
+}
+
+fn right_of_top_bar(f: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme;
-    f.render_widget(Block::new().style(t.bg("ui.panel")), area);
-    let left = Line::from(vec![Span::styled(
-        format!(" {}", app.project_name),
-        t.fg("ui.text.strong").add_modifier(crate::style::bold()),
-    )]);
-    f.render_widget(Paragraph::new(left), area);
     let km = &app.keymap;
     let hint = |a: Action, label: &str| {
         vec![

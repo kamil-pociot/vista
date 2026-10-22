@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui_image::protocol::StatefulProtocol;
@@ -16,7 +15,7 @@ use vista_render::styled::line_text;
 use vista_render::{Highlighter, StyledLine};
 
 use crate::diffview::{DiffDoc, DiffKey, DiffSpec};
-use crate::event::AppEvent;
+use crate::event::{AppEvent, EventTx};
 
 /// At most this many tabs stay open; the least recently used one closes.
 pub const MAX_TABS: usize = 12;
@@ -369,7 +368,7 @@ pub fn wrapped_rows(width: usize, cols: usize) -> usize {
 
 /// What loading needs from the app.
 pub struct LoadCtx {
-    pub tx: Sender<AppEvent>,
+    pub tx: EventTx,
     pub git: Option<Git>,
     pub images_enabled: bool,
     /// Whether long lines wrap, for code and for Markdown (settings).
@@ -983,10 +982,8 @@ pub struct MdImages {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc;
-
-    fn ctx() -> (LoadCtx, mpsc::Receiver<AppEvent>) {
-        let (tx, rx) = mpsc::channel();
+    fn ctx() -> (LoadCtx, crate::event::EventRx) {
+        let (tx, rx) = crate::event::channel(1);
         (
             LoadCtx {
                 tx,
@@ -999,8 +996,8 @@ mod tests {
         )
     }
 
-    fn finish(viewer: &mut Viewer, rx: &mpsc::Receiver<AppEvent>) {
-        while let Ok(ev) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+    fn finish(viewer: &mut Viewer, rx: &crate::event::EventRx) {
+        while let Ok((_, ev)) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
             if let AppEvent::Loaded {
                 tab,
                 generation,

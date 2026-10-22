@@ -1,4 +1,7 @@
-//! Events flowing into the app's single event loop.
+//! Events flowing into the single event loop. All projects share one
+//! channel; each event is tagged with the project it belongs to.
+
+use std::sync::mpsc::{self, Receiver, SendError, Sender};
 
 use ratatui::crossterm::event::Event;
 use vista_core::FsChange;
@@ -55,4 +58,44 @@ pub enum AppEvent {
         path: std::path::PathBuf,
         image: Result<Box<image::DynamicImage>, String>,
     },
+}
+
+/// Which open project an event belongs to.
+pub type ProjectId = u64;
+
+/// Terminal input: goes to whichever project is active.
+pub const INPUT: ProjectId = 0;
+
+/// The receiving end of the shared channel.
+pub type EventRx = Receiver<(ProjectId, AppEvent)>;
+
+/// Sends events to one project (cloned into its worker threads).
+#[derive(Clone)]
+pub struct EventTx {
+    project: ProjectId,
+    tx: Sender<(ProjectId, AppEvent)>,
+}
+
+impl EventTx {
+    pub fn new(project: ProjectId, tx: Sender<(ProjectId, AppEvent)>) -> EventTx {
+        EventTx { project, tx }
+    }
+
+    pub fn send(&self, ev: AppEvent) -> Result<(), SendError<AppEvent>> {
+        self.tx.send((self.project, ev)).map_err(|e| SendError(e.0.1))
+    }
+
+    /// The same channel, for another project (or for terminal input).
+    pub fn for_project(&self, project: ProjectId) -> EventTx {
+        EventTx {
+            project,
+            tx: self.tx.clone(),
+        }
+    }
+}
+
+/// A new channel; the sender is for `project`.
+pub fn channel(project: ProjectId) -> (EventTx, EventRx) {
+    let (tx, rx) = mpsc::channel();
+    (EventTx::new(project, tx), rx)
 }

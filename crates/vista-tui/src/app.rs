@@ -1,7 +1,8 @@
 //! Application state and event handling. Drawing lives in [`crate::ui`].
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
@@ -15,7 +16,7 @@ use vista_theme::{Theme, ThemeLoader};
 
 use crate::commit::{CommitOutcome, CommitView};
 use crate::editor;
-use crate::event::AppEvent;
+use crate::event::{AppEvent, EventRx, EventTx};
 use crate::find::{FindOutcome, FindPopup, FindWindow, ResultTab};
 use crate::goto::{GotoOutcome, GotoPopup, GotoTab};
 use crate::keymap::{Action, Keymap};
@@ -82,7 +83,14 @@ pub struct AppOptions {
     pub paths: Paths,
     /// `--theme` on the command line wins over the config file.
     pub theme: Option<String>,
+    /// The workspace's shared event channel; `None` makes a private one.
+    pub events: Option<EventTx>,
+    /// Settings shared by all open projects; `None` loads `state.toml`.
+    pub ui: Option<SharedUi>,
 }
+
+/// View settings shared by every open project (one `state.toml`).
+pub type SharedUi = Rc<RefCell<vista_core::UiState>>;
 
 /// Background `git status` runs: at most one at a time; requests that arrive
 /// meanwhile are coalesced into one follow-up run.
@@ -148,8 +156,10 @@ pub struct App {
     pub should_quit: bool,
     /// Transient message in the status bar.
     pub message: Option<StatusMsg>,
-    pub tx: Sender<AppEvent>,
-    pub rx: Receiver<AppEvent>,
+    pub tx: EventTx,
+    /// Only for a project running on its own (tests); in a workspace the
+    /// workspace receives.
+    pub rx: Option<EventRx>,
     /// Screen regions from the last draw (mouse hit-testing).
     pub areas: crate::ui::Areas,
     pub project: ProjectView,
@@ -173,8 +183,18 @@ pub struct App {
     quit_confirm: Option<Instant>,
     /// Armed "press again for the next file" step (next/previous change).
     pub change_hop: Option<ChangeHop>,
-    /// View settings remembered between runs (`state.toml`).
-    pub ui: vista_core::UiState,
+    /// View settings remembered between runs (`state.toml`), shared by all
+    /// open projects.
+    pub ui: SharedUi,
+    /// The open projects (tab row in the top bar), kept current by the workspace.
+    pub projects: crate::projects::ProjectsBar,
+    /// What this project asks of the workspace (switch, open, close, …).
+    pub ws_request: Option<crate::projects::WsRequest>,
+    /// `on_start` ran: a project starts its watcher and git work when first shown.
+    pub started: bool,
+    pub projects_popup: Option<crate::projects::ProjectsPopup>,
+    /// Where the project tabs (and +) were drawn in the top bar.
+    pub project_hits: Vec<crate::projects::ProjectHit>,
     ui_path: PathBuf,
     /// Where each tab and its × were drawn (last frame), for clicks.
     pub tab_hits: Vec<crate::ui::chrome::TabHit>,
@@ -213,13 +233,19 @@ impl App {
             .unwrap_or_else(|| root.display().to_string());
         let theme_loader = ThemeLoader::new(Some(opts.paths.themes_dir()));
         let ui_path = vista_core::UiState::path(&opts.paths);
-        let (ui, ui_warning) = vista_core::UiState::load(&ui_path);
+        let (ui, ui_warning) = match opts.ui {
+            Some(ui) => (ui, None),
+            None => {
+                let (ui, warning) = vista_core::UiState::load(&ui_path);
+                (Rc::new(RefCell::new(ui)), warning)
+            }
+        };
         // --theme / VISTA_THEME › the look picked last (Ctrl-T) › config.
         let theme_id = opts
             .theme
             .clone()
             .or_else(|| std::env::var("VISTA_THEME").ok().filter(|t| !t.is_empty()))
-            .or_else(|| ui.look.clone())
+            .or_else(|| ui.borrow().look.clone())
             .unwrap_or_else(|| opts.config.theme.clone());
         let mut startup_error = ui_warning;
         let theme = match theme_loader.load(&theme_id) {
@@ -231,9 +257,16 @@ impl App {
         };
         let theme_stamp = stamp(theme_loader.user_path(&theme.id).as_deref());
         let (keymap, warnings) = Keymap::with_overrides(&opts.config.keys);
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = match opts.events {
+            Some(tx) => (tx, None),
+            None => {
+                let (tx, rx) = crate::event::channel(1);
+                (tx, Some(rx))
+            }
+        };
         let t = Instant::now();
-        let project = ProjectView::new(&root, ui.tree.show_ignored.unwrap_or(opts.config.tree.show_ignored));
+        let show_ignored = ui.borrow().tree.show_ignored.unwrap_or(opts.config.tree.show_ignored);
+        let project = ProjectView::new(&root, show_ignored);
         tracing::info!("tree read in {:?}", t.elapsed());
         let t = Instant::now();
         let git = Git::discover(&root).ok();
@@ -276,6 +309,11 @@ impl App {
             change_hop: None,
             ui,
             ui_path,
+            projects: crate::projects::ProjectsBar::default(),
+            ws_request: None,
+            started: false,
+            projects_popup: None,
+            project_hits: Vec::new(),
             tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
@@ -298,7 +336,7 @@ impl App {
         if let Some(e) = startup_error {
             app.notify(e, MsgKind::Error);
         }
-        app.commit.by_dir = app.ui.commit.group_by_folder.unwrap_or(false);
+        app.commit.by_dir = app.ui.borrow().commit.group_by_folder.unwrap_or(false);
         Ok(app)
     }
 
@@ -724,9 +762,12 @@ impl App {
             })
             .unwrap_or_else(|| self.root.clone());
         let mut p = FindPopup::new(query, dir);
-        p.case = self.ui.find.case.unwrap_or(false);
-        p.word = self.ui.find.words.unwrap_or(false);
-        p.regex = self.ui.find.regex.unwrap_or(false);
+        {
+            let ui = self.ui.borrow();
+            p.case = ui.find.case.unwrap_or(false);
+            p.word = ui.find.words.unwrap_or(false);
+            p.regex = ui.find.regex.unwrap_or(false);
+        }
         self.find = Some(p);
         self.start_find();
     }
@@ -1208,25 +1249,27 @@ impl App {
 
     /// Line numbers in the viewer (and the editor).
     pub fn line_numbers(&self) -> bool {
-        self.ui.viewer.line_numbers.unwrap_or(true)
+        self.ui.borrow().viewer.line_numbers.unwrap_or(true)
     }
 
     /// Whether long lines wrap for Markdown or for code.
     fn wrap_default(&self, markdown: bool) -> bool {
         if markdown {
-            self.ui.viewer.wrap_markdown.unwrap_or(true)
+            self.ui.borrow().viewer.wrap_markdown.unwrap_or(true)
         } else {
-            self.ui.viewer.wrap_code.unwrap_or(false)
+            self.ui.borrow().viewer.wrap_code.unwrap_or(false)
         }
     }
 
     /// Changes the remembered settings and saves them if anything changed.
     fn remember(&mut self, change: impl FnOnce(&mut vista_core::UiState)) {
-        let before = self.ui.clone();
-        change(&mut self.ui);
-        if self.ui != before
-            && let Err(e) = self.ui.save(&self.ui_path)
-        {
+        let saved = {
+            let mut ui = self.ui.borrow_mut();
+            let before = ui.clone();
+            change(&mut ui);
+            (*ui != before).then(|| ui.save(&self.ui_path))
+        };
+        if let Some(Err(e)) = saved {
             self.notify(format!("cannot save settings: {e}"), MsgKind::Error);
         }
     }
@@ -1294,7 +1337,7 @@ impl App {
             AppEvent::Nvim(e) => self.on_nvim(e),
             AppEvent::DiffLoaded { tab, generation, load } => {
                 let picker = self.picker.clone();
-                let diff_ui = self.ui.diff.clone();
+                let diff_ui = self.ui.borrow().diff.clone();
                 if let Some(t) = self.viewer.tab_by_id_mut(tab)
                     && t.generation == generation
                 {
@@ -1423,9 +1466,20 @@ impl App {
     }
 
     /// Processes every event already queued (used by the main loop and tests).
+    /// Waits for the next event on a project's own channel (a project
+    /// running alone, as in tests).
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<AppEvent, std::sync::mpsc::RecvTimeoutError> {
+        match &self.rx {
+            Some(rx) => rx.recv_timeout(timeout).map(|(_, ev)| ev),
+            None => Err(std::sync::mpsc::RecvTimeoutError::Disconnected),
+        }
+    }
+
+    /// Handles everything queued on a project's own channel (a project
+    /// running alone; in a workspace the workspace delivers events).
     pub fn drain_events(&mut self) -> usize {
         let mut n = 0;
-        while let Ok(ev) = self.rx.try_recv() {
+        while let Some((_, ev)) = self.rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.handle_event(ev);
             n += 1;
         }
@@ -1473,6 +1527,17 @@ impl App {
         if self.focus == Focus::Bottom && self.find_window.visible && self.find_window_key(&key) {
             return;
         }
+        if let Some(popup) = self.projects_popup.as_mut() {
+            match popup.handle_key(&key) {
+                crate::projects::PopupOutcome::Handled => {}
+                crate::projects::PopupOutcome::Close => self.projects_popup = None,
+                crate::projects::PopupOutcome::Request(r) => {
+                    self.projects_popup = None;
+                    self.ws_request = Some(r);
+                }
+            }
+            return;
+        }
         if let Some(popup) = self.recent_popup.as_mut() {
             match popup.handle_key(&key, &self.recent.list) {
                 PopupOutcome::Handled => {}
@@ -1491,7 +1556,13 @@ impl App {
         if self.editing_focused() {
             match self.keymap.action_for(&key) {
                 Some(Action::LeaveEditor) => self.leave_editor(),
-                Some(a @ (Action::ToggleProject | Action::ToggleCommit | Action::ToggleFind)) => self.handle_action(a),
+                Some(
+                    a @ (Action::ToggleProject
+                    | Action::ToggleCommit
+                    | Action::ToggleFind
+                    | Action::NextProject
+                    | Action::PrevProject),
+                ) => self.handle_action(a),
                 _ => {
                     if let (Some(n), Some(keys)) = (&self.nvim, editor::key_notation(&key)) {
                         let _ = n.input(&keys);
@@ -1593,6 +1664,32 @@ impl App {
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+            if self.projects_popup.is_some() {
+                if let Some(r) = self.areas.projects_list.filter(|r| r.contains(pos)) {
+                    let row = (m.row - r.y) as usize;
+                    let outcome = self.projects_popup.as_mut().map(|p| p.click(row));
+                    if let Some(crate::projects::PopupOutcome::Request(req)) = outcome {
+                        self.projects_popup = None;
+                        self.ws_request = Some(req);
+                    }
+                } else {
+                    self.projects_popup = None;
+                }
+                return;
+            }
+            if m.row == self.areas.top.y
+                && let Some(h) = self.project_hits.iter().find(|h| (h.x.0..h.x.1).contains(&m.column))
+            {
+                let on_close = h.close.is_some_and(|c| (c.0..c.1).contains(&m.column));
+                match (h.index, on_close) {
+                    (Some(i), true) => self.ws_request = Some(crate::projects::WsRequest::Close(i)),
+                    (Some(i), false) => self.ws_request = Some(crate::projects::WsRequest::Switch(i)),
+                    (None, _) => self.handle_action(Action::Projects),
+                }
+                return;
+            }
+        }
         if let MouseEventKind::Down(MouseButton::Left) = m.kind
             && self.areas.reveal_button.is_some_and(|r| r.contains(pos))
             && self.find.is_none()
@@ -1862,6 +1959,9 @@ impl App {
                 self.sync_editor_buffer();
             }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
+            Action::Projects => self.projects_popup = Some(crate::projects::ProjectsPopup::new(self.projects.clone())),
+            Action::NextProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(true)),
+            Action::PrevProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(false)),
             Action::ToggleLineNumbers => {
                 let on = !self.line_numbers();
                 self.remember(|s| s.viewer.line_numbers = Some(on));
@@ -2055,6 +2155,36 @@ mod tests {
     }
 
     #[test]
+    fn clicking_project_tabs_asks_the_workspace() {
+        use crate::projects::WsRequest;
+        let (t, mut app) = app();
+        app.projects = crate::projects::ProjectsBar {
+            open: vec![
+                ("alpha".into(), t.path().join("a")),
+                ("beta".into(), t.path().join("b")),
+            ],
+            active: 1,
+            recent: vec![],
+        };
+        crate::testing::render(&mut app, 120, 30);
+        let click = |app: &mut App, col: u16| {
+            app.handle_mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: col,
+                row: 0,
+                modifiers: ratatui::crossterm::event::KeyModifiers::NONE,
+            });
+            app.ws_request.take()
+        };
+        // " alpha × " starts at column 1, " beta × " after it.
+        assert_eq!(click(&mut app, 2), Some(WsRequest::Switch(0)), "{:?}", app.project_hits);
+        assert_eq!(click(&mut app, 8), Some(WsRequest::Close(0)), "{:?}", app.project_hits);
+        let plus = app.project_hits.last().unwrap().x.0;
+        assert_eq!(click(&mut app, plus + 1), None);
+        assert!(app.projects_popup.is_some(), "+ opens the Projects popup");
+    }
+
+    #[test]
     fn starts_with_project_focused() {
         let (_t, app) = app();
         assert_eq!(app.left, Some(LeftPanel::Project));
@@ -2120,7 +2250,7 @@ mod tests {
         app.request_status();
         assert!(app.status_job.running && app.status_job.pending);
         // First result arrives (git fails: not a repo) and triggers exactly one follow-up.
-        let ev = app.rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let ev = app.recv_timeout(Duration::from_secs(5)).unwrap();
         app.handle_event(ev);
         assert!(app.status_job.running && !app.status_job.pending);
     }
@@ -2136,6 +2266,8 @@ mod tests {
             log_file: tmp.path().join("log"),
         };
         let res = App::new(AppOptions {
+            events: None,
+            ui: None,
             root: f,
             config: Config::default(),
             paths,

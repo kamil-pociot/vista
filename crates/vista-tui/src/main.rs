@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use vista_core::{Config, Paths};
 use vista_theme::ThemeLoader;
 use vista_tui::args::{Args, Command, USAGE};
-use vista_tui::{App, AppOptions, probe, run};
+use vista_tui::{Workspace, probe, run};
 
 fn main() -> ExitCode {
     match real_main() {
@@ -52,18 +52,16 @@ fn real_main() -> Result<()> {
     } else {
         (path, None)
     };
-    let mut app = App::new(AppOptions {
-        root,
-        config,
-        paths,
-        theme: args.theme,
-    })
-    .context("starting vista")?;
+    // The projects open last time come back, plus this one (shown).
+    let mut ws = Workspace::new(config, paths, args.theme);
+    ws.restore();
+    let i = ws.open(&root).context("starting vista")?;
+    ws.active = i;
     if let Some(f) = file {
-        app.open_file(&f);
+        ws.active_app().open_file(&f);
     }
     tracing::info!("app ready in {:?}", started.elapsed());
-    run::run(app)
+    run::run(ws)
 }
 
 fn init_logging(paths: &Paths) {

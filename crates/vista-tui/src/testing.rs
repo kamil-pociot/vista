@@ -24,6 +24,8 @@ pub fn app_at(root: &Path, home: &Path, theme: Option<&str>) -> App {
         log_file: home.join("vista.log"),
     };
     App::new(AppOptions {
+        events: None,
+        ui: None,
         root: root.to_path_buf(),
         config: Config::default(),
         paths,

@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 vista-core.workspace = true
+dirs = "6"
 vista-theme.workspace = true
 vista-git.workspace = true
 vista-render.workspace = true

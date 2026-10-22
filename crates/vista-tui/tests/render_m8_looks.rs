@@ -11,7 +11,7 @@ use vista_tui::testing::{app_at, render, snapshot};
 
 fn wait_for(app: &mut App, pred: impl Fn(&AppEvent) -> bool) {
     loop {
-        let ev = app.rx.recv_timeout(Duration::from_secs(10)).expect("event");
+        let ev = app.recv_timeout(Duration::from_secs(10)).expect("event");
         let done = pred(&ev);
         app.handle_event(ev);
         if done {
