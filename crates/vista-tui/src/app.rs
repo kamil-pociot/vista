@@ -173,6 +173,8 @@ pub struct App {
     quit_confirm: Option<Instant>,
     /// Armed "press again for the next file" step (next/previous change).
     pub change_hop: Option<ChangeHop>,
+    /// Where each tab and its × were drawn (last frame), for clicks.
+    pub tab_hits: Vec<crate::ui::chrome::TabHit>,
     /// Last left click: (list, row, when), to spot double clicks.
     last_click: Option<(ClickList, usize, Instant)>,
     /// A command to run with the terminal handed over (`$EDITOR` fallback).
@@ -261,6 +263,7 @@ impl App {
             dirty: HashSet::new(),
             quit_confirm: None,
             change_hop: None,
+            tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
             goto: None,
@@ -1567,9 +1570,13 @@ impl App {
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if inside(self.areas.tabs) => {
                 self.focus = Focus::Main;
-                if let Some(i) = self.tab_at(m.column) {
-                    self.viewer.activate(i);
-                    self.sync_editor_buffer();
+                match self.tab_at(m.column) {
+                    Some((i, true)) => self.close_tab(i),
+                    Some((i, false)) => {
+                        self.viewer.activate(i);
+                        self.sync_editor_buffer();
+                    }
+                    None => {}
                 }
             }
             MouseEventKind::Down(MouseButton::Left) if inside(viewer) => {
@@ -1704,10 +1711,7 @@ impl App {
             }
             Action::CloseTab => {
                 if let Some(i) = self.viewer.active {
-                    self.viewer.close(i);
-                }
-                if self.viewer.active.is_none() && self.left.is_some() {
-                    self.focus = Focus::Left;
+                    self.close_tab(i);
                 }
             }
             Action::NextTab => {
@@ -1746,25 +1750,27 @@ impl App {
         self.focus = Focus::Main;
     }
 
-    /// Which tab label is at screen column `x` (mirrors `chrome::tab_strip`).
-    fn tab_at(&self, x: u16) -> Option<usize> {
-        let strip = self.areas.tabs?;
-        let gap = usize::from(self.theme.chrome.tabs != vista_theme::Tabs::Underline);
-        let mut col = strip.x as usize;
-        for (i, t) in self.viewer.tabs.iter().enumerate() {
-            let name = t
-                .path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let prefix = if t.diff.is_some() { 2 } else { 0 };
-            let w = unicode_width::UnicodeWidthStr::width(name.as_str()) + 2 + prefix;
-            if (col..col + w).contains(&(x as usize)) {
-                return Some(i);
-            }
-            col += w + gap;
+    /// Which tab is at screen column `x`, and whether on its × (from the
+    /// last draw of the tab strip).
+    fn tab_at(&self, x: u16) -> Option<(usize, bool)> {
+        self.tab_hits.iter().enumerate().find_map(|(i, h)| {
+            (h.label.0..h.label.1)
+                .contains(&x)
+                .then(|| (i, (h.close.0..h.close.1).contains(&x)))
+        })
+    }
+
+    /// Closes tab `i`; Neovim drops the side-by-side diff if that tab had it.
+    fn close_tab(&mut self, i: usize) {
+        let diff_editing = self.viewer.tabs.get(i).is_some_and(|t| t.editing && t.diff.is_some());
+        self.viewer.close(i);
+        if diff_editing && let Some(n) = &self.nvim {
+            let _ = n.close_diff();
         }
-        None
+        self.sync_editor_buffer();
+        if self.viewer.active.is_none() && self.left.is_some() {
+            self.focus = Focus::Left;
+        }
     }
 
     fn prompt_key(&mut self, key: &KeyEvent) {

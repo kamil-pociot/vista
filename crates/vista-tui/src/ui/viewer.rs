@@ -45,7 +45,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
             dirty: *dirty,
         })
         .collect();
-    let inner = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme);
+    let (inner, hits) = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme);
+    app.tab_hits = hits;
     app.areas.tabs = Some(Rect { height: 1, ..area });
     app.areas.viewer = Some(inner);
     if app.viewer.active.is_none() {

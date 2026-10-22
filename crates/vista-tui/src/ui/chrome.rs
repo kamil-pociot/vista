@@ -121,7 +121,15 @@ pub struct TabLabel<'a> {
     pub dirty: bool,
 }
 
-/// Draws the tab strip on the first row of `area` and returns the rest.
+/// Where a tab was drawn: its label and its close button (screen columns).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TabHit {
+    pub label: (u16, u16),
+    pub close: (u16, u16),
+}
+
+/// Draws the tab strip on the first row of `area` and returns the rest, and
+/// where each tab (and its ×) landed, for clicks.
 pub fn tab_strip(
     f: &mut Frame,
     area: Rect,
@@ -129,9 +137,9 @@ pub fn tab_strip(
     active: Option<usize>,
     focused: bool,
     t: &Theme,
-) -> Rect {
+) -> (Rect, Vec<TabHit>) {
     if area.height == 0 {
-        return area;
+        return (area, Vec::new());
     }
     let strip = Rect { height: 1, ..area };
     let strip_bg = match t.chrome.tabs {
@@ -140,10 +148,15 @@ pub fn tab_strip(
     };
     f.render_widget(Block::new().style(t.bg(strip_bg)), strip);
     let mut spans = Vec::new();
+    let mut hits = Vec::with_capacity(tabs.len());
+    let mut x = strip.x;
+    let width = |s: &str| unicode_width::UnicodeWidthStr::width(s) as u16;
     for (i, tab) in tabs.iter().enumerate() {
         let is_active = Some(i) == active;
         let mark = if tab.dirty { "● " } else { "" };
         let label = format!(" {mark}{} ", tab.title);
+        // The close button, IntelliJ-style, right of the title.
+        let close = "× ";
         let style = match (t.chrome.tabs, is_active) {
             (Tabs::Underline, true) => {
                 let s = t.fg_bg(tab.fg, "ui.bg");
@@ -159,17 +172,33 @@ pub fn tab_strip(
             (Tabs::Text, true) => t.fg(tab.fg).add_modifier(Modifier::BOLD),
             (Tabs::Text, false) => t.fg("ui.dim"),
         };
+        let (lw, cw) = (width(&label), width(close));
+        hits.push(TabHit {
+            label: (x, x + lw + cw),
+            close: (x + lw, x + lw + 1),
+        });
+        x += lw + cw;
+        // The × is dim, on the tab's own background.
+        let close_style = match style.bg {
+            Some(bg) => t.fg("ui.dim").bg(bg),
+            None => t.fg("ui.dim"),
+        };
         spans.push(Span::styled(label, style));
+        spans.push(Span::styled(close, close_style));
         if t.chrome.tabs != Tabs::Underline {
             spans.push(Span::raw(" "));
+            x += 1;
         }
     }
     f.render_widget(Paragraph::new(Line::from(spans)), strip);
-    Rect {
-        y: area.y + 1,
-        height: area.height - 1,
-        ..area
-    }
+    (
+        Rect {
+            y: area.y + 1,
+            height: area.height - 1,
+            ..area
+        },
+        hits,
+    )
 }
 
 fn tool_label(app: &App, key: &str, name: &str, active: bool) -> Span<'static> {
@@ -359,5 +388,47 @@ mod scrollbar_tests {
         assert_eq!(scrollbar_thumb(100_000, 0, 20), Some((0, 1)));
         let (start, size) = scrollbar_thumb(100_000, 99_990, 20).unwrap();
         assert_eq!((start, size), (19, 1));
+    }
+}
+
+#[cfg(test)]
+mod tab_strip_tests {
+    use super::{TabLabel, tab_strip};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn hits_match_where_labels_and_close_buttons_are_drawn() {
+        let theme = vista_theme::Theme::default_theme();
+        let tabs = [
+            TabLabel {
+                title: "main.rs",
+                fg: "ui.text",
+                dirty: true,
+            },
+            TabLabel {
+                title: "Δ lib.rs",
+                fg: "ui.text",
+                dirty: false,
+            },
+        ];
+        let mut term = Terminal::new(TestBackend::new(60, 3)).unwrap();
+        let mut hits = Vec::new();
+        term.draw(|f| {
+            hits = tab_strip(f, Rect::new(2, 0, 58, 3), &tabs, Some(0), true, &theme).1;
+        })
+        .unwrap();
+        let buf = term.backend().buffer().clone();
+        let at = |x: u16| buf[(x, 0)].symbol().to_string();
+        assert_eq!(hits.len(), 2);
+        // Each × sits exactly where its hit says, after the ● of a dirty tab.
+        for h in &hits {
+            assert_eq!(at(h.close.0), "×", "{hits:?}");
+            assert!(h.label.0 <= h.close.0 && h.close.1 <= h.label.1);
+        }
+        assert_eq!(at(hits[0].label.0 + 1), "●");
+        assert_eq!(at(hits[1].label.0 + 1), "Δ");
+        assert!(hits[0].label.1 <= hits[1].label.0, "no overlap: {hits:?}");
     }
 }
