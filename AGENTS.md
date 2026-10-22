@@ -27,6 +27,14 @@ A change is done when `fmt --check`, `clippy -D warnings` and the **whole** suit
 
 Requirements at run time: `git` on `PATH`; optional `nvim` 0.10+ (editing; tests skip Neovim cases without it).
 
+## Where to work
+
+Work in the main checkout, on `main` or on a normal branch (`git switch -c <name>`), **not in git worktrees** (no `.claude/worktrees/…`, no `git worktree add`). The owner runs vista from the main checkout, so changes made in a worktree don't show up until they are merged.
+
+- Small changes can go straight to `main`; larger ones on a branch, merged into `main` with `git merge --ff-only` once the checks below pass.
+- Leave the owner's untracked or staged IDE files (`.idea/`) alone.
+- There is no remote yet; don't push unless asked.
+
 ## Layout
 
 | Crate | Role |
