@@ -39,6 +39,8 @@ pub struct Areas {
     pub find_window: Option<Rect>,
     pub commit_list: Option<Rect>,
     pub commit_message: Option<Rect>,
+    /// "Select Opened File" (⌖) in the Project panel's header.
+    pub reveal_button: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -94,6 +96,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             find_window: None,
             commit_list: None,
             commit_message: None,
+            reveal_button: None,
             main: body,
             bottom,
             keyhints,
@@ -130,6 +133,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         find_window: None,
         commit_list: None,
         commit_message: None,
+        reveal_button: None,
         main,
         bottom,
         keyhints,
@@ -188,6 +192,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
+    let reveal_button = app.areas.reveal_button;
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
@@ -196,6 +201,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         find_window,
         commit_list,
         commit_message,
+        reveal_button,
         ..areas
     };
 }
@@ -239,12 +245,39 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
         _ => ("1: Project", "ui.panel.alt"),
     };
     let inner = chrome::panel(f, area, title, focused, bg, &app.theme);
+    app.areas.reveal_button = None;
+    if app.left == Some(LeftPanel::Project) {
+        app.areas.reveal_button = reveal_button(f, area, app);
+    }
     match app.left {
         Some(LeftPanel::Project) => project::draw(f, inner, app),
         Some(LeftPanel::Commit) => commit::draw(f, inner, app),
         None => {}
     }
     inner
+}
+
+/// IntelliJ's "Select Opened File" (⌖) at the right of the Project header;
+/// dimmed when no file is open.
+fn reveal_button(f: &mut Frame, area: Rect, app: &App) -> Option<Rect> {
+    // Inside the frame's corner for boxed looks.
+    let inset = u16::from(app.theme.chrome.panel_headers == PanelHeaders::BorderTitle);
+    if area.width < 16 || area.height == 0 {
+        return None;
+    }
+    let rect = Rect {
+        x: area.x + area.width - 3 - inset,
+        y: area.y,
+        width: 3,
+        height: 1,
+    };
+    let tok = if app.viewer.active_tab().is_some() {
+        "ui.accent"
+    } else {
+        "ui.dim"
+    };
+    f.render_widget(Paragraph::new(Span::styled(" ⌖ ", app.theme.fg(tok))), rect);
+    Some(rect)
 }
 
 fn main_area(f: &mut Frame, area: Rect, app: &mut App) {

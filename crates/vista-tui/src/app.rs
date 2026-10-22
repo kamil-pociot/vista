@@ -1453,6 +1453,14 @@ impl App {
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        if let MouseEventKind::Down(MouseButton::Left) = m.kind
+            && self.areas.reveal_button.is_some_and(|r| r.contains(pos))
+            && self.find.is_none()
+            && self.goto.is_none()
+        {
+            self.handle_action(Action::RevealFile);
+            return;
+        }
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
@@ -1711,13 +1719,14 @@ impl App {
                 self.sync_editor_buffer();
             }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
-            Action::RevealFile => {
-                if let Some(path) = self.viewer.active_tab().map(|t| t.path.clone()) {
+            Action::RevealFile => match self.viewer.active_tab().map(|t| t.path.clone()) {
+                Some(path) => {
                     self.left = Some(LeftPanel::Project);
                     self.focus = Focus::Left;
                     self.project.reveal(&path, &self.status);
                 }
-            }
+                None => self.notify("No file open", MsgKind::Info),
+            },
             Action::NextChange | Action::PrevChange => {
                 let forward = action == Action::NextChange;
                 match self.viewer.active_tab_mut().map(|t| t.jump_to_change(forward)) {

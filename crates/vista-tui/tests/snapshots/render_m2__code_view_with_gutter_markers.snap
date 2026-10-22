@@ -3,7 +3,7 @@ source: crates/vista-tui/tests/render_m2.rs
 expression: snap
 ---
  <root>                                 Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
- 1: Project                 │ status.rs
+ 1: Project               ⌖ │ status.rs
  ▾ <root>         │  1   use std::path::{Path, PathBuf};                                 ┃
    ▸ crates                 │  2                                                                   ┃
    ▸ docs                   │  3 ▌ use anyhow::Context;                                            ┃
@@ -34,7 +34,7 @@ expression: snap
  1: Project   0: Commit   3: Find   ?: Help                  4 changed · 2 unversioned   1:1   Rust
 --- styles ---
   0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..50 fg=ui.text bg=ui.panel] [50..56 fg=ui.dim bg=ui.panel] [56..70 fg=ui.text bg=ui.panel] [70..76 fg=ui.dim bg=ui.panel] [76..93 fg=ui.text bg=ui.panel] [93..95 fg=ui.dim bg=ui.panel] [95..100 fg=ui.text bg=ui.panel]
-  1: [0..11 fg=ui.header bg=ui.panel +bold] [11..28 fg=ui.text bg=ui.panel] [28..29 fg=ui.border bg=ui.bg] [29..40 fg=git.modified bg=ui.bg +underline] [40..100 fg=ui.text bg=ui.panel]
+  1: [0..11 fg=ui.header bg=ui.panel +bold] [11..25 fg=ui.text bg=ui.panel] [25..28 fg=ui.border.focused bg=ui.panel] [28..29 fg=ui.border bg=ui.bg] [29..40 fg=git.modified bg=ui.bg +underline] [40..100 fg=ui.text bg=ui.panel]
   2: [0..3 fg=ui.dim bg=ui.selection.inactive] [3..19 fg=git.modified bg=ui.selection.inactive +bold] [19..28 fg=ui.text bg=ui.selection.inactive] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.text.strong bg=ui.cursorline] [33..34 fg=ui.dim bg=ui.cursorline] [34..35 fg=ui.text bg=ui.cursorline] [35..38 fg=syntax.keyword bg=ui.cursorline] [38..99 fg=ui.text bg=ui.cursorline] [99..100 fg=ui.dim bg=ui.bg]
   3: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.modified bg=ui.panel.alt] [11..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..34 fg=ui.dim bg=ui.bg] [99..100 fg=ui.dim bg=ui.bg]
   4: [0..5 fg=ui.dim bg=ui.panel.alt] [5..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg] [29..33 fg=ui.dim bg=ui.bg] [33..34 fg=gutter.added bg=ui.bg] [35..38 fg=syntax.keyword bg=ui.bg] [99..100 fg=ui.dim bg=ui.bg]
