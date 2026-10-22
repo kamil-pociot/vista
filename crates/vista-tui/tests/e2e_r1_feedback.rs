@@ -236,6 +236,31 @@ fn thumb_rows(vista: &Vista) -> Vec<u16> {
 }
 
 #[test]
+fn wheel_scrolls_wrapped_diffs_by_screen_rows() {
+    let old: String = (1..=60).map(|i| format!("P{i:02}\n")).collect();
+    let repo = Fixture::git()
+        .file("taste.md", old)
+        .commit("init")
+        .modify("taste.md", long_paragraphs())
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
+    diff_of(&mut vista, "taste.md");
+    vista.expect_text("lines: wrap");
+    vista.expect_text("P01 lorem");
+    // Line 1 wraps to 4 rows; one wheel step (3 rows) hides only its start,
+    // so its end is still on screen.
+    vista.scroll_down(100, 20);
+    vista.expect_no_text("P01");
+    vista.expect_text("END01");
+    vista.scroll_down(100, 20);
+    vista.expect_no_text("END01");
+    vista.scroll_up(100, 20);
+    vista.expect_text("END01");
+    vista.scroll_up(100, 20);
+    vista.expect_text("P01 lorem");
+}
+
+#[test]
 fn wrapped_diff_reaches_the_last_line() {
     let old: String = (1..=60).map(|i| format!("P{i:02}\n")).collect();
     let repo = Fixture::git()

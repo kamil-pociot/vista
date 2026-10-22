@@ -123,7 +123,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     tab.view_height = area.height as usize;
     tab.view_width = area.width as usize;
     // Set again below by views that wrap.
-    tab.wrapped_max = None;
+    tab.row_heights = None;
     let t = &*theme;
     match &mut tab.content {
         Content::Text { .. } => draw_code(f, area, tab, t, focused),
@@ -364,7 +364,7 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
     }
     // Wrapped lines take several rows: scroll limits and the scrollbar
     // count rows, not lines.
-    let (total, top) = if tab.wrap
+    if tab.wrap
         && let Content::Text { lines, .. } | Content::Markdown { lines, .. } = &tab.content
     {
         let content_w = (area.width as usize).saturating_sub(gutter_width(lines.len()));
@@ -373,14 +373,10 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
             .map(|l| crate::viewer::wrapped_rows(line_width(l), content_w.max(1)))
             .collect();
         tab.fit_wrapped(&heights);
-        (
-            heights.iter().sum(),
-            heights[..tab.scroll.min(heights.len())].iter().sum(),
-        )
     } else {
-        tab.wrapped_max = None;
-        (tab.total_lines(), tab.scroll)
-    };
+        tab.row_heights = None;
+    }
+    let (total, top) = tab.row_position();
     crate::ui::chrome::scrollbar(f, bar, t, total, top);
     let tab = &*tab;
     let (lines, markers) = match &tab.content {
@@ -400,7 +396,9 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
         } else {
             vec![slice_cols(&decorated, tab.hscroll, content_w)]
         };
-        for (ri, row) in rows.into_iter().enumerate() {
+        // The view may start partway into a wrapped line.
+        let hidden = if idx == tab.scroll { tab.sub_row() } else { 0 };
+        for (ri, row) in rows.into_iter().enumerate().skip(hidden) {
             if out.len() >= area.height as usize {
                 break;
             }

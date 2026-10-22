@@ -92,9 +92,13 @@ pub struct Tab {
     pub wrap: bool,
     /// After the next load, put the cursor on the first (true) or last change.
     pub land: Option<bool>,
-    /// Scroll limit while wrapping, where lines take several rows (set when
-    /// drawing; `None` means one row per line).
-    pub wrapped_max: Option<usize>,
+    /// Screen rows per line while wrapping (set when drawing; `None` means
+    /// one row per line).
+    pub row_heights: Option<Vec<usize>>,
+    /// While wrapping, the view may start inside a line: (line, rows of it
+    /// hidden above). Only applies while that line is still `scroll`, so any
+    /// jump elsewhere drops it.
+    pub scroll_sub: Option<(usize, usize)>,
     /// The view was scrolled (wheel) rather than the cursor moved: the
     /// cursor follows the view instead of the view following the cursor.
     pub scrolled: bool,
@@ -283,7 +287,8 @@ impl Viewer {
             hscroll: 0,
             wrap: false,
             land: None,
-            wrapped_max: None,
+            row_heights: None,
+            scroll_sub: None,
             scrolled: false,
             search: None,
             view_height: 20,
@@ -338,6 +343,18 @@ pub fn wrapped_max_scroll(heights: &[usize], height: usize) -> usize {
     }
     // A last line taller than the room still gets shown from its top.
     s.min(heights.len().saturating_sub(1))
+}
+
+/// (line, rows into it) for screen row `row` of wrapped content.
+pub fn row_to_line(heights: &[usize], row: usize) -> (usize, usize) {
+    let mut acc = 0;
+    for (i, h) in heights.iter().enumerate() {
+        if row < acc + h {
+            return (i, row - acc);
+        }
+        acc += h;
+    }
+    (heights.len().saturating_sub(1), 0)
 }
 
 /// Screen rows a line of `width` columns takes when wrapped to `cols`.
@@ -627,55 +644,98 @@ impl Tab {
     /// How far the view can scroll: past the end, until the last line sits
     /// about 30% above the bottom edge (like an IDE's "scroll past end").
     pub fn max_scroll(&self) -> usize {
-        self.wrapped_max
-            .unwrap_or_else(|| max_scroll(self.total_lines(), self.view_height))
+        match &self.row_heights {
+            Some(h) => wrapped_max_scroll(h, self.view_height),
+            None => max_scroll(self.total_lines(), self.view_height),
+        }
     }
 
-    /// Scroll limits for wrapped lines, `heights[i]` screen rows each: keeps
-    /// the whole cursor line on screen and lets the end rise like
-    /// [`max_scroll`]. Call while drawing, after `view_height` is set.
+    /// Rows of the `scroll` line hidden above the view (wrapping only).
+    pub fn sub_row(&self) -> usize {
+        match self.scroll_sub {
+            Some((line, rows)) if line == self.scroll => rows,
+            _ => 0,
+        }
+    }
+
+    /// (content rows, rows above the view) for the scrollbar.
+    pub fn row_position(&self) -> (usize, usize) {
+        match &self.row_heights {
+            Some(h) => (
+                h.iter().sum(),
+                h[..self.scroll.min(h.len())].iter().sum::<usize>() + self.sub_row(),
+            ),
+            None => (self.total_lines(), self.scroll),
+        }
+    }
+
+    /// Puts the top of the view at screen row `top` of the wrapped content.
+    fn set_top_row(&mut self, heights: &[usize], top: usize) {
+        let (line, sub) = row_to_line(heights, top);
+        self.scroll = line;
+        self.scroll_sub = (sub > 0).then_some((line, sub));
+    }
+
+    /// Scroll limits for wrapped lines, `heights[i]` screen rows each. After
+    /// a cursor move the view shows the whole cursor line; after the wheel
+    /// the cursor moves onto a line that is fully in view. Call while
+    /// drawing, after `view_height` is set.
     pub fn fit_wrapped(&mut self, heights: &[usize]) {
         let h = self.view_height.max(1);
+        self.row_heights = Some(heights.to_vec());
         let Some(last) = heights.len().checked_sub(1) else {
-            self.wrapped_max = Some(0);
             self.scroll = 0;
+            self.scroll_sub = None;
             return;
         };
-        let max = wrapped_max_scroll(heights, h);
-        self.wrapped_max = Some(max);
-        if !self.has_cursor() {
-            self.scroll = self.scroll.min(max);
-            return;
+        let start = |i: usize| -> usize { heights[..i].iter().sum() };
+        let total = start(heights.len());
+        let max_top = total.saturating_sub(h - h * 3 / 10);
+        self.scroll = self.scroll.min(last);
+        let mut top = start(self.scroll) + self.sub_row().min(heights[self.scroll] - 1);
+        if self.has_cursor() && !self.scrolled {
+            // Cursor moved: show its whole line (its top if taller than the view).
+            let cursor = self.cursor.min(last);
+            let (c_top, c_bottom) = (start(cursor), start(cursor) + heights[cursor]);
+            if c_bottom > top + h {
+                top = c_bottom - h;
+            }
+            top = top.min(c_top);
         }
-        let cursor = self.cursor.min(last);
-        if self.scrolled {
-            // Wheel: keep the view, pull the cursor onto its last full line.
-            self.scroll = self.scroll.min(max).min(last);
-            let mut used = 0;
-            let mut bottom = self.scroll;
-            for (i, rows) in heights.iter().enumerate().skip(self.scroll) {
-                used += rows;
-                if used > h {
+        top = top.min(max_top);
+        self.set_top_row(heights, top);
+        if self.has_cursor() && self.scrolled {
+            // Wheel: the cursor follows onto a fully visible line.
+            let first = if self.sub_row() > 0 {
+                (self.scroll + 1).min(last)
+            } else {
+                self.scroll
+            };
+            let mut bottom = first;
+            let mut row = start(first);
+            for (i, rows) in heights.iter().enumerate().skip(first) {
+                row += rows;
+                if row > top + h {
                     break;
                 }
                 bottom = i;
             }
-            self.cursor = cursor.clamp(self.scroll, bottom);
-        } else {
-            // Cursor moved: scroll until its whole line is on screen.
-            if cursor >= self.scroll {
-                let mut used: usize = heights[self.scroll..=cursor].iter().sum();
-                while used > h && self.scroll < cursor {
-                    used -= heights[self.scroll];
-                    self.scroll += 1;
-                }
-            }
-            self.scroll = self.scroll.min(max);
+            self.cursor = self.cursor.min(last).clamp(first, bottom);
         }
     }
 
+    /// Scrolls the view by `delta` screen rows (lines when not wrapping).
     pub fn scroll_by(&mut self, delta: isize) {
         self.scrolled = true;
+        if let Some(heights) = self.row_heights.take() {
+            let (total, top) = (heights.iter().sum::<usize>(), self.row_position_in(&heights));
+            let h = self.view_height.max(1);
+            let max_top = total.saturating_sub(h - h * 3 / 10);
+            let top = (top as isize + delta).clamp(0, max_top as isize) as usize;
+            self.set_top_row(&heights, top);
+            self.fit_wrapped(&heights);
+            return;
+        }
         let n = self.total_lines();
         let max = self.max_scroll();
         self.scroll = (self.scroll as isize + delta).clamp(0, max as isize) as usize;
@@ -687,6 +747,10 @@ impl Tab {
         } else {
             self.cursor = self.scroll;
         }
+    }
+
+    fn row_position_in(&self, heights: &[usize]) -> usize {
+        heights[..self.scroll.min(heights.len())].iter().sum::<usize>() + self.sub_row()
     }
 
     /// Scrolls sideways (no-op while wrapping); drawing clamps the far end.
@@ -1171,10 +1235,12 @@ mod tests {
         t.set_cursor(19);
         t.fit_wrapped(&heights);
         assert_eq!(t.scroll, 15, "lines 15..=19 fill the 20 rows");
-        // The limit is the wrapped one: the tail fills at most 14 rows.
+        // The limit is the wrapped one: the tail fills at most 14 rows of
+        // the 120, so the view stops at row 106 (inside line 26).
         assert_eq!(t.max_scroll(), 27);
         t.scroll_by(1000);
-        assert_eq!(t.scroll, 27);
+        assert_eq!(t.row_position(), (120, 106));
+        assert_eq!((t.scroll, t.sub_row()), (26, 2));
     }
 
     #[test]
@@ -1194,7 +1260,7 @@ mod tests {
         let end = t.scroll;
         assert!(end > 20);
         // …each wheel step up sticks, and the cursor comes along.
-        for _ in 0..20 {
+        for _ in 0..40 {
             t.scroll_by(-3);
             t.fit_wrapped(&heights);
         }
@@ -1204,5 +1270,39 @@ mod tests {
         t.set_cursor(29);
         t.fit_wrapped(&heights);
         assert_eq!(t.scroll, end);
+    }
+
+    #[test]
+    fn wheel_moves_by_screen_rows_while_wrapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "x\n".repeat(30)).unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        t.view_height = 20;
+        let heights = [5usize; 30];
+        t.fit_wrapped(&heights);
+        // Each step is 3 rows, whatever the line heights.
+        t.scroll_by(3);
+        assert_eq!(t.row_position().1, 3);
+        assert_eq!((t.scroll, t.sub_row()), (0, 3), "inside the first line");
+        assert_eq!(t.cursor, 1, "cursor on the first fully visible line");
+        t.scroll_by(3);
+        assert_eq!((t.scroll, t.sub_row()), (1, 1));
+        t.scroll_by(-6);
+        assert_eq!((t.scroll, t.sub_row()), (0, 0));
+        // Jumping elsewhere drops the partial offset.
+        t.scroll_by(3);
+        t.set_cursor(20);
+        t.fit_wrapped(&heights);
+        assert_eq!(t.sub_row(), 0);
+        assert!(t.row_position().1 <= 100 && t.row_position().1 + 20 >= 105);
+        // Without wrapping, the wheel moves lines (= rows).
+        t.row_heights = None;
+        t.scroll = 0;
+        t.scroll_by(3);
+        assert_eq!(t.scroll, 3);
     }
 }
