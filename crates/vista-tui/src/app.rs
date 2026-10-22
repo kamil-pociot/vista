@@ -198,6 +198,8 @@ pub struct App {
     pub project_hits: Vec<crate::projects::ProjectHit>,
     /// The divider between the tree and the editor is being dragged.
     dragging_divider: bool,
+    /// The editor tab being dragged to a new place.
+    dragging_tab: Option<usize>,
     /// The Git tool window (log, file history).
     pub log: crate::log::LogWindow,
     /// The Terminal tool window's shell (started on first use).
@@ -323,6 +325,7 @@ impl App {
             projects_popup: None,
             project_hits: Vec::new(),
             dragging_divider: false,
+            dragging_tab: None,
             log: crate::log::LogWindow::default(),
             shell: None,
             shell_visible: false,
@@ -1907,6 +1910,25 @@ impl App {
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        // Dragging a tab over others moves it there.
+        if let Some(from) = self.dragging_tab {
+            match m.kind {
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    if let Some((to, _)) = self.tab_at(m.column)
+                        && to != from
+                    {
+                        self.viewer.move_tab(from, to);
+                        self.dragging_tab = Some(to);
+                    }
+                    return;
+                }
+                MouseEventKind::Up(_) => {
+                    self.dragging_tab = None;
+                    return;
+                }
+                _ => self.dragging_tab = None,
+            }
+        }
         // Dragging the divider resizes the tree; saved on release.
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if self.on_divider(m.column, m.row) => {
@@ -2125,6 +2147,8 @@ impl App {
                     Some((i, false)) => {
                         self.viewer.activate(i);
                         self.sync_editor_buffer();
+                        // Dragging from here moves the tab.
+                        self.dragging_tab = Some(i);
                     }
                     None => {}
                 }

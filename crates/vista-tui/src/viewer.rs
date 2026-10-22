@@ -238,6 +238,28 @@ impl Viewer {
         }
     }
 
+    /// Moves tab `from` to position `to` (dragging tabs); the active tab
+    /// stays active.
+    pub fn move_tab(&mut self, from: usize, to: usize) {
+        let n = self.tabs.len();
+        if from >= n || to >= n || from == to {
+            return;
+        }
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.active = self.active.map(|a| {
+            if a == from {
+                to
+            } else if from < a && a <= to {
+                a - 1
+            } else if to <= a && a < from {
+                a + 1
+            } else {
+                a
+            }
+        });
+    }
+
     pub fn activate(&mut self, i: usize) {
         if i < self.tabs.len() {
             self.clock += 1;
@@ -1079,6 +1101,36 @@ mod tests {
         );
         t.handle_key(&key(KeyCode::Esc));
         assert!(t.search.is_none());
+    }
+
+    #[test]
+    fn moving_tabs_keeps_the_active_one_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        let paths: Vec<PathBuf> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|n| {
+                let p = dir.path().join(n);
+                std::fs::write(&p, "x").unwrap();
+                v.open(&p, &ctx);
+                p
+            })
+            .collect();
+        let order = |v: &Viewer| v.tabs.iter().map(|t| t.path.clone()).collect::<Vec<_>>();
+        v.activate(0);
+        v.move_tab(0, 2);
+        assert_eq!(
+            order(&v),
+            vec![paths[1].clone(), paths[2].clone(), paths[0].clone(), paths[3].clone()]
+        );
+        assert_eq!(v.active_tab().unwrap().path, paths[0], "the moved tab stays active");
+        // Moving another tab across the active one shifts it.
+        v.move_tab(3, 0);
+        assert_eq!(v.active_tab().unwrap().path, paths[0]);
+        assert_eq!(v.active, Some(3));
+        v.move_tab(0, 9);
+        assert_eq!(v.active, Some(3), "out of range: nothing moves");
     }
 
     #[test]
