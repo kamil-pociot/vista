@@ -5,37 +5,37 @@ expression: snap
  <root>                                                                                   Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
  Δ status.rs
  status.rs  crates/fb-git/src                                                                            5 of 5 in commit (␣)   [ ◂ change 1 of 5 ▸ ]
- HEAD · c22c251 (read-only)                                                  Working tree
-  1 use std::path::{Path, PathBuf};                                           1 use std::path::{Path, PathBuf};
-  2                                                                           2
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑   3 use anyhow::Context;
-  3 use gix::status::index_worktree::Item;                                    4 use gix::status::index_worktree::Item;
-  4                                                                           5
-  5 pub struct StatusMap {                                                    6 pub struct StatusMap {
-  6     root: PathBuf,                                                        7     root: PathBuf,
-  7     entries: HashMap<PathBuf, FileStatus>,                                8     entries: HashMap<PathBuf, FileStatus>,
-  8 }                                                                         9 }
-  9                                                                          10
- 10 impl StatusMap {                                                         11 impl StatusMap {
- 11     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {        12     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {
- 12         let root = repo.work_dir().expect("bare repository");         ☑  13         let root = repo.workdir().context("bare repository")?;
- 13         let mut entries = HashMap::new();                                14         let mut entries = HashMap::new();
- 14         for item in repo.status()?.into_iter()? {                     ☑  15         for item in repo.status(gix::progress::Discard)?.into_iter(Non
- 15             entries.insert(root.join(item.location()), classify(&item?   16             let item = item?;
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   17             entries.insert(root.join(item.location()), classify(&item)
- 16         }                                                                18         }
- 17         Ok(Self { root: root.to_owned(), entries })                      19         Ok(Self { root: root.to_owned(), entries })
- 18     }                                                                    20     }
- 19                                                                          21
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  22     /// Status of `path`, or `None` when the file is clean.
- 20     pub fn get(&self, path: &Path) -> Option<FileStatus> {               23     pub fn get(&self, path: &Path) -> Option<FileStatus> {
- 21         self.entries.get(path).copied()                                  24         self.entries.get(path).copied()
- 22     }                                                                    25     }
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  26
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   27     pub fn is_dirty(&self) -> bool {
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   28         !self.entries.is_empty()
-╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   29     }
- 23 }                                                                        30 }
+ HEAD · c22c251 (read-only)                                                 Working tree
+  1 use std::path::{Path, PathBuf};                                          1 use std::path::{Path, PathBuf};
+  2                                                                          2
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑   3 use anyhow::Context;
+  3 use gix::status::index_worktree::Item;                                   4 use gix::status::index_worktree::Item;
+  4                                                                          5
+  5 pub struct StatusMap {                                                   6 pub struct StatusMap {
+  6     root: PathBuf,                                                       7     root: PathBuf,
+  7     entries: HashMap<PathBuf, FileStatus>,                               8     entries: HashMap<PathBuf, FileStatus>,
+  8 }                                                                        9 }
+  9                                                                         10
+ 10 impl StatusMap {                                                        11 impl StatusMap {
+ 11     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {       12     pub fn load(repo: &gix::Repository) -> anyhow::Result<Self> {
+ 12         let root = repo.work_dir().expect("bare repository");        ☑  13         let root = repo.workdir().context("bare repository")?;
+ 13         let mut entries = HashMap::new();                               14         let mut entries = HashMap::new();
+ 14         for item in repo.status()?.into_iter()? {                    ☑  15         for item in repo.status(gix::progress::Discard)?.into_iter(Non
+ 15             entries.insert(root.join(item.location()), classify(&item   16             let item = item?;
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   17             entries.insert(root.join(item.location()), classify(&item)
+ 16         }                                                               18         }
+ 17         Ok(Self { root: root.to_owned(), entries })                     19         Ok(Self { root: root.to_owned(), entries })
+ 18     }                                                                   20     }
+ 19                                                                         21
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  22     /// Status of `path`, or `None` when the file is clean.
+ 20     pub fn get(&self, path: &Path) -> Option<FileStatus> {              23     pub fn get(&self, path: &Path) -> Option<FileStatus> {
+ 21         self.entries.get(path).copied()                                 24         self.entries.get(path).copied()
+ 22     }                                                                   25     }
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱☑  26
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   27     pub fn is_dirty(&self) -> bool {
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   28         !self.entries.is_empty()
+╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱╱   29     }
+ 23 }                                                                       30 }
 
 
 
@@ -46,36 +46,36 @@ expression: snap
   0: [0..17 fg=ui.text.strong bg=ui.panel +bold] [17..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..120 fg=ui.text bg=ui.panel] [120..126 fg=ui.dim bg=ui.panel] [126..143 fg=ui.text bg=ui.panel] [143..145 fg=ui.dim bg=ui.panel] [145..150 fg=ui.text bg=ui.panel]
   1: [0..13 fg=git.modified bg=ui.bg +underline] [13..150 fg=ui.text bg=ui.panel]
   2: [0..10 fg=ui.text.strong bg=ui.panel +bold] [10..29 fg=ui.dim bg=ui.panel] [29..150 fg=ui.text bg=ui.panel]
-  3: [0..74 fg=ui.header bg=ui.panel.alt] [74..76 fg=ui.text bg=ui.panel.alt] [76..150 fg=ui.header bg=ui.panel.alt]
-  4: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [80..83 fg=syntax.keyword bg=ui.bg]
-  5: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
-  6: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.text.strong bg=ui.bg] [80..83 fg=syntax.keyword bg=diff.inserted] [83..150 fg=ui.text bg=diff.inserted]
-  7: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [80..83 fg=syntax.keyword bg=ui.bg]
-  8: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
-  9: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [8..14 fg=syntax.keyword bg=ui.bg] [15..24 fg=syntax.type bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [80..83 fg=syntax.keyword bg=ui.bg] [84..90 fg=syntax.keyword bg=ui.bg] [91..100 fg=syntax.type bg=ui.bg]
- 10: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 11: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 12: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 13: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 14: [0..4 fg=ui.dim bg=ui.bg] [4..8 fg=syntax.keyword bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [80..84 fg=syntax.keyword bg=ui.bg]
- 15: [0..4 fg=ui.dim bg=ui.bg] [8..11 fg=syntax.keyword bg=ui.bg] [12..14 fg=syntax.keyword bg=ui.bg] [15..19 fg=syntax.function bg=ui.bg] [55..61 fg=syntax.type bg=ui.bg] [62..66 fg=syntax.keyword bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [84..87 fg=syntax.keyword bg=ui.bg] [88..90 fg=syntax.keyword bg=ui.bg] [91..95 fg=syntax.function bg=ui.bg] [131..137 fg=syntax.type bg=ui.bg] [138..142 fg=syntax.keyword bg=ui.bg]
- 16: [0..4 fg=ui.dim bg=ui.bg] [4..12 fg=ui.text bg=diff.modified] [12..15 fg=syntax.keyword bg=diff.modified] [15..28 fg=ui.text bg=diff.modified] [28..36 fg=syntax.function bg=diff.word.modified] [36..39 fg=ui.text bg=diff.modified] [39..45 fg=syntax.function bg=diff.word.modified] [45..46 fg=ui.text bg=diff.modified] [46..63 fg=syntax.string bg=diff.modified] [63..74 fg=ui.text bg=diff.modified] [74..76 fg=ui.text.strong bg=gutter.modified] [76..80 fg=ui.dim bg=ui.bg] [80..88 fg=ui.text bg=diff.modified] [88..91 fg=syntax.keyword bg=diff.modified] [91..104 fg=ui.text bg=diff.modified] [104..111 fg=syntax.function bg=diff.word.modified] [111..114 fg=ui.text bg=diff.modified] [114..121 fg=syntax.function bg=diff.word.modified] [121..122 fg=ui.text bg=diff.modified] [122..139 fg=syntax.string bg=diff.modified] [139..140 fg=ui.text bg=diff.modified] [140..141 fg=ui.text bg=diff.word.modified] [141..150 fg=ui.text bg=diff.modified]
- 17: [0..4 fg=ui.dim bg=ui.bg] [12..15 fg=syntax.keyword bg=ui.bg] [16..19 fg=syntax.keyword bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [88..91 fg=syntax.keyword bg=ui.bg] [92..95 fg=syntax.keyword bg=ui.bg]
- 18: [0..4 fg=ui.dim bg=ui.bg] [4..12 fg=ui.text bg=diff.modified] [12..15 fg=syntax.keyword bg=diff.modified] [15..29 fg=ui.text bg=diff.modified] [29..35 fg=syntax.function bg=diff.modified] [35..39 fg=ui.text bg=diff.modified] [39..48 fg=syntax.function bg=diff.modified] [48..74 fg=ui.text bg=diff.modified] [74..76 fg=ui.text.strong bg=gutter.modified] [76..80 fg=ui.dim bg=ui.bg] [80..88 fg=ui.text bg=diff.modified] [88..91 fg=syntax.keyword bg=diff.modified] [91..105 fg=ui.text bg=diff.modified] [105..111 fg=syntax.function bg=diff.modified] [111..112 fg=ui.text bg=diff.modified] [112..134 fg=ui.text bg=diff.word.modified] [134..137 fg=ui.text bg=diff.modified] [137..146 fg=syntax.function bg=diff.modified] [146..147 fg=ui.text bg=diff.modified] [147..150 fg=syntax.type bg=diff.word.modified]
- 19: [0..4 fg=ui.dim bg=ui.bg] [4..16 fg=ui.text bg=diff.modified] [16..24 fg=ui.text bg=diff.word.modified] [24..30 fg=syntax.function bg=diff.word.modified] [30..36 fg=ui.text bg=diff.word.modified] [36..40 fg=syntax.function bg=diff.word.modified] [40..41 fg=ui.text bg=diff.word.modified] [41..45 fg=ui.text bg=diff.modified] [45..46 fg=ui.text bg=diff.word.modified] [46..54 fg=syntax.function bg=diff.word.modified] [54..58 fg=ui.text bg=diff.word.modified] [58..59 fg=ui.text bg=diff.modified] [59..67 fg=syntax.function bg=diff.word.modified] [67..69 fg=ui.text bg=diff.word.modified] [69..74 fg=ui.text bg=diff.modified] [74..76 fg=ui.text.strong bg=gutter.modified] [76..80 fg=ui.dim bg=ui.bg] [80..92 fg=ui.text bg=diff.modified] [92..95 fg=syntax.keyword bg=diff.word.modified] [95..101 fg=ui.text bg=diff.modified] [101..102 fg=ui.text bg=diff.word.modified] [102..150 fg=ui.text bg=diff.modified]
- 20: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..100 fg=ui.text bg=diff.inserted] [100..106 fg=syntax.function bg=diff.inserted] [106..112 fg=ui.text bg=diff.inserted] [112..116 fg=syntax.function bg=diff.inserted] [116..122 fg=ui.text bg=diff.inserted] [122..130 fg=syntax.function bg=diff.inserted] [130..135 fg=ui.text bg=diff.inserted] [135..143 fg=syntax.function bg=diff.inserted] [143..150 fg=ui.text bg=diff.inserted]
- 21: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 22: [0..4 fg=ui.dim bg=ui.bg] [12..14 fg=syntax.type bg=ui.bg] [15..19 fg=syntax.keyword bg=ui.bg] [33..41 fg=syntax.function bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [88..90 fg=syntax.type bg=ui.bg] [91..95 fg=syntax.keyword bg=ui.bg] [109..117 fg=syntax.function bg=ui.bg]
- 23: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 24: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 25: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..84 fg=ui.text bg=diff.inserted] [84..139 fg=syntax.comment bg=diff.inserted +italic] [139..150 fg=ui.text bg=diff.inserted]
- 26: [0..4 fg=ui.dim bg=ui.bg] [8..11 fg=syntax.keyword bg=ui.bg] [12..14 fg=syntax.keyword bg=ui.bg] [15..18 fg=syntax.function bg=ui.bg] [42..48 fg=syntax.type bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [84..87 fg=syntax.keyword bg=ui.bg] [88..90 fg=syntax.keyword bg=ui.bg] [91..94 fg=syntax.function bg=ui.bg] [118..124 fg=syntax.type bg=ui.bg]
- 27: [0..4 fg=ui.dim bg=ui.bg] [12..16 fg=syntax.keyword bg=ui.bg] [25..28 fg=syntax.function bg=ui.bg] [35..41 fg=syntax.function bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg] [88..92 fg=syntax.keyword bg=ui.bg] [101..104 fg=syntax.function bg=ui.bg] [111..117 fg=syntax.function bg=ui.bg]
- 28: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
- 29: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..150 fg=ui.text bg=diff.inserted]
- 30: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..84 fg=ui.text bg=diff.inserted] [84..87 fg=syntax.keyword bg=diff.inserted] [87..88 fg=ui.text bg=diff.inserted] [88..90 fg=syntax.keyword bg=diff.inserted] [90..91 fg=ui.text bg=diff.inserted] [91..99 fg=syntax.function bg=diff.inserted] [99..110 fg=ui.text bg=diff.inserted] [110..114 fg=syntax.keyword bg=diff.inserted] [114..150 fg=ui.text bg=diff.inserted]
- 31: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..89 fg=ui.text bg=diff.inserted] [89..93 fg=syntax.keyword bg=diff.inserted] [93..102 fg=ui.text bg=diff.inserted] [102..110 fg=syntax.function bg=diff.inserted] [110..150 fg=ui.text bg=diff.inserted]
- 32: [0..74 fg=ui.filler bg=ui.bg] [74..76 fg=ui.text.strong bg=gutter.added] [76..80 fg=ui.dim bg=ui.bg] [80..150 fg=ui.text bg=diff.inserted]
- 33: [0..4 fg=ui.dim bg=ui.bg] [74..76 fg=ui.text.strong bg=ui.panel.alt] [76..80 fg=ui.dim bg=ui.bg]
+  3: [0..73 fg=ui.header bg=ui.panel.alt] [73..75 fg=ui.text bg=ui.panel.alt] [75..149 fg=ui.header bg=ui.panel.alt] [149..150 fg=ui.text bg=ui.panel.alt]
+  4: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [79..82 fg=syntax.keyword bg=ui.bg]
+  5: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+  6: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.text.strong bg=ui.bg] [79..82 fg=syntax.keyword bg=diff.inserted] [82..149 fg=ui.text bg=diff.inserted]
+  7: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [79..82 fg=syntax.keyword bg=ui.bg]
+  8: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+  9: [0..4 fg=ui.dim bg=ui.bg] [4..7 fg=syntax.keyword bg=ui.bg] [8..14 fg=syntax.keyword bg=ui.bg] [15..24 fg=syntax.type bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [79..82 fg=syntax.keyword bg=ui.bg] [83..89 fg=syntax.keyword bg=ui.bg] [90..99 fg=syntax.type bg=ui.bg]
+ 10: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 11: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 12: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 13: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 14: [0..4 fg=ui.dim bg=ui.bg] [4..8 fg=syntax.keyword bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [79..83 fg=syntax.keyword bg=ui.bg]
+ 15: [0..4 fg=ui.dim bg=ui.bg] [8..11 fg=syntax.keyword bg=ui.bg] [12..14 fg=syntax.keyword bg=ui.bg] [15..19 fg=syntax.function bg=ui.bg] [55..61 fg=syntax.type bg=ui.bg] [62..66 fg=syntax.keyword bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [83..86 fg=syntax.keyword bg=ui.bg] [87..89 fg=syntax.keyword bg=ui.bg] [90..94 fg=syntax.function bg=ui.bg] [130..136 fg=syntax.type bg=ui.bg] [137..141 fg=syntax.keyword bg=ui.bg]
+ 16: [0..4 fg=ui.dim bg=ui.bg] [4..12 fg=ui.text bg=diff.modified] [12..15 fg=syntax.keyword bg=diff.modified] [15..28 fg=ui.text bg=diff.modified] [28..36 fg=syntax.function bg=diff.word.modified] [36..39 fg=ui.text bg=diff.modified] [39..45 fg=syntax.function bg=diff.word.modified] [45..46 fg=ui.text bg=diff.modified] [46..63 fg=syntax.string bg=diff.modified] [63..73 fg=ui.text bg=diff.modified] [73..75 fg=ui.text.strong bg=gutter.modified] [75..79 fg=ui.dim bg=ui.bg] [79..87 fg=ui.text bg=diff.modified] [87..90 fg=syntax.keyword bg=diff.modified] [90..103 fg=ui.text bg=diff.modified] [103..110 fg=syntax.function bg=diff.word.modified] [110..113 fg=ui.text bg=diff.modified] [113..120 fg=syntax.function bg=diff.word.modified] [120..121 fg=ui.text bg=diff.modified] [121..138 fg=syntax.string bg=diff.modified] [138..139 fg=ui.text bg=diff.modified] [139..140 fg=ui.text bg=diff.word.modified] [140..149 fg=ui.text bg=diff.modified]
+ 17: [0..4 fg=ui.dim bg=ui.bg] [12..15 fg=syntax.keyword bg=ui.bg] [16..19 fg=syntax.keyword bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [87..90 fg=syntax.keyword bg=ui.bg] [91..94 fg=syntax.keyword bg=ui.bg]
+ 18: [0..4 fg=ui.dim bg=ui.bg] [4..12 fg=ui.text bg=diff.modified] [12..15 fg=syntax.keyword bg=diff.modified] [15..29 fg=ui.text bg=diff.modified] [29..35 fg=syntax.function bg=diff.modified] [35..39 fg=ui.text bg=diff.modified] [39..48 fg=syntax.function bg=diff.modified] [48..73 fg=ui.text bg=diff.modified] [73..75 fg=ui.text.strong bg=gutter.modified] [75..79 fg=ui.dim bg=ui.bg] [79..87 fg=ui.text bg=diff.modified] [87..90 fg=syntax.keyword bg=diff.modified] [90..104 fg=ui.text bg=diff.modified] [104..110 fg=syntax.function bg=diff.modified] [110..111 fg=ui.text bg=diff.modified] [111..133 fg=ui.text bg=diff.word.modified] [133..136 fg=ui.text bg=diff.modified] [136..145 fg=syntax.function bg=diff.modified] [145..146 fg=ui.text bg=diff.modified] [146..149 fg=syntax.type bg=diff.word.modified]
+ 19: [0..4 fg=ui.dim bg=ui.bg] [4..16 fg=ui.text bg=diff.modified] [16..24 fg=ui.text bg=diff.word.modified] [24..30 fg=syntax.function bg=diff.word.modified] [30..36 fg=ui.text bg=diff.word.modified] [36..40 fg=syntax.function bg=diff.word.modified] [40..41 fg=ui.text bg=diff.word.modified] [41..45 fg=ui.text bg=diff.modified] [45..46 fg=ui.text bg=diff.word.modified] [46..54 fg=syntax.function bg=diff.word.modified] [54..58 fg=ui.text bg=diff.word.modified] [58..59 fg=ui.text bg=diff.modified] [59..67 fg=syntax.function bg=diff.word.modified] [67..69 fg=ui.text bg=diff.word.modified] [69..73 fg=ui.text bg=diff.modified] [73..75 fg=ui.text.strong bg=gutter.modified] [75..79 fg=ui.dim bg=ui.bg] [79..91 fg=ui.text bg=diff.modified] [91..94 fg=syntax.keyword bg=diff.word.modified] [94..100 fg=ui.text bg=diff.modified] [100..101 fg=ui.text bg=diff.word.modified] [101..149 fg=ui.text bg=diff.modified]
+ 20: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..99 fg=ui.text bg=diff.inserted] [99..105 fg=syntax.function bg=diff.inserted] [105..111 fg=ui.text bg=diff.inserted] [111..115 fg=syntax.function bg=diff.inserted] [115..121 fg=ui.text bg=diff.inserted] [121..129 fg=syntax.function bg=diff.inserted] [129..134 fg=ui.text bg=diff.inserted] [134..142 fg=syntax.function bg=diff.inserted] [142..149 fg=ui.text bg=diff.inserted]
+ 21: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 22: [0..4 fg=ui.dim bg=ui.bg] [12..14 fg=syntax.type bg=ui.bg] [15..19 fg=syntax.keyword bg=ui.bg] [33..41 fg=syntax.function bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [87..89 fg=syntax.type bg=ui.bg] [90..94 fg=syntax.keyword bg=ui.bg] [108..116 fg=syntax.function bg=ui.bg]
+ 23: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 24: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 25: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..83 fg=ui.text bg=diff.inserted] [83..138 fg=syntax.comment bg=diff.inserted +italic] [138..149 fg=ui.text bg=diff.inserted]
+ 26: [0..4 fg=ui.dim bg=ui.bg] [8..11 fg=syntax.keyword bg=ui.bg] [12..14 fg=syntax.keyword bg=ui.bg] [15..18 fg=syntax.function bg=ui.bg] [42..48 fg=syntax.type bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [83..86 fg=syntax.keyword bg=ui.bg] [87..89 fg=syntax.keyword bg=ui.bg] [90..93 fg=syntax.function bg=ui.bg] [117..123 fg=syntax.type bg=ui.bg]
+ 27: [0..4 fg=ui.dim bg=ui.bg] [12..16 fg=syntax.keyword bg=ui.bg] [25..28 fg=syntax.function bg=ui.bg] [35..41 fg=syntax.function bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg] [87..91 fg=syntax.keyword bg=ui.bg] [100..103 fg=syntax.function bg=ui.bg] [110..116 fg=syntax.function bg=ui.bg]
+ 28: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
+ 29: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..149 fg=ui.text bg=diff.inserted]
+ 30: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..83 fg=ui.text bg=diff.inserted] [83..86 fg=syntax.keyword bg=diff.inserted] [86..87 fg=ui.text bg=diff.inserted] [87..89 fg=syntax.keyword bg=diff.inserted] [89..90 fg=ui.text bg=diff.inserted] [90..98 fg=syntax.function bg=diff.inserted] [98..109 fg=ui.text bg=diff.inserted] [109..113 fg=syntax.keyword bg=diff.inserted] [113..149 fg=ui.text bg=diff.inserted]
+ 31: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..88 fg=ui.text bg=diff.inserted] [88..92 fg=syntax.keyword bg=diff.inserted] [92..101 fg=ui.text bg=diff.inserted] [101..109 fg=syntax.function bg=diff.inserted] [109..149 fg=ui.text bg=diff.inserted]
+ 32: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..149 fg=ui.text bg=diff.inserted]
+ 33: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
  38: [0..70 fg=ui.dim bg=ui.panel] [70..83 fg=ui.text bg=ui.panel] [83..150 fg=ui.dim bg=ui.panel]
  39: [0..45 fg=ui.header bg=ui.panel] [45..111 fg=ui.text bg=ui.panel] [111..120 fg=git.modified bg=ui.panel] [120..123 fg=ui.dim bg=ui.panel] [123..136 fg=git.unversioned bg=ui.panel] [136..145 fg=ui.text bg=ui.panel] [145..150 fg=ui.dim bg=ui.panel]

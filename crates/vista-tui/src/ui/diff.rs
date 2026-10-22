@@ -211,6 +211,7 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
 
     tab.view_height = body.height as usize;
     tab.scroll_into_view();
+    let (body, bar) = crate::ui::chrome::split_scrollbar(body);
     let Content::Diff(doc) = &tab.content else { return };
     let ln_w = doc
         .sbs
@@ -229,6 +230,27 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
     };
     let widest = doc.widest(tab.scroll, body.height as usize);
     tab.hscroll = tab.hscroll.min(widest.saturating_sub(content_w));
+    // Wrapped lines take several rows: scroll limits and the scrollbar count
+    // rows, not lines (mirrors the widths `draw_side_by_side` / `draw_unified` use).
+    let (total, top) = if tab.wrap {
+        let w = body.width as usize;
+        let half = w.saturating_sub(2) / 2;
+        let right_w = w.saturating_sub(2 + half);
+        let heights = doc.wrapped_heights(
+            half.saturating_sub(ln_w + 1),
+            right_w.saturating_sub(ln_w + 1),
+            content_w,
+        );
+        tab.fit_wrapped(&heights);
+        (
+            heights.iter().sum(),
+            heights[..tab.scroll.min(heights.len())].iter().sum(),
+        )
+    } else {
+        tab.wrapped_max = None;
+        (doc.len(), tab.scroll)
+    };
+    crate::ui::chrome::scrollbar(f, bar, t, total, top);
     let Content::Diff(doc) = &tab.content else { return };
     if doc.unified {
         draw_unified(f, cols, body, tab, doc, t, ln_w, focused, commit);

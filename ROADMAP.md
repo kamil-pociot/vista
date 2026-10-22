@@ -369,6 +369,8 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] IntelliJ-style next/previous change across files: at the last change a popup says "Press ] again to go to b.txt"; the second press opens it on its first change (backwards: the previous file's last change). Works in diffs and in the plain viewer. Any other key dismisses the offer.
 - [x] No F-keys needed: `]`/`[` changes, `?` help, `Ctrl-R` refresh, `Ctrl-L` reveal in tree. Hints and help show the short key first.
 - [x] Fixed: clicking below the last Commit-list row panicked in debug builds (overflow).
+- [x] Fixed: with wrap on, long files couldn't be scrolled to the end (limits counted lines, not rows). Scroll limits and keeping the cursor on screen now use each line's wrapped height, in the diff and the code viewer.
+- [x] Scrollbar on code, rendered Markdown and diffs, sized and placed by screen rows, so it stays right with wrapped lines.
 - [x] Tests: Markdown table units (wrap, rules, alignment, wide), scroll-limit and landing units, `e2e_r1_feedback` (7 PTY tests: diff sideways + wrap, viewer shift-wheel, tables both modes, scroll past end, double-click, cross-file changes in diff and viewer).
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*

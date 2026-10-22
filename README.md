@@ -32,7 +32,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 | Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` or double-click diff |
 | Diff | `]`/`[` changes (past the last one: press again for the next file) · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `←`/`→`, shift+wheel or trackpad scroll sideways · `w` wrap · `u` unified · `i` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit |
 
-Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge.
+Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge, and show a scrollbar measured in screen rows (wrapped lines count once per row). Markdown files (and their diffs) open wrapped; code opens scrolling sideways.
 
 ## Configuration
 

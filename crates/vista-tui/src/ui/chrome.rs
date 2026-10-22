@@ -296,3 +296,68 @@ pub fn keyhints(f: &mut Frame, area: Rect, app: &App) {
     }
     f.render_widget(Paragraph::new(Line::from(spans)).style(t.bg("ui.bg")), area);
 }
+
+/// Splits off the rightmost column of `area` for a scrollbar.
+pub fn split_scrollbar(area: Rect) -> (Rect, Rect) {
+    let w = area.width.saturating_sub(1);
+    (
+        Rect { width: w, ..area },
+        Rect {
+            x: area.x + w,
+            width: area.width - w,
+            ..area
+        },
+    )
+}
+
+/// Thumb (start row, length) for `total` content rows with `top` of them
+/// above a view of `height` rows; `None` when everything fits.
+pub fn scrollbar_thumb(total: usize, top: usize, height: usize) -> Option<(usize, usize)> {
+    if height == 0 || (total <= height && top == 0) {
+        return None;
+    }
+    // Scrolling past the end counts as content, so the thumb ends at the bottom.
+    let len = total.max(top + height);
+    let size = (height * height / len).clamp(1, height);
+    let start = (top * height).div_ceil(len).min(height - size);
+    Some((start, size))
+}
+
+/// A thin vertical scrollbar in a one-column `bar`, measured in screen rows
+/// (a wrapped line counts once per row it takes).
+pub fn scrollbar(f: &mut Frame, bar: Rect, t: &Theme, total: usize, top: usize) {
+    let Some((start, size)) = scrollbar_thumb(total, top, bar.height as usize) else {
+        return;
+    };
+    let lines: Vec<Line> = (0..bar.height as usize)
+        .map(|i| {
+            if (start..start + size).contains(&i) {
+                Line::from(Span::styled("┃", t.fg("ui.dim")))
+            } else {
+                Line::raw(" ")
+            }
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), bar);
+}
+
+#[cfg(test)]
+mod scrollbar_tests {
+    use super::scrollbar_thumb;
+
+    #[test]
+    fn thumb_tracks_rows_not_lines() {
+        // Everything fits: no bar.
+        assert_eq!(scrollbar_thumb(10, 0, 20), None);
+        // Twice the view: half-height thumb, top then bottom.
+        assert_eq!(scrollbar_thumb(40, 0, 20), Some((0, 10)));
+        assert_eq!(scrollbar_thumb(40, 20, 20), Some((10, 10)));
+        // Past the end the thumb stays pinned to the bottom.
+        let (start, size) = scrollbar_thumb(40, 26, 20).unwrap();
+        assert_eq!(start + size, 20);
+        // Huge content: the thumb never vanishes.
+        assert_eq!(scrollbar_thumb(100_000, 0, 20), Some((0, 1)));
+        let (start, size) = scrollbar_thumb(100_000, 99_990, 20).unwrap();
+        assert_eq!((start, size), (19, 1));
+    }
+}

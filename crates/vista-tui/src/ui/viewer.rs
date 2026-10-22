@@ -122,6 +122,8 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
     let tab = &mut viewer.tabs[i];
     tab.view_height = area.height as usize;
     tab.view_width = area.width as usize;
+    // Set again below by views that wrap.
+    tab.wrapped_max = None;
     let t = &*theme;
     match &mut tab.content {
         Content::Text { .. } => draw_code(f, area, tab, t, focused),
@@ -343,6 +345,7 @@ fn decorate(line: &StyledLine, tab: &Tab, idx: usize) -> StyledLine {
 }
 
 fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, focused: bool) {
+    let (area, bar) = crate::ui::chrome::split_scrollbar(area);
     if tab.has_cursor() {
         tab.scroll_into_view();
     }
@@ -359,6 +362,26 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
             .unwrap_or(0);
         tab.hscroll = tab.hscroll.min(widest.saturating_sub(content_w.saturating_sub(4)));
     }
+    // Wrapped lines take several rows: scroll limits and the scrollbar
+    // count rows, not lines.
+    let (total, top) = if tab.wrap
+        && let Content::Text { lines, .. } | Content::Markdown { lines, .. } = &tab.content
+    {
+        let content_w = (area.width as usize).saturating_sub(gutter_width(lines.len()));
+        let heights: Vec<usize> = lines
+            .iter()
+            .map(|l| crate::viewer::wrapped_rows(line_width(l), content_w.max(1)))
+            .collect();
+        tab.fit_wrapped(&heights);
+        (
+            heights.iter().sum(),
+            heights[..tab.scroll.min(heights.len())].iter().sum(),
+        )
+    } else {
+        tab.wrapped_max = None;
+        (tab.total_lines(), tab.scroll)
+    };
+    crate::ui::chrome::scrollbar(f, bar, t, total, top);
     let tab = &*tab;
     let (lines, markers) = match &tab.content {
         Content::Text { lines, markers, .. } => (lines, markers),
@@ -491,6 +514,15 @@ fn draw_markdown(
         out.push(line);
     }
     f.render_widget(Paragraph::new(out), text_area);
+    // The right margin column holds the scrollbar.
+    if area.width > 2 {
+        let bar = Rect {
+            x: area.x + area.width - 1,
+            width: 1,
+            ..area
+        };
+        crate::ui::chrome::scrollbar(f, bar, t, rows.len(), tab.scroll);
+    }
     for (path, rect) in image_rects {
         match images.entries.get_mut(&path) {
             Some(ImageState::Ready(proto)) => {

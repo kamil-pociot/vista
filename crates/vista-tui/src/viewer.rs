@@ -92,6 +92,9 @@ pub struct Tab {
     pub wrap: bool,
     /// After the next load, put the cursor on the first (true) or last change.
     pub land: Option<bool>,
+    /// Scroll limit while wrapping, where lines take several rows (set when
+    /// drawing; `None` means one row per line).
+    pub wrapped_max: Option<usize>,
     pub search: Option<Search>,
     pub view_height: usize,
     pub view_width: usize,
@@ -197,7 +200,8 @@ impl Viewer {
             return;
         }
         // Reuse the active diff tab when stepping between files, like
-        // IntelliJ's diff window.
+        // IntelliJ's diff window. Opening first as a plain tab also picks the
+        // long-line default: Markdown (prose) wraps, code scrolls sideways.
         let id = self.open(path, ctx);
         if let Some(t) = self.tab_by_id_mut(id) {
             t.diff = Some(spec);
@@ -276,6 +280,7 @@ impl Viewer {
             hscroll: 0,
             wrap: false,
             land: None,
+            wrapped_max: None,
             search: None,
             view_height: 20,
             view_width: 80,
@@ -314,6 +319,26 @@ impl Viewer {
 pub fn max_scroll(lines: usize, height: usize) -> usize {
     let h = height.max(1);
     (lines + h * 3 / 10).saturating_sub(h)
+}
+
+/// [`max_scroll`] for lines of different heights: the first line from which
+/// the rest fills at most ~70% of the view.
+pub fn wrapped_max_scroll(heights: &[usize], height: usize) -> usize {
+    let h = height.max(1);
+    let room = h - h * 3 / 10;
+    let mut used = 0;
+    let mut s = heights.len();
+    while s > 0 && used + heights[s - 1] <= room {
+        used += heights[s - 1];
+        s -= 1;
+    }
+    // A last line taller than the room still gets shown from its top.
+    s.min(heights.len().saturating_sub(1))
+}
+
+/// Screen rows a line of `width` columns takes when wrapped to `cols`.
+pub fn wrapped_rows(width: usize, cols: usize) -> usize {
+    if cols == 0 { 1 } else { width.div_ceil(cols).max(1) }
 }
 
 /// What loading needs from the app.
@@ -597,7 +622,31 @@ impl Tab {
     /// How far the view can scroll: past the end, until the last line sits
     /// about 30% above the bottom edge (like an IDE's "scroll past end").
     pub fn max_scroll(&self) -> usize {
-        max_scroll(self.total_lines(), self.view_height)
+        self.wrapped_max
+            .unwrap_or_else(|| max_scroll(self.total_lines(), self.view_height))
+    }
+
+    /// Scroll limits for wrapped lines, `heights[i]` screen rows each: keeps
+    /// the whole cursor line on screen and lets the end rise like
+    /// [`max_scroll`]. Call while drawing, after `view_height` is set.
+    pub fn fit_wrapped(&mut self, heights: &[usize]) {
+        let h = self.view_height.max(1);
+        let Some(last) = heights.len().checked_sub(1) else {
+            self.wrapped_max = Some(0);
+            self.scroll = 0;
+            return;
+        };
+        let cursor = self.cursor.min(last);
+        if self.has_cursor() && cursor >= self.scroll {
+            let mut used: usize = heights[self.scroll..=cursor].iter().sum();
+            while used > h && self.scroll < cursor {
+                used -= heights[self.scroll];
+                self.scroll += 1;
+            }
+        }
+        let max = wrapped_max_scroll(heights, h);
+        self.wrapped_max = Some(max);
+        self.scroll = self.scroll.min(max);
     }
 
     pub fn scroll_by(&mut self, delta: isize) {
@@ -1064,5 +1113,41 @@ mod tests {
         std::fs::write(&rs, "fn x() {}\n").unwrap();
         v.open(&rs, &ctx);
         assert!(!v.active_tab().unwrap().wrap);
+    }
+
+    #[test]
+    fn wrapped_scroll_limit_counts_rows() {
+        // 10 lines of 5 rows in a 20-row view: the tail may fill 14 rows,
+        // so two lines (10 rows) fit after the max scroll, not 14 lines.
+        assert_eq!(wrapped_max_scroll(&[5; 10], 20), 8);
+        // One row per line matches the plain limit.
+        assert_eq!(wrapped_max_scroll(&[1; 100], 20), max_scroll(100, 20));
+        // A last line taller than the view still gets reached.
+        assert_eq!(wrapped_max_scroll(&[1, 1, 50], 20), 2);
+        assert_eq!(wrapped_max_scroll(&[], 20), 0);
+        assert_eq!(wrapped_rows(0, 40), 1);
+        assert_eq!(wrapped_rows(81, 40), 3);
+    }
+
+    #[test]
+    fn fit_wrapped_keeps_the_cursor_line_on_screen() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "x\n".repeat(30)).unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        t.view_height = 20;
+        let heights = [4usize; 30];
+        // Plain scrolling thinks line 19 is visible from 0; wrapped, it needs
+        // rows 76..80, so the view must scroll until lines s..=19 fit.
+        t.set_cursor(19);
+        t.fit_wrapped(&heights);
+        assert_eq!(t.scroll, 15, "lines 15..=19 fill the 20 rows");
+        // The limit is the wrapped one: the tail fills at most 14 rows.
+        assert_eq!(t.max_scroll(), 27);
+        t.scroll_by(1000);
+        assert_eq!(t.scroll, 27);
     }
 }

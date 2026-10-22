@@ -156,6 +156,41 @@ impl DiffDoc {
             .unwrap_or(0)
     }
 
+    /// Screen rows each display row takes when wrapped: side by side the
+    /// taller side wins (`left`/`right` text columns); unified uses `cols`.
+    pub fn wrapped_heights(&self, left: usize, right: usize, cols: usize) -> Vec<usize> {
+        use crate::viewer::wrapped_rows;
+        let width = |lines: &[StyledLine], i: Option<usize>| {
+            i.and_then(|i| lines.get(i))
+                .map(vista_render::styled::line_width)
+                .unwrap_or(0)
+        };
+        if self.unified {
+            self.udisplay
+                .iter()
+                .map(|u| match *u {
+                    Unified::Fold { .. } => 1,
+                    Unified::Old(r) => wrapped_rows(width(&self.old_hl, self.sbs.rows[r].left), cols),
+                    Unified::Both(r) | Unified::New(r) => {
+                        wrapped_rows(width(&self.new_hl, self.sbs.rows[r].right), cols)
+                    }
+                })
+                .collect()
+        } else {
+            self.display
+                .iter()
+                .map(|d| match *d {
+                    DisplayRow::Fold { .. } => 1,
+                    DisplayRow::Row(r) => {
+                        let row = &self.sbs.rows[r];
+                        wrapped_rows(width(&self.old_hl, row.left), left)
+                            .max(wrapped_rows(width(&self.new_hl, row.right), right))
+                    }
+                })
+                .collect()
+        }
+    }
+
     /// The working-tree line (0-based) for a display row, if any.
     pub fn new_line_at(&self, i: usize) -> Option<usize> {
         let r = self.row_of(i)?;

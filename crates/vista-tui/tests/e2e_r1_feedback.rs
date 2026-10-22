@@ -218,3 +218,80 @@ fn next_change_in_the_viewer_opens_the_next_changed_file() {
     vista.expect_text("B2");
     vista.expect_no_text("Press ] again");
 }
+
+/// 60 lines that each wrap to several rows, like a Markdown note of long
+/// paragraphs.
+fn long_paragraphs() -> String {
+    (1..=60)
+        .map(|i| format!("P{i:02} {}END{i:02}\n", "lorem ipsum dolor sit amet ".repeat(8)))
+        .collect()
+}
+
+/// Rows where the scrollbar thumb is drawn (right of column 100).
+fn thumb_rows(vista: &Vista) -> Vec<u16> {
+    let (_, rows) = vista.size();
+    (0..rows)
+        .filter(|r| vista.row_text(*r).chars().skip(100).any(|c| c == '┃'))
+        .collect()
+}
+
+#[test]
+fn wrapped_diff_reaches_the_last_line() {
+    let old: String = (1..=60).map(|i| format!("P{i:02}\n")).collect();
+    let repo = Fixture::git()
+        .file("taste.md", old)
+        .commit("init")
+        .modify("taste.md", long_paragraphs())
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
+    diff_of(&mut vista, "taste.md");
+    // Markdown diffs open wrapped (prose); code diffs scroll sideways.
+    vista.expect_text("lines: wrap");
+    vista.expect_text("END01");
+    // A small thumb at the top: far more rows than fit.
+    let top = thumb_rows(&vista);
+    assert!(
+        !top.is_empty() && top.len() < 10,
+        "thumb {top:?}\n{}",
+        vista.screen_text()
+    );
+    // End: the last line is fully on screen, and the thumb moved down.
+    vista.press("end");
+    vista.expect_text("END60");
+    let bottom = thumb_rows(&vista);
+    assert!(bottom[0] > top[0] + 10, "thumb {top:?} → {bottom:?}");
+    // The wheel reaches it too.
+    vista.press("home");
+    vista.expect_text("END01");
+    for _ in 0..150 {
+        vista.scroll_down(100, 20);
+    }
+    vista.expect_text("END60");
+    // Walking down line by line keeps the cursor line on screen.
+    vista.press("home");
+    for _ in 0..59 {
+        vista.press("down");
+    }
+    vista.expect_text("P60");
+}
+
+#[test]
+fn wrapped_viewer_reaches_the_last_line() {
+    let repo = Fixture::git()
+        .file("notes.txt", long_paragraphs())
+        .commit("init")
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).size(120, 30).open("notes.txt").start();
+    vista.expect_text("P01");
+    vista.press("w");
+    vista.expect_text("Long lines: wrap");
+    vista.expect_text("END01");
+    assert!(!thumb_rows(&vista).is_empty(), "scrollbar:\n{}", vista.screen_text());
+    for _ in 0..150 {
+        vista.scroll_down(90, 10);
+    }
+    vista.expect_text("END60");
+    vista.press("home");
+    vista.press("end");
+    vista.expect_text("END60");
+}
