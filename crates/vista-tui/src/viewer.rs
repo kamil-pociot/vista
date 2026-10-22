@@ -103,6 +103,10 @@ pub struct Tab {
     /// The view was scrolled (wheel) rather than the cursor moved: the
     /// cursor follows the view instead of the view following the cursor.
     pub scrolled: bool,
+    /// Selected text (mouse drag, double-click, Shift-↑↓, Ctrl-A).
+    pub selection: Option<crate::selection::Selection>,
+    /// Where text was drawn in the last frame, to map the mouse to it.
+    pub layout: std::cell::RefCell<TextLayout>,
     pub search: Option<Search>,
     pub view_height: usize,
     pub view_width: usize,
@@ -128,6 +132,8 @@ pub enum ViewerOutcome {
     ShowDiff,
     /// `w` switched long-line wrapping (on = wrap).
     Wrap(bool),
+    /// Copy this text (the selection) to the clipboard.
+    Copy(String),
     /// Tick/untick a change of this file for the commit.
     ToggleHunk(u64, Vec<u64>),
     Info(&'static str),
@@ -319,6 +325,8 @@ impl Viewer {
             row_heights: None,
             scroll_sub: None,
             scrolled: false,
+            selection: None,
+            layout: Default::default(),
             search: None,
             view_height: 20,
             view_width: 80,
@@ -389,6 +397,16 @@ pub fn row_to_line(heights: &[usize], row: usize) -> (usize, usize) {
 /// Screen rows a line of `width` columns takes when wrapped to `cols`.
 pub fn wrapped_rows(width: usize, cols: usize) -> usize {
     if cols == 0 { 1 } else { width.div_ceil(cols).max(1) }
+}
+
+/// Where a tab's text was drawn: per screen row, the line it shows and the
+/// display column it starts at; and the text area.
+#[derive(Debug, Clone, Default)]
+pub struct TextLayout {
+    pub rows: Vec<(usize, usize)>,
+    pub x: u16,
+    pub y: u16,
+    pub height: u16,
 }
 
 /// What loading needs from the app.
@@ -645,6 +663,102 @@ pub fn refresh_search(tab: &mut Tab) {
 }
 
 impl Tab {
+    /// Text that can be selected: code, plain text, Markdown (raw or rendered).
+    pub fn selectable(&self) -> bool {
+        matches!(self.content, Content::Text { .. } | Content::Markdown { .. })
+    }
+
+    /// The lines selection positions refer to (what's on screen).
+    pub fn selectable_text(&self) -> Vec<String> {
+        searchable_lines(self).iter().map(line_text).collect()
+    }
+
+    /// The (line, char) under screen position (`x`, `y`), from the last
+    /// frame; above or below the text, the first or last row.
+    pub fn pos_at(&self, x: u16, y: u16) -> Option<(usize, usize)> {
+        let lay = self.layout.borrow();
+        let last = lay.rows.len().checked_sub(1)?;
+        let row = (y.saturating_sub(lay.y) as usize).min(last);
+        let (line, start) = lay.rows[row];
+        let col = start + x.saturating_sub(lay.x) as usize;
+        let text = self.selectable_text().into_iter().nth(line)?;
+        Some((line, crate::selection::char_at_col(&text, col)))
+    }
+
+    /// Selects the word at `p`.
+    pub fn select_word(&mut self, p: (usize, usize)) {
+        if let Some(text) = self.selectable_text().into_iter().nth(p.0) {
+            let (s, e) = crate::selection::word_at(&text, p.1);
+            self.selection = Some(crate::selection::Selection {
+                anchor: (p.0, s),
+                head: (p.0, e),
+            });
+        }
+    }
+
+    pub fn selected_text(&self) -> Option<String> {
+        let sel = self.selection.filter(|s| !s.is_empty())?;
+        Some(sel.text(&self.selectable_text()))
+    }
+
+    /// Selection keys: Shift-↑↓ (lines), Ctrl-A, Ctrl-C / y (copy), Esc.
+    fn selection_key(&mut self, key: &KeyEvent) -> Option<ViewerOutcome> {
+        use crate::selection::Selection;
+        if !self.selectable() {
+            return None;
+        }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        match key.code {
+            KeyCode::Up | KeyCode::Down if shift && !ctrl && self.has_cursor() => {
+                // Whole lines, from where the selection began to the cursor.
+                let start = self.selection.map(|s| s.anchor.0).unwrap_or(self.cursor);
+                self.move_cursor(if key.code == KeyCode::Up { -1 } else { 1 });
+                let c = self.cursor;
+                self.selection = Some(if c >= start {
+                    Selection {
+                        anchor: (start, 0),
+                        head: (c, usize::MAX),
+                    }
+                } else {
+                    Selection {
+                        anchor: (start, usize::MAX),
+                        head: (c, 0),
+                    }
+                });
+                Some(ViewerOutcome::Handled)
+            }
+            KeyCode::Char('a') if ctrl => {
+                let n = self.selectable_text().len();
+                if n > 0 {
+                    self.selection = Some(Selection {
+                        anchor: (0, 0),
+                        head: (n - 1, usize::MAX),
+                    });
+                }
+                Some(ViewerOutcome::Handled)
+            }
+            KeyCode::Char('c') if ctrl => self.selected_text().map(ViewerOutcome::Copy),
+            KeyCode::Char('y') if !ctrl => self.selected_text().map(ViewerOutcome::Copy),
+            KeyCode::Esc if self.selection.is_some() => {
+                self.selection = None;
+                Some(ViewerOutcome::Handled)
+            }
+            // Moving the cursor drops the selection.
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::PageUp
+            | KeyCode::PageDown
+            | KeyCode::Home
+            | KeyCode::End
+            | KeyCode::Char('j' | 'k' | 'g' | 'G') => {
+                self.selection = None;
+                None
+            }
+            _ => None,
+        }
+    }
+
     pub fn total_lines(&self) -> usize {
         line_count(&self.content)
     }
@@ -951,6 +1065,9 @@ impl Tab {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if key.modifiers.contains(KeyModifiers::ALT) {
             return ViewerOutcome::Unhandled;
+        }
+        if let Some(outcome) = self.selection_key(key) {
+            return outcome;
         }
         let page = self.view_height.max(1) as isize;
         match key.code {

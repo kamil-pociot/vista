@@ -73,6 +73,14 @@ pub enum WsRequest {
     Run(String),
 }
 
+/// Whether a tab dragged from slot `from` should move to slot `to`, with
+/// the mouse now at `col` and before at `last`: only the way the mouse is
+/// going. (After a move the tabs are laid out again; a wider neighbour
+/// would otherwise sit under the mouse and swap straight back.)
+pub fn drag_moves(from: usize, to: usize, col: u16, last: u16) -> bool {
+    (to > from && col > last) || (to < from && col < last)
+}
+
 /// The name a project goes by: its folder's name.
 pub fn project_name(root: &Path) -> String {
     root.file_name()
@@ -539,6 +547,14 @@ mod tests {
             p.handle_key(&KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL)),
             PopupOutcome::Request(WsRequest::CloseTerminal(0))
         );
+    }
+
+    #[test]
+    fn drags_only_move_the_way_the_mouse_goes() {
+        assert!(drag_moves(0, 1, 31, 30), "moving right onto the next tab");
+        assert!(!drag_moves(1, 0, 32, 31), "still moving right: no swap back");
+        assert!(drag_moves(1, 0, 20, 21), "moving left onto the previous tab");
+        assert!(!drag_moves(0, 0, 25, 24));
     }
 
     #[test]

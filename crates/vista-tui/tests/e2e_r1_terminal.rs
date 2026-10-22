@@ -139,3 +139,34 @@ fn terminal_tool_window_runs_a_shell_in_the_project() {
     vista.press("alt+t");
     vista.expect_no_text("back to the editor");
 }
+
+#[test]
+fn terminal_tabs_can_be_dragged_into_a_new_order() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config("[terminal]\ncommands = [\"cat\", \"sleep 1000\"]\n")
+        .size(140, 30)
+        .start();
+    vista.expect_text("1: Project");
+    for cmd in ["cat", "sleep"] {
+        // Back to the project first: a terminal tab takes every key but Ctrl-\.
+        vista.press("ctrl+\\");
+        vista.press("ctrl+o");
+        vista.type_text(cmd);
+        vista.expect_text(&format!("▷ {cmd}"));
+        vista.press("enter");
+        vista.expect_text(&format!("▶ {cmd}"));
+    }
+    let (row, from) = vista.expect_text_in("▶ cat ×", 0..140).position();
+    let (_, to) = vista.expect_text_in("▶ sleep 1000 ×", 0..140).position();
+    assert!(from < to);
+    vista.drag((from + 2, row), (to + 4, row));
+    vista.wait_until("cat after sleep", |s| {
+        let top = s.contents().lines().next().unwrap_or_default().to_string();
+        top.find("▶ sleep").zip(top.find("▶ cat")).is_some_and(|(s, c)| s < c)
+    });
+    // The dragged terminal is the one shown.
+    vista.type_text("still here");
+    vista.press("enter");
+    vista.wait_until("cat echoes", |s| s.contents().matches("still here").count() >= 2);
+}

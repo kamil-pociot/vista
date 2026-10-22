@@ -359,6 +359,10 @@ fn decorate(line: &StyledLine, tab: &Tab, idx: usize) -> StyledLine {
             s.fg = "ui.match.text";
         });
     }
+    let len: usize = line.iter().map(|s| s.text.chars().count()).sum();
+    if let Some(r) = tab.selection.and_then(|sel| sel.range_on(idx, len)) {
+        l = overlay(&l, &[r], |s| s.bg = Some("ui.selection"));
+    }
     l
 }
 
@@ -406,6 +410,7 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
     let gw = gutter_width(lines.len());
     let content_w = (area.width as usize).saturating_sub(gw);
     let mut out: Vec<Line> = Vec::with_capacity(area.height as usize);
+    let mut row_map = Vec::with_capacity(area.height as usize);
     let mut idx = tab.scroll;
     while out.len() < area.height as usize && idx < lines.len() {
         let is_cursor = idx == tab.cursor;
@@ -421,6 +426,7 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
             if out.len() >= area.height as usize {
                 break;
             }
+            row_map.push((idx, if tab.wrap { ri * content_w.max(1) } else { tab.hscroll }));
             let num = if ri == 0 && numbers {
                 format!("{:>w$} ", idx + 1, w = gw - 3)
             } else {
@@ -456,6 +462,12 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
         idx += 1;
     }
     f.render_widget(Paragraph::new(out), area);
+    *tab.layout.borrow_mut() = crate::viewer::TextLayout {
+        rows: row_map,
+        x: area.x + gw as u16,
+        y: area.y,
+        height: area.height,
+    };
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -504,7 +516,9 @@ fn draw_markdown(
     let mut out: Vec<Line> = Vec::new();
     let mut nums: Vec<Line> = Vec::new();
     let mut image_rects: Vec<(PathBuf, Rect)> = Vec::new();
+    let mut row_map = Vec::new();
     for (i, row) in rows.iter().enumerate().skip(tab.scroll).take(area.height as usize) {
+        row_map.push((i, hscroll));
         if gutter > 0 {
             let w = gutter as usize - 1;
             nums.push(Line::styled(
@@ -549,6 +563,12 @@ fn draw_markdown(
         out.push(line);
     }
     f.render_widget(Paragraph::new(out), text_area);
+    *tab.layout.borrow_mut() = crate::viewer::TextLayout {
+        rows: row_map,
+        x: text_area.x,
+        y: area.y,
+        height: area.height,
+    };
     if gutter > 0 {
         f.render_widget(
             Paragraph::new(nums),

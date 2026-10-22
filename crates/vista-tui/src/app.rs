@@ -126,6 +126,7 @@ enum ClickList {
     FindWindow,
     Goto,
     LogFiles,
+    Viewer,
 }
 
 /// The active diff tab, as the side-by-side editor opens it.
@@ -200,6 +201,10 @@ pub struct App {
     dragging_divider: bool,
     /// The editor tab being dragged to a new place.
     dragging_tab: Option<usize>,
+    /// The mouse column during a tab drag (its direction decides moves).
+    drag_col: u16,
+    /// Text is being selected with the mouse in the viewer.
+    selecting: bool,
     /// The Git tool window (log, file history).
     pub log: crate::log::LogWindow,
     /// The Terminal tool window's shell (started on first use).
@@ -326,6 +331,8 @@ impl App {
             project_hits: Vec::new(),
             dragging_divider: false,
             dragging_tab: None,
+            drag_col: 0,
+            selecting: false,
             log: crate::log::LogWindow::default(),
             shell: None,
             shell_visible: false,
@@ -1832,6 +1839,21 @@ impl App {
                     self.notify(m, MsgKind::Info);
                     return;
                 }
+                ViewerOutcome::Copy(text) => {
+                    match crate::selection::copy(&text) {
+                        Ok(how) => {
+                            let lines = text.lines().count().max(1);
+                            let what = if lines == 1 {
+                                format!("{} characters", text.chars().count())
+                            } else {
+                                format!("{lines} lines")
+                            };
+                            self.notify(format!("Copied {what} (via {how})"), MsgKind::Info);
+                        }
+                        Err(e) => self.notify(format!("cannot copy: {e}"), MsgKind::Error),
+                    }
+                    return;
+                }
                 ViewerOutcome::ShowDiff => {
                     let path = tab.path.clone();
                     let change = self.status.change(&path).cloned().unwrap_or(Change {
@@ -1910,16 +1932,51 @@ impl App {
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        // Dragging in the viewer extends the selection (scrolling at the edges).
+        if self.selecting {
+            match m.kind {
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    // A drag isn't a click: the next press starts afresh.
+                    self.last_click = None;
+                    if let Some(tab) = self.viewer.active_tab_mut() {
+                        let (top, height) = {
+                            let lay = tab.layout.borrow();
+                            (lay.y, lay.height)
+                        };
+                        if m.row < top {
+                            tab.scroll_by(-1);
+                        } else if m.row >= top + height {
+                            tab.scroll_by(1);
+                        }
+                        if let (Some(p), Some(sel)) = (tab.pos_at(m.column, m.row), tab.selection.as_mut()) {
+                            sel.head = p;
+                        }
+                    }
+                    return;
+                }
+                MouseEventKind::Up(_) => {
+                    self.selecting = false;
+                    if let Some(tab) = self.viewer.active_tab_mut()
+                        && tab.selection.is_some_and(|s| s.is_empty())
+                    {
+                        tab.selection = None;
+                    }
+                    return;
+                }
+                _ => self.selecting = false,
+            }
+        }
         // Dragging a tab over others moves it there.
         if let Some(from) = self.dragging_tab {
             match m.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
                     if let Some((to, _)) = self.tab_at(m.column)
-                        && to != from
+                        && crate::projects::drag_moves(from, to, m.column, self.drag_col)
                     {
                         self.viewer.move_tab(from, to);
                         self.dragging_tab = Some(to);
                     }
+                    self.drag_col = m.column;
                     return;
                 }
                 MouseEventKind::Up(_) => {
@@ -2149,8 +2206,29 @@ impl App {
                         self.sync_editor_buffer();
                         // Dragging from here moves the tab.
                         self.dragging_tab = Some(i);
+                        self.drag_col = m.column;
                     }
                     None => {}
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left)
+                if inside(viewer) && self.viewer.active_tab().is_some_and(|t| t.selectable()) =>
+            {
+                // Press and drag selects; a double click selects a word.
+                self.focus = Focus::Main;
+                let double = self.is_double_click(ClickList::Viewer, m.row as usize);
+                if let Some(tab) = self.viewer.active_tab_mut()
+                    && let Some(p) = tab.pos_at(m.column, m.row)
+                {
+                    if tab.has_cursor() && p.0 != tab.cursor {
+                        tab.set_cursor(p.0);
+                    }
+                    if double {
+                        tab.select_word(p);
+                    } else {
+                        tab.selection = Some(crate::selection::Selection::at(p));
+                        self.selecting = true;
+                    }
                 }
             }
             MouseEventKind::Down(MouseButton::Left) if inside(viewer) => {

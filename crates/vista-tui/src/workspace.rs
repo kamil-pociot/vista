@@ -48,8 +48,10 @@ pub struct Workspace {
     pub terminals: Vec<TermTab>,
     /// The terminal tab on screen (full screen), if any.
     pub terminal: Option<usize>,
-    /// The project tab being dragged to a new place.
-    dragging_project: Option<usize>,
+    /// The project or terminal tab being dragged to a new place.
+    dragging: Option<TabTarget>,
+    /// The mouse column during that drag (its direction decides moves).
+    drag_col: u16,
     /// Where the top bar's tabs were in the last frame drawn (the same for
     /// every project; a project switched to may not have drawn them yet).
     top_hits: Vec<crate::projects::ProjectHit>,
@@ -86,7 +88,8 @@ impl Workspace {
             should_quit: false,
             terminals: Vec::new(),
             terminal: None,
-            dragging_project: None,
+            dragging: None,
+            drag_col: 0,
             top_hits: Vec::new(),
         }
     }
@@ -248,15 +251,15 @@ impl Workspace {
             return;
         }
         if id == INPUT
-            && let Some(ti) = self.terminal
+            && let AppEvent::Term(ratatui::crossterm::event::Event::Mouse(m)) = &ev
+            && self.drag_tab(m)
         {
-            self.terminal_input(ti, ev);
             return;
         }
         if id == INPUT
-            && let AppEvent::Term(ratatui::crossterm::event::Event::Mouse(m)) = &ev
-            && self.drag_project(m)
+            && let Some(ti) = self.terminal
         {
+            self.terminal_input(ti, ev);
             return;
         }
         let i = if id == INPUT {
@@ -278,9 +281,9 @@ impl Workspace {
         }
     }
 
-    /// Dragging a project tab in the top bar reorders the projects. Returns
-    /// true when the event was part of a drag (and is used up).
-    fn drag_project(&mut self, m: &ratatui::crossterm::event::MouseEvent) -> bool {
+    /// Dragging a project tab (or a terminal tab) in the top bar reorders
+    /// them. Returns true when the event was part of a drag (and is used up).
+    fn drag_tab(&mut self, m: &ratatui::crossterm::event::MouseEvent) -> bool {
         use ratatui::crossterm::event::{MouseButton, MouseEventKind};
         let hit = |ws: &Self| {
             if m.row != 0 {
@@ -288,30 +291,63 @@ impl Workspace {
             }
             ws.top_hits.iter().find(|h| (h.x.0..h.x.1).contains(&m.column)).copied()
         };
-        match (m.kind, self.dragging_project) {
+        match (m.kind, self.dragging) {
             (MouseEventKind::Down(MouseButton::Left), _) => {
-                // Starts on a project tab (not its ×); the click still switches.
-                self.dragging_project = hit(self).and_then(|h| match (h.target, h.request(m.column)) {
-                    (TabTarget::Project(i), Some(WsRequest::Switch(_))) => Some(i),
+                // Starts on a tab (not its ×); the click still switches.
+                self.dragging = hit(self).and_then(|h| match (h.target, h.request(m.column)) {
+                    (t @ TabTarget::Project(_), Some(WsRequest::Switch(_))) => Some(t),
+                    (t @ TabTarget::Terminal(_), Some(WsRequest::ShowTerminal(_))) => Some(t),
                     _ => None,
                 });
+                self.drag_col = m.column;
                 false
             }
             (MouseEventKind::Drag(MouseButton::Left), Some(from)) => {
-                if let Some(TabTarget::Project(to)) = hit(self).map(|h| h.target)
-                    && to != from
-                {
-                    self.move_project(from, to);
-                    self.dragging_project = Some(to);
+                // Projects move among projects, terminals among terminals,
+                // and only the way the mouse is going.
+                let moves = |a, b| crate::projects::drag_moves(a, b, m.column, self.drag_col);
+                match (from, hit(self).map(|h| h.target)) {
+                    (TabTarget::Project(a), Some(TabTarget::Project(b))) if moves(a, b) => {
+                        self.move_project(a, b);
+                        self.dragging = Some(TabTarget::Project(b));
+                    }
+                    (TabTarget::Terminal(a), Some(TabTarget::Terminal(b))) if moves(a, b) => {
+                        self.move_terminal(a, b);
+                        self.dragging = Some(TabTarget::Terminal(b));
+                    }
+                    _ => {}
                 }
+                self.drag_col = m.column;
                 true
             }
             (MouseEventKind::Up(_), Some(_)) => {
-                self.dragging_project = None;
+                self.dragging = None;
                 true
             }
             _ => false,
         }
+    }
+
+    /// Moves terminal tab `from` to position `to`.
+    pub fn move_terminal(&mut self, from: usize, to: usize) {
+        let n = self.terminals.len();
+        if from >= n || to >= n || from == to {
+            return;
+        }
+        let t = self.terminals.remove(from);
+        self.terminals.insert(to, t);
+        self.terminal = self.terminal.map(|a| {
+            if a == from {
+                to
+            } else if from < a && a <= to {
+                a - 1
+            } else if to <= a && a < from {
+                a + 1
+            } else {
+                a
+            }
+        });
+        self.refresh_bars();
     }
 
     /// Moves open project `from` to tab position `to` (remembered).
