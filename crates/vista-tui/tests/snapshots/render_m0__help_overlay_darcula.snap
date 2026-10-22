@@ -2,10 +2,9 @@
 source: crates/vista-tui/tests/render_m0.rs
 expression: "vista_tui::testing::text(&buf)"
 ---
-  sample-project   +                                     Ctrl-P Go to File   Ctrl-F Find in Files
- 1: Project            ┌ Keyboard shortcuts ────────────────────────────────┐
- ▾ sample-project      │            q, Ctrl-Q  Quit                         │
-                       │                ?, F1  Show this help               │
+  sample-project   +   ┌ Keyboard shortcuts ────────────────────────────────┐Ctrl-F Find in Files
+ 1: Project            │            q, Ctrl-Q  Quit                         │
+ ▾ sample-project      │                ?, F1  Show this help               │
                        │                  Tab  Focus next panel             │
                        │            Shift-Tab  Focus previous panel         │
                        │                Alt-1  Project tool window          │
@@ -26,6 +25,8 @@ expression: "vista_tui::testing::text(&buf)"
                        │                    i  Show/hide ignored files      │
                        │              Shift-L  Show/hide line numbers       │
                        │               Ctrl-O  Projects: switch, open, add  │
+                       │         Ctrl-Shift-→  Widen the left panel         │
+                       │         Ctrl-Shift-←  Narrow the left panel        │
                        │                Alt-.  Next project                 │
                        │                Alt-,  Previous project             │
                        │       Alt-F1, Ctrl-L  Reveal current file in tree  │
@@ -34,5 +35,4 @@ expression: "vista_tui::testing::text(&buf)"
                        │           Ctrl-Alt-↓  Next Find result             │
                        │           Ctrl-Alt-↑  Previous Find result         │
                        └ any key to close ──────────────────────────────────┘
-                            │
  1: Project   2: Commit   3: Find   ?: Help                                         Darcula Classic

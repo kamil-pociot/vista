@@ -195,6 +195,8 @@ pub struct App {
     pub projects_popup: Option<crate::projects::ProjectsPopup>,
     /// Where the project tabs (and +) were drawn in the top bar.
     pub project_hits: Vec<crate::projects::ProjectHit>,
+    /// The divider between the tree and the editor is being dragged.
+    dragging_divider: bool,
     ui_path: PathBuf,
     /// Where each tab and its × were drawn (last frame), for clicks.
     pub tab_hits: Vec<crate::ui::chrome::TabHit>,
@@ -314,6 +316,7 @@ impl App {
             started: false,
             projects_popup: None,
             project_hits: Vec::new(),
+            dragging_divider: false,
             tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
@@ -1662,8 +1665,56 @@ impl App {
         double
     }
 
+    /// Columns where the tree / editor divider can be grabbed: the
+    /// separator, or the panel's right edge when there is none.
+    fn on_divider(&self, col: u16, row: u16) -> bool {
+        let Some(left) = self.areas.left else { return false };
+        if !(left.y..left.y + left.height).contains(&row) {
+            return false;
+        }
+        match self.areas.separator {
+            Some(sep) => (sep.x..sep.x + sep.width).contains(&col),
+            None => col + 1 == left.x + left.width,
+        }
+    }
+
+    /// Sets the tree / Commit panel width (kept within the window when drawn).
+    fn set_left_width(&mut self, width: u16, save: bool) {
+        let width = width.max(crate::ui::MIN_LEFT);
+        self.ui.borrow_mut().layout.left_width = Some(width);
+        // Saved even if unchanged: a drag sets the width as it goes and
+        // saves once, on release.
+        if save {
+            let result = self.ui.borrow().save(&self.ui_path);
+            if let Err(e) = result {
+                self.notify(format!("cannot save settings: {e}"), MsgKind::Error);
+            }
+        }
+    }
+
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        // Dragging the divider resizes the tree; saved on release.
+        match m.kind {
+            MouseEventKind::Down(MouseButton::Left) if self.on_divider(m.column, m.row) => {
+                self.dragging_divider = true;
+                return;
+            }
+            MouseEventKind::Drag(MouseButton::Left) if self.dragging_divider => {
+                if let Some(left) = self.areas.left {
+                    self.set_left_width(m.column.saturating_sub(left.x), false);
+                }
+                return;
+            }
+            MouseEventKind::Up(MouseButton::Left) if self.dragging_divider => {
+                self.dragging_divider = false;
+                if let Some(left) = self.areas.left {
+                    self.set_left_width(m.column.saturating_sub(left.x), true);
+                }
+                return;
+            }
+            _ => {}
+        }
         if let MouseEventKind::Down(MouseButton::Left) = m.kind {
             if self.projects_popup.is_some() {
                 if let Some(r) = self.areas.projects_list.filter(|r| r.contains(pos)) {
@@ -1962,6 +2013,21 @@ impl App {
             Action::Projects => self.projects_popup = Some(crate::projects::ProjectsPopup::new(self.projects.clone())),
             Action::NextProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(true)),
             Action::PrevProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(false)),
+            Action::GrowPanel | Action::ShrinkPanel => match self.areas.left {
+                Some(left) => {
+                    // From the stored width, not the last frame: several key
+                    // repeats can arrive between two draws.
+                    let max = (left.width + self.areas.main.width).saturating_sub(crate::ui::MIN_MAIN);
+                    let current = self.ui.borrow().layout.left_width.unwrap_or(left.width).min(max);
+                    let w = if action == Action::GrowPanel {
+                        current.saturating_add(4).min(max)
+                    } else {
+                        current.saturating_sub(4)
+                    };
+                    self.set_left_width(w, true);
+                }
+                None => self.notify("No tool window open (Alt-1, Alt-2)", MsgKind::Info),
+            },
             Action::ToggleLineNumbers => {
                 let on = !self.line_numbers();
                 self.remember(|s| s.viewer.line_numbers = Some(on));
@@ -2152,6 +2218,34 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let app = app_at(&root, tmp.path(), None);
         (tmp, app)
+    }
+
+    #[test]
+    fn dragging_the_divider_resizes_and_saves_on_release() {
+        let (t, mut app) = app();
+        crate::testing::render(&mut app, 120, 30);
+        let sep = app.areas.separator.expect("darcula has a separator").x;
+        let mouse = |app: &mut App, kind: MouseEventKind, col: u16| {
+            app.handle_mouse(MouseEvent {
+                kind,
+                column: col,
+                row: 10,
+                modifiers: ratatui::crossterm::event::KeyModifiers::NONE,
+            });
+        };
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), sep);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), sep + 5);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), sep + 10);
+        let want = sep + 10 - app.areas.left.unwrap().x;
+        assert_eq!(app.ui.borrow().layout.left_width, Some(want));
+        let state = t.path().join("config/state.toml");
+        assert!(!state.exists(), "not saved while dragging");
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), sep + 10);
+        let text = std::fs::read_to_string(&state).unwrap();
+        assert!(text.contains(&format!("left_width = {want}")), "{text}");
+        // The next frame puts the divider where the mouse let go.
+        crate::testing::render(&mut app, 120, 30);
+        assert_eq!(app.areas.separator.unwrap().x, sep + 10);
     }
 
     #[test]

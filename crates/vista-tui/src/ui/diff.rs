@@ -142,7 +142,12 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         .filter(|h| commit.hunk_included(&tab.path, h.id))
         .count();
     let position = if n == 0 {
-        "no changes ".to_string()
+        // Git counts a missing final newline; the lines themselves match.
+        if doc.old_text != doc.new_text {
+            "only the final newline changed ".to_string()
+        } else {
+            "no changes ".to_string()
+        }
     } else {
         format!("{ticked} of {n} in commit (␣)   [ ◂ change {k} of {n} ▸ ] ")
     };

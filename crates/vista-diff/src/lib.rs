@@ -637,6 +637,18 @@ mod tests {
     }
 
     #[test]
+    fn only_the_final_newline_differs() {
+        // Same lines: nothing to pick in the diff; the file commits whole.
+        let s = side_by_side("abb", "abb\n", DiffOptions::default());
+        assert!(s.hunks.is_empty());
+        assert_eq!(partial_content("abb", "abb\n", &HashSet::new()), "abb\n");
+        // With a real change elsewhere, excluding it keeps HEAD's ending too.
+        let s = side_by_side("x\nabb", "y\nabb\n", DiffOptions::default());
+        let all: HashSet<u64> = s.hunks.iter().map(|h| h.id).collect();
+        assert_eq!(partial_content("x\nabb", "y\nabb\n", &all), "x\nabb");
+    }
+
+    #[test]
     fn partial_content_keeps_only_selected_hunks() {
         let old = "a\nb\nc\nd\ne\nf\ng\n";
         let new = "a\nB\nc\nd\nE\nf\nG\n";
@@ -666,7 +678,11 @@ mod tests {
             let s = side_by_side(&o, &n, DiffOptions::default());
             prop_assert_eq!(partial_content(&o, &n, &HashSet::new()), n.clone());
             let all: HashSet<u64> = s.hunks.iter().map(|h| h.id).collect();
-            prop_assert_eq!(partial_content(&o, &n, &all), o.clone());
+            // (With no change to exclude — e.g. only the final newline differs —
+            // the file commits as a whole; see `only_the_final_newline_differs`.)
+            if !s.hunks.is_empty() {
+                prop_assert_eq!(partial_content(&o, &n, &all), o.clone());
+            }
             let some: HashSet<u64> = s.hunks.iter().enumerate().filter(|(i, _)| mask & (1 << (i % 32)) != 0).map(|(_, h)| h.id).collect();
             let mixed = partial_content(&o, &n, &some);
             // Every line of the mix comes from one of the two versions.

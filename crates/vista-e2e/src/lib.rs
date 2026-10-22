@@ -361,6 +361,19 @@ impl Vista {
         self.send_raw(&keys::mouse(0, col, row, false));
     }
 
+    /// Presses the left button at `from`, moves to `to` holding it, releases.
+    pub fn drag(&mut self, from: (u16, u16), to: (u16, u16)) {
+        self.record(format!("drag ({}, {}) → ({}, {})", from.0, from.1, to.0, to.1));
+        self.send_raw(&keys::mouse(0, from.0, from.1, true));
+        let steps = from.0.abs_diff(to.0).max(1);
+        for i in 1..=steps {
+            let col = if to.0 >= from.0 { from.0 + i } else { from.0 - i };
+            // 32 = motion with the left button down.
+            self.send_raw(&keys::mouse(32, col, to.1, true));
+        }
+        self.send_raw(&keys::mouse(0, to.0, to.1, false));
+    }
+
     pub fn double_click(&mut self, col: u16, row: u16) {
         self.record(format!("double-click ({col}, {row})"));
         for _ in 0..2 {

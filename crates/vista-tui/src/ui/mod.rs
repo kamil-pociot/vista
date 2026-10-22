@@ -20,6 +20,11 @@ use crate::app::{App, Focus, LeftPanel};
 use crate::keymap::Action;
 use crate::style::ThemeStyle;
 
+/// The tree / Commit panel is at least this wide when resized…
+pub const MIN_LEFT: u16 = 16;
+/// …and leaves the editor at least this much.
+pub const MIN_MAIN: u16 = 20;
+
 /// Screen regions from the last draw, used for mouse hit-testing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Areas {
@@ -106,7 +111,11 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             keyhints,
         };
     };
-    let left_w = (body.width as u32 * 28 / 100).clamp(24, 48).min(body.width as u32 / 2) as u16;
+    // Dragged / Ctrl-Shift-←→ width (remembered), else about a quarter.
+    let left_w = match app.ui.borrow().layout.left_width {
+        Some(w) => w.clamp(MIN_LEFT, body.width.saturating_sub(MIN_MAIN).max(MIN_LEFT)),
+        None => (body.width as u32 * 28 / 100).clamp(24, 48).min(body.width as u32 / 2) as u16,
+    };
     let gap = if chrome.panel_headers == PanelHeaders::BorderTitle || chrome.borders == Borders::None {
         u16::from(chrome.spacing == Spacing::Comfortable)
     } else {

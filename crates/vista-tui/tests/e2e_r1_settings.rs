@@ -70,6 +70,8 @@ fn view_settings_survive_a_restart() {
     vista.click(col, row);
     vista.press("enter");
     vista.expect_text("Δ lib.rs");
+    // The tab shows at once; the diff keys need the loaded diff.
+    vista.expect_text("change 1 of 1");
     vista.press("u");
     vista.press("z");
     vista.press("i");

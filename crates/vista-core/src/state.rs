@@ -29,6 +29,16 @@ pub struct UiState {
     pub find: FindState,
     #[serde(skip_serializing_if = "ProjectsState::is_empty")]
     pub projects: ProjectsState,
+    #[serde(skip_serializing_if = "LayoutState::is_empty")]
+    pub layout: LayoutState,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LayoutState {
+    /// Width of the tree / Commit panel in columns (dragged or Ctrl-Shift-←/→).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_width: Option<u16>,
 }
 
 /// Projects open at exit (restored on start) and opened before.
@@ -103,7 +113,15 @@ macro_rules! is_empty {
         }
     )*};
 }
-is_empty!(ViewerState, DiffState, CommitState, TreeState, FindState, ProjectsState);
+is_empty!(
+    ViewerState,
+    DiffState,
+    CommitState,
+    TreeState,
+    FindState,
+    ProjectsState,
+    LayoutState
+);
 
 impl UiState {
     /// `state.toml` next to `config.toml`.

@@ -121,7 +121,8 @@ fn edit_from_go_to_file() {
     vista.expect_text("README.md");
     vista.press("ctrl+p");
     vista.type_text("long:7");
-    vista.expect_text("long.txt");
+    // The result is selected in the popup (not just the tree row showing).
+    vista.expect_text_in("long.txt", 6..60).to_have_bg("ui.selection");
     // Alt-Enter (or Shift/Ctrl-Enter with the kitty keyboard protocol) opens
     // straight in the editor.
     vista.press("alt+enter");
