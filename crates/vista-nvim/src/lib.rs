@@ -31,6 +31,11 @@ pub enum NvimEvent {
     Exited,
     /// The side-by-side diff editor was closed from inside Neovim (`:q`).
     DiffClosed,
+    /// `wrap` was switched in a window showing `path` (`diff`: in the
+    /// side-by-side diff editor).
+    Wrap { path: PathBuf, wrap: bool, diff: bool },
+    /// Folding of unchanged lines was switched in the diff editor (`zi`).
+    Collapse(bool),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -71,6 +76,7 @@ augroup vista
   autocmd!
   autocmd BufWritePost * call rpcnotify(0, 'vista_written', expand('<afile>:p'))
   autocmd BufModifiedSet * call rpcnotify(0, 'vista_modified', expand('<afile>:p'), &modified)
+  autocmd OptionSet wrap call rpcnotify(0, 'vista_wrap', expand('%:p'), &l:wrap ? v:true : v:false, get(t:, 'vista_diff', v:false) ? v:true : v:false)
 augroup END
 "#;
 
@@ -81,6 +87,12 @@ local function close()
   pcall(vim.api.nvim_del_augroup_by_name, 'vista_diff')
   for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
     local ok, v = pcall(vim.api.nvim_tabpage_get_var, tp, 'vista_diff')
+    local okb, b = pcall(vim.api.nvim_tabpage_get_var, tp, 'vista_diff_buf')
+    if okb and vim.api.nvim_buf_is_valid(b) then
+      for _, k in ipairs({ 'zi', 'zn', 'zN' }) do
+        pcall(vim.keymap.del, 'n', k, { buffer = b })
+      end
+    end
     if ok and v then
       vim.api.nvim_set_current_tabpage(tp)
       vim.cmd('diffoff!')
@@ -143,6 +155,25 @@ impl Nvim {
                         NvimEvent::Modified(PathBuf::from(path), modified)
                     }
                     "vista_diff_closed" => NvimEvent::DiffClosed,
+                    "vista_collapse" => NvimEvent::Collapse(
+                        n.params
+                            .first()
+                            .and_then(|v| v.as_bool().or_else(|| v.as_i64().map(|i| i != 0)))
+                            .unwrap_or(false),
+                    ),
+                    "vista_wrap" => {
+                        let flag = |i: usize| {
+                            n.params
+                                .get(i)
+                                .and_then(|v| v.as_bool().or_else(|| v.as_i64().map(|i| i != 0)))
+                                .unwrap_or(false)
+                        };
+                        NvimEvent::Wrap {
+                            path: PathBuf::from(n.params.first().and_then(Value::as_str).unwrap_or_default()),
+                            wrap: flag(1),
+                            diff: flag(2),
+                        }
+                    }
                     _ => return,
                 };
                 notify(ev);
@@ -189,18 +220,21 @@ impl Nvim {
             .request("nvim_exec_lua", vec![Value::from(code), Value::Array(args)], TIMEOUT)
     }
 
-    /// Edits `path` (switching to its buffer if already loaded), optionally at a 1-based line.
-    pub fn open(&self, path: &Path, line: Option<usize>) -> Result<(), RpcError> {
+    /// Edits `path` (switching to its buffer if already loaded), optionally at
+    /// a 1-based line, with the window's `wrap` set when given.
+    pub fn open(&self, path: &Path, line: Option<usize>, wrap: Option<bool>) -> Result<(), RpcError> {
         let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
+        let wrap = wrap.map(Value::from).unwrap_or(Value::Nil);
         self.lua(
             &format!(
                 "{CLOSE_DIFF}
              close()
-             local p, l = ...
+             local p, l, w = ...
              vim.cmd.edit(vim.fn.fnameescape(p))
+             if w ~= nil then vim.wo.wrap = w end
              if l then pcall(vim.api.nvim_win_set_cursor, 0, {{ l, 0 }}) end"
             ),
-            vec![Value::from(path.to_string_lossy().as_ref()), line],
+            vec![Value::from(path.to_string_lossy().as_ref()), line, wrap],
         )?;
         Ok(())
     }
@@ -267,11 +301,19 @@ impl Nvim {
     /// named `label`) in Neovim's diff mode, on a tab page of its own:
     /// aligned, scroll-bound, and re-diffed as you type. `:q` on either side
     /// closes both and sends [`NvimEvent::DiffClosed`].
-    pub fn open_diff(&self, path: &Path, head: &str, label: &str, line: Option<usize>) -> Result<(), RpcError> {
+    pub fn open_diff(
+        &self,
+        path: &Path,
+        head: &str,
+        label: &str,
+        line: Option<usize>,
+        wrap: bool,
+        collapse: bool,
+    ) -> Result<(), RpcError> {
         let line = line.map(|l| Value::from(l as u64)).unwrap_or(Value::Nil);
         let code = format!(
             "{CLOSE_DIFF}
-local p, head, label, l = ...
+local p, head, label, l, wrap, collapse = ...
 close()
 vim.g.vista_stal = vim.o.showtabline
 vim.o.showtabline = 0
@@ -300,8 +342,53 @@ end
 vim.cmd('diffthis')
 vim.api.nvim_set_current_win(work)
 vim.cmd('diffthis')
+-- Diff mode turns wrapping off and folds unchanged lines; follow the
+-- viewer's wrap and collapse settings instead.
+for _, w in ipairs({{ head_win, work }}) do
+  vim.wo[w].wrap = wrap
+  vim.wo[w].foldenable = collapse
+end
 if l then pcall(vim.api.nvim_win_set_cursor, work, {{ l, 0 }}) end
 local g = vim.api.nvim_create_augroup('vista_diff', {{ clear = true }})
+-- `:set wrap` on one side applies to both, so they stay aligned.
+vim.api.nvim_create_autocmd('OptionSet', {{
+  group = g,
+  pattern = 'wrap',
+  callback = function()
+    local v = vim.wo.wrap
+    for _, w in ipairs({{ head_win, work }}) do
+      if vim.api.nvim_win_is_valid(w) then vim.wo[w].wrap = v end
+    end
+  end,
+}})
+-- `zi`/`zn`/`zN` don't fire OptionSet: map them (diff buffers only) so they
+-- also reach the other side and vista.
+local work_buf = vim.api.nvim_win_get_buf(work)
+vim.t.vista_diff_buf = work_buf
+for _, b in ipairs({{ buf, work_buf }}) do
+  for _, k in ipairs({{ 'zi', 'zn', 'zN' }}) do
+    vim.keymap.set('n', k, function()
+      vim.cmd('normal! ' .. k)
+      local v = vim.wo.foldenable
+      for _, w in ipairs({{ head_win, work }}) do
+        if vim.api.nvim_win_is_valid(w) then vim.wo[w].foldenable = v end
+      end
+      vim.rpcnotify(0, 'vista_collapse', v)
+    end, {{ buffer = b, desc = 'vista: fold unchanged lines' }})
+  end
+end
+-- `:set foldenable` on one side applies to both, and to vista's collapse.
+vim.api.nvim_create_autocmd('OptionSet', {{
+  group = g,
+  pattern = 'foldenable',
+  callback = function()
+    local v = vim.wo.foldenable
+    for _, w in ipairs({{ head_win, work }}) do
+      if vim.api.nvim_win_is_valid(w) then vim.wo[w].foldenable = v end
+    end
+    vim.rpcnotify(0, 'vista_collapse', v)
+  end,
+}})
 vim.api.nvim_create_autocmd('WinClosed', {{
   group = g,
   pattern = {{ tostring(work), tostring(head_win) }},
@@ -320,6 +407,8 @@ vim.api.nvim_create_autocmd('WinClosed', {{
                 Value::from(head),
                 Value::from(label),
                 line,
+                Value::from(wrap),
+                Value::from(collapse),
             ],
         )?;
         Ok(())
@@ -409,7 +498,7 @@ mod tests {
             },
         )
         .unwrap();
-        nvim.open(&file, Some(1)).unwrap();
+        nvim.open(&file, Some(1), None).unwrap();
         nvim.input("A world<Esc>").unwrap();
         let mut grid = Grid::default();
         let mut modified = false;

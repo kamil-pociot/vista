@@ -116,3 +116,94 @@ fn editing_a_plain_file_closes_the_diff_editor() {
     vista.expect_no_text("HEAD ");
     vista.expect_no_text("TWO");
 }
+
+#[test]
+fn diff_editor_follows_wrap_and_collapse_both_ways() {
+    if !vista_nvim::available("nvim") {
+        eprintln!("nvim not installed; skipping");
+        return;
+    }
+    // 40 lines, changes at 2 and 30, and a long unchanged line 10.
+    let old: String = (1..=40)
+        .map(|i| match i {
+            10 => format!("{}TAIL\n", "long ".repeat(40)),
+            _ => format!("l{i}\n"),
+        })
+        .collect();
+    let new = old.replace("l2\n", "L2\n").replace("l30\n", "L30\n");
+    let repo = Fixture::git()
+        .file("notes.txt", &old)
+        .file("other.txt", "x\n")
+        .commit("init")
+        .modify("notes.txt", new)
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).size(150, 40).start();
+    open_diff(&mut vista);
+    vista.expect_text("lines: scroll");
+    vista.expect_text("collapse: off");
+
+    // vista → Neovim: no wrap and no folding, like the diff it came from
+    // (Neovim's diff mode would fold unchanged lines and turn wrap off).
+    vista.press("e");
+    vista.expect_text("HEAD ");
+    vista.expect_text("l15");
+    vista.expect_no_text("+--");
+    vista.expect_no_text("TAIL");
+
+    // Neovim → vista: `:set wrap` wraps both sides and the viewer.
+    vista.type_text(":set wrap");
+    vista.press("enter");
+    expect_side_by_side(&mut vista, "TAIL", "TAIL");
+    vista.type_text(":q");
+    vista.press("enter");
+    vista.expect_text("Diff editor closed");
+    vista.expect_text("lines: wrap");
+
+    // Collapse in vista → Neovim folds unchanged lines.
+    vista.press("z");
+    vista.expect_text("collapse: on");
+    vista.press("e");
+    vista.expect_text("HEAD ");
+    vista.expect_text("+--");
+    vista.expect_no_text("l15");
+    // `zi` in Neovim unfolds both sides, and turns vista's collapse off.
+    vista.type_text("zi");
+    vista.expect_text("l15");
+    vista.expect_no_text("+--");
+    vista.type_text(":q");
+    vista.press("enter");
+    vista.expect_text("Diff editor closed");
+    vista.expect_text("collapse: off");
+}
+
+#[test]
+fn plain_editing_follows_the_viewer_wrap_both_ways() {
+    if !vista_nvim::available("nvim") {
+        eprintln!("nvim not installed; skipping");
+        return;
+    }
+    let text = format!("short\n{}TAIL\n", "long ".repeat(40));
+    let repo = Fixture::git().file("long.txt", text).commit("init").build();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(MINIMAL)
+        .size(120, 30)
+        .open("long.txt")
+        .start();
+    vista.expect_text("short");
+    vista.expect_no_text("TAIL");
+    // Wrap in the viewer, then edit: Neovim wraps too.
+    vista.press("w");
+    vista.expect_text("TAIL");
+    vista.press("e");
+    vista.expect_text("~ ");
+    vista.expect_text("TAIL");
+    // `:set nowrap` in Neovim carries back to the viewer.
+    vista.type_text(":set nowrap");
+    vista.press("enter");
+    vista.expect_no_text("TAIL");
+    vista.type_text(":q");
+    vista.press("enter");
+    vista.expect_text("Editor closed");
+    vista.expect_text("short");
+    vista.expect_no_text("TAIL");
+}

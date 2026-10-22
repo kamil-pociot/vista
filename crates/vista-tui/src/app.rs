@@ -119,6 +119,22 @@ enum ClickList {
     Goto,
 }
 
+/// The active diff tab, as the side-by-side editor opens it.
+struct DiffEdit {
+    path: PathBuf,
+    head: String,
+    label: String,
+    line: Option<usize>,
+    wrap: bool,
+    collapse: bool,
+}
+
+impl DiffEdit {
+    fn open_in(&self, n: &vista_nvim::Nvim) -> Result<(), vista_nvim::RpcError> {
+        n.open_diff(&self.path, &self.head, &self.label, self.line, self.wrap, self.collapse)
+    }
+}
+
 pub struct App {
     pub root: PathBuf,
     pub project_name: String,
@@ -373,7 +389,9 @@ impl App {
             Some(i) => self.viewer.activate(i),
             None => self.open_file(path),
         }
-        let res = self.nvim.as_ref().map(|n| n.open(path, line));
+        // Neovim wraps long lines like the viewer did.
+        let wrap = self.viewer.active_tab().map(|t| t.wrap);
+        let res = self.nvim.as_ref().map(|n| n.open(path, line, wrap));
         if let Some(Err(e)) = res {
             self.notify(format!("editor: {e}"), MsgKind::Error);
             return;
@@ -389,13 +407,13 @@ impl App {
     /// Edits the active diff tab's file side by side with its HEAD version
     /// (Neovim's diff mode: aligned, scroll-bound, re-diffed as you type).
     fn start_diff_editing(&mut self) {
-        let Some((path, head, label, line)) = self.diff_edit_target() else {
+        let Some(target) = self.diff_edit_target() else {
             return;
         };
-        if !self.ensure_nvim(&path) {
+        if !self.ensure_nvim(&target.path) {
             return;
         }
-        let res = self.nvim.as_ref().map(|n| n.open_diff(&path, &head, &label, line));
+        let res = self.nvim.as_ref().map(|n| target.open_in(n));
         if let Some(Err(e)) = res {
             self.notify(format!("editor: {e}"), MsgKind::Error);
             return;
@@ -407,14 +425,21 @@ impl App {
         self.focus = Focus::Main;
     }
 
-    /// (path, HEAD text, HEAD buffer name, 1-based line) of the active diff tab.
-    fn diff_edit_target(&self) -> Option<(PathBuf, String, String, Option<usize>)> {
+    /// What the side-by-side editor needs from the active diff tab.
+    fn diff_edit_target(&self) -> Option<DiffEdit> {
         let t = self.viewer.active_tab()?;
         let Content::Diff(d) = &t.content else { return None };
         let rel = t.path.strip_prefix(&self.root).unwrap_or(&t.path);
         let label = format!("HEAD {} · {}", d.head, rel.display());
         let line = d.new_line_at(t.cursor).map(|l| l + 1);
-        Some((t.path.clone(), d.old_text.clone(), label, line))
+        Some(DiffEdit {
+            path: t.path.clone(),
+            head: d.old_text.clone(),
+            label,
+            line,
+            wrap: t.wrap,
+            collapse: d.collapse,
+        })
     }
 
     /// Neovim shows one thing at a time: diff tabs stop being edited.
@@ -463,11 +488,11 @@ impl App {
             return;
         };
         if t.diff.is_some() {
-            if let (Some(n), Some((path, head, label, line))) = (&self.nvim, self.diff_edit_target()) {
-                let _ = n.open_diff(&path, &head, &label, line);
+            if let (Some(n), Some(target)) = (&self.nvim, self.diff_edit_target()) {
+                let _ = target.open_in(n);
             }
         } else if let Some(n) = &self.nvim {
-            let _ = n.open(&t.path, None);
+            let _ = n.open(&t.path, None, Some(t.wrap));
             self.stop_diff_editing_tabs();
         }
     }
@@ -489,6 +514,33 @@ impl App {
                 self.project.tree.refresh(&[p]);
                 self.project.rebuild(&self.status);
                 self.request_status();
+            }
+            NvimEvent::Wrap { path, wrap, diff } => {
+                // `:set wrap` / `:set nowrap` in Neovim carries over to the
+                // viewer (and back, when the editor opens the file again).
+                for t in &mut self.viewer.tabs {
+                    let shown = if diff {
+                        t.diff.is_some()
+                    } else {
+                        t.diff.is_none() && t.path == path
+                    };
+                    if t.editing && shown {
+                        t.wrap = wrap;
+                        t.hscroll = 0;
+                    }
+                }
+            }
+            NvimEvent::Collapse(collapse) => {
+                for t in self.viewer.tabs.iter_mut().filter(|t| t.editing) {
+                    if let Content::Diff(d) = &mut t.content
+                        && d.collapse != collapse
+                    {
+                        d.collapse = collapse;
+                        d.rebuild();
+                        t.scroll = 0;
+                        t.cursor = 0;
+                    }
+                }
             }
             NvimEvent::DiffClosed => {
                 // `:q` in the side-by-side editor: back to vista's diff.
