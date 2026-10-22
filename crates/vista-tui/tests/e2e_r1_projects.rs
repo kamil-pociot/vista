@@ -19,7 +19,7 @@ fn add(vista: &mut Vista, repo: &Repo) {
     vista.expect_text("Projects");
     let path = repo.path().canonicalize().unwrap();
     vista.type_text(&path.display().to_string());
-    vista.expect_text(&format!("Add {}", name(repo)));
+    vista.expect_text(&format!("+ {}", name(repo)));
     vista.press("enter");
 }
 
@@ -105,4 +105,39 @@ fn open_projects_come_back_after_a_restart() {
     vista.expect_text(&format!(" {bn} × "));
     click_tab(&mut vista, &bn, false);
     vista.expect_text_in("beta.txt", 0..40);
+}
+
+#[test]
+fn folders_complete_while_typing_a_path_or_a_name() {
+    let base = tempfile::tempdir().unwrap();
+    let base = base.path().canonicalize().unwrap();
+    for (dir, file) in [
+        ("project-one", "one.txt"),
+        ("project-two", "two.txt"),
+        ("other", "o.txt"),
+    ] {
+        std::fs::create_dir(base.join(dir)).unwrap();
+        std::fs::write(base.join(dir).join(file), "x\n").unwrap();
+    }
+    let a = project("alpha.txt", "in alpha\n");
+    let mut vista = Vista::launch(BIN, &a).size(160, 40).start();
+    vista.expect_text_in("alpha.txt", 0..40);
+
+    // Part of a path: the matching folders are listed; Enter opens one.
+    vista.press("ctrl+o");
+    vista.type_text(&format!("{}/proj", base.display()));
+    vista.expect_text("+ project-one");
+    vista.expect_text("+ project-two");
+    vista.expect_no_text("+ other");
+    vista.press("enter");
+    vista.expect_text_in("one.txt", 0..40);
+
+    // Just a few letters: folders next to open projects are found too.
+    vista.press("ctrl+o");
+    vista.type_text("two");
+    vista.expect_text("+ project-two");
+    vista.press("enter");
+    vista.expect_text_in("two.txt", 0..40);
+    vista.expect_text(" project-one × ");
+    vista.expect_text(" project-two × ");
 }

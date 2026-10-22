@@ -60,7 +60,7 @@ folder_colours = true
 
 ### Projects
 
-Several projects can be open at once, as tabs at the left of the top bar: click one to switch, its `×` to close it, `+` (or `Ctrl-O`) to open the Projects popup. There, type to filter open and recent projects, `Enter` to switch or reopen, type a folder path (`/…`, `~/…`) to add a new one, `Ctrl-W` to close the selected one. `Alt-.` / `Alt-,` step through open projects. Each project keeps its own tree, tabs, Commit window, git status, file watcher and editor; settings and the look are shared. The projects open when vista quits are reopened next time (alongside the one you start it in).
+Several projects can be open at once, as tabs at the left of the top bar: click one to switch, its `×` to close it, `+` (or `Ctrl-O`) to open the Projects popup. There, type a few letters: open and recent projects match, and so do folders next to them (`lms` finds `~/Repositories/lms-context` when another project lives in `~/Repositories`). Or type part of a path (`~/Repositories/lm`): the folders there that match are listed, `Tab` completes the selected one to go deeper. `Enter` switches to, reopens or adds the selected folder; `Ctrl-W` closes the selected open project. `Alt-.` / `Alt-,` step through open projects. Each project keeps its own tree, tabs, Commit window, git status, file watcher and editor; settings and the look are shared. The projects open when vista quits are reopened next time (alongside the one you start it in).
 
 ### Remembered settings
 

@@ -81,7 +81,7 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
             t.fg("ui.text.strong").add_modifier(Modifier::BOLD),
         ))
         .title_bottom(Span::styled(
-            " Enter open · type a folder path to add · Ctrl-W close · Esc ",
+            " Enter open · Tab complete folder · Ctrl-W close project · Esc ",
             t.fg("ui.dim"),
         ));
     let inner = block.inner(rect);
@@ -112,7 +112,7 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
         .min(40);
     let lines: Vec<Line> = if p.entries.is_empty() {
         vec![Line::styled(
-            " No match. Type a folder path (/…, ~/…) to add a project.",
+            " No match. Type a folder name, or a path (/…, ~/…) to pick a folder.",
             t.fg("ui.dim"),
         )]
     } else {

@@ -46,6 +46,15 @@ pub fn project_name(root: &Path) -> String {
         .unwrap_or_else(|| root.display().to_string())
 }
 
+/// `$HOME/x` → `~/x`, for showing and completing paths.
+pub fn tilde(path: &Path) -> String {
+    match dirs::home_dir().and_then(|h| path.strip_prefix(h).ok().map(Path::to_path_buf)) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => path.display().to_string(),
+    }
+}
+
 /// `~/x` → `$HOME/x`; relative paths are left alone.
 pub fn expand_home(input: &str) -> PathBuf {
     match input.strip_prefix("~") {
@@ -66,8 +75,57 @@ pub enum Entry {
     Add(PathBuf),
 }
 
-/// Ctrl-O: open projects first, then recent ones; type to filter, or type a
-/// folder path (`/…`, `~/…`, `./…`) to add it.
+/// At most this many folders are offered while typing.
+const MAX_FOLDERS: usize = 50;
+
+/// How well a folder name matches what was typed (lower is better): 0 it
+/// starts with it, 1 a word in it does (`project-two` for "two"), 2 it's
+/// somewhere inside; `None` no match. Case-insensitive.
+fn folder_score(name: &str, want: &str) -> Option<u8> {
+    let lower = name.to_lowercase();
+    if lower.starts_with(want) {
+        return Some(0);
+    }
+    let at_word = lower
+        .match_indices(want)
+        .any(|(i, _)| lower[..i].ends_with(['-', '_', '.', ' ']));
+    if at_word {
+        Some(1)
+    } else {
+        lower.contains(want).then_some(2)
+    }
+}
+
+/// Sub-folders of the `dirs` whose names match `partial`, best first (see
+/// [`folder_score`]); hidden folders only when `partial` starts with a dot.
+pub fn matching_folders_in(dirs: &[&Path], partial: &str) -> Vec<PathBuf> {
+    let want = partial.to_lowercase();
+    let mut hits: Vec<(u8, String, PathBuf)> = Vec::new();
+    for dir in dirs {
+        let Ok(read) = std::fs::read_dir(dir) else { continue };
+        for e in read.filter_map(Result::ok) {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if (name.starts_with('.') && !want.starts_with('.')) || !e.path().is_dir() {
+                continue;
+            }
+            if let Some(score) = folder_score(&name, &want) {
+                hits.push((score, name.to_lowercase(), e.path()));
+            }
+        }
+    }
+    hits.sort();
+    hits.dedup_by(|a, b| a.2 == b.2);
+    hits.into_iter().take(MAX_FOLDERS).map(|(_, _, p)| p).collect()
+}
+
+/// [`matching_folders_in`] for one folder.
+pub fn matching_folders(dir: &Path, partial: &str) -> Vec<PathBuf> {
+    matching_folders_in(&[dir], partial)
+}
+
+/// Ctrl-O: open projects first, then recent ones, then folders next to them;
+/// type to filter. Typing a path (`/…`, `~/…`, `./…`) lists the matching
+/// folders there instead; Tab completes the selected one.
 pub struct ProjectsPopup {
     pub query: String,
     pub selected: usize,
@@ -106,7 +164,7 @@ impl ProjectsPopup {
                 (name.clone(), root.display().to_string(), *i == self.bar.active)
             }
             Entry::Recent(p) => (project_name(p), p.display().to_string(), false),
-            Entry::Add(p) => (format!("Add {}", project_name(p)), p.display().to_string(), false),
+            Entry::Add(p) => (project_name(p), p.display().to_string(), false),
         }
     }
 
@@ -117,14 +175,26 @@ impl ProjectsPopup {
         };
         let mut entries: Vec<Entry> = Vec::new();
         let looks_like_path = ["/", "~", "./", "../"].iter().any(|p| self.query.trim().starts_with(p));
+        let as_entry = |path: PathBuf, bar: &ProjectsBar| match bar.open.iter().position(|(_, r)| *r == path) {
+            Some(i) => Entry::Open(i),
+            None => Entry::Add(path),
+        };
         if looks_like_path {
-            let path = expand_home(self.query.trim());
-            let path = path.canonicalize().unwrap_or(path);
-            let open = self.bar.open.iter().position(|(_, r)| *r == path);
-            match open {
-                Some(i) => entries.push(Entry::Open(i)),
-                None if path.is_dir() => entries.push(Entry::Add(path)),
-                None => {}
+            // `~/Repos/lm` → folders in ~/Repos matching "lm"; `~/Repos/` → all.
+            let typed = self.query.trim();
+            let full = expand_home(typed);
+            let (dir, partial) = if typed.ends_with('/') {
+                (full, String::new())
+            } else {
+                let partial = full
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                (full.parent().map(Path::to_path_buf).unwrap_or_default(), partial)
+            };
+            let dir = dir.canonicalize().unwrap_or(dir);
+            for path in matching_folders(&dir, &partial) {
+                entries.push(as_entry(path, &self.bar));
             }
         } else {
             for (i, (name, root)) in self.bar.open.iter().enumerate() {
@@ -135,6 +205,19 @@ impl ProjectsPopup {
             for r in &self.bar.recent {
                 if matches(&project_name(r), r) {
                     entries.push(Entry::Recent(r.clone()));
+                }
+            }
+            // Folders next to known projects (often all in ~/Repositories),
+            // by name, so a few letters are enough.
+            if !q.is_empty() {
+                let known: Vec<&PathBuf> = self.bar.open.iter().map(|(_, r)| r).chain(&self.bar.recent).collect();
+                let mut parents: Vec<&Path> = known.iter().filter_map(|r| r.parent()).collect();
+                parents.sort();
+                parents.dedup();
+                for path in matching_folders_in(&parents, &q) {
+                    if !known.contains(&&path) && entries.len() < MAX_FOLDERS {
+                        entries.push(Entry::Add(path));
+                    }
                 }
             }
         }
@@ -157,6 +240,19 @@ impl ProjectsPopup {
             KeyCode::Char('w') if ctrl => {
                 if let Some(Entry::Open(i)) = self.entries.get(self.selected) {
                     return PopupOutcome::Request(WsRequest::Close(*i));
+                }
+            }
+            // Tab: complete the selected folder into the query, to go deeper.
+            KeyCode::Tab => {
+                let path = match self.entries.get(self.selected) {
+                    Some(Entry::Open(i)) => Some(self.bar.open[*i].1.clone()),
+                    Some(Entry::Recent(p) | Entry::Add(p)) => Some(p.clone()),
+                    None => None,
+                };
+                if let Some(p) = path {
+                    self.query = format!("{}/", tilde(&p));
+                    self.selected = 0;
+                    self.refilter();
                 }
             }
             KeyCode::Up => self.selected = self.selected.saturating_sub(1),
@@ -249,7 +345,7 @@ mod tests {
         let new = new.canonicalize().unwrap();
         let mut p = ProjectsPopup::new(bar(dir.path()));
         typed(&mut p, &new.display().to_string());
-        assert_eq!(p.entries, vec![Entry::Add(new.clone())]);
+        assert_eq!(p.entries[0], Entry::Add(new.clone()));
         assert_eq!(
             p.handle_key(&KeyEvent::from(KeyCode::Enter)),
             PopupOutcome::Request(WsRequest::Open(new))
@@ -259,6 +355,87 @@ mod tests {
         typed(&mut p, "/definitely/not/here");
         assert!(p.entries.is_empty());
         assert_eq!(p.handle_key(&KeyEvent::from(KeyCode::Enter)), PopupOutcome::Handled);
+    }
+
+    #[test]
+    fn typing_part_of_a_path_lists_matching_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        for d in ["project-one", "Project-two", "other-project", "zeta", ".hidden"] {
+            std::fs::create_dir(base.join(d)).unwrap();
+        }
+        std::fs::write(base.join("project-file.txt"), "").unwrap();
+        let mut p = ProjectsPopup::new(ProjectsBar::default());
+        typed(&mut p, &format!("{}/proj", base.display()));
+        // Folders only; names starting with "proj" first (any case), then containing it.
+        assert_eq!(
+            p.entries,
+            vec![
+                Entry::Add(base.join("project-one")),
+                Entry::Add(base.join("Project-two")),
+                Entry::Add(base.join("other-project")),
+            ]
+        );
+        // A trailing slash lists everything there (not hidden folders).
+        let mut p = ProjectsPopup::new(ProjectsBar::default());
+        typed(&mut p, &format!("{}/", base.display()));
+        assert_eq!(p.entries.len(), 4);
+        // Tab completes the selected folder and lists inside it.
+        std::fs::create_dir(base.join("zeta/inner")).unwrap();
+        let mut p = ProjectsPopup::new(ProjectsBar::default());
+        typed(&mut p, &format!("{}/ze", base.display()));
+        p.handle_key(&KeyEvent::from(KeyCode::Tab));
+        assert!(p.query.ends_with("zeta/"), "{}", p.query);
+        assert_eq!(p.entries, vec![Entry::Add(base.join("zeta/inner"))]);
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Open(base.join("zeta/inner")))
+        );
+    }
+
+    #[test]
+    fn a_name_finds_folders_next_to_known_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        for d in ["alpha", "lms-context", "lms-other"] {
+            std::fs::create_dir(base.join(d)).unwrap();
+        }
+        let bar = ProjectsBar {
+            open: vec![("alpha".into(), base.join("alpha"))],
+            active: 0,
+            recent: vec![],
+        };
+        let mut p = ProjectsPopup::new(bar);
+        typed(&mut p, "lms");
+        assert_eq!(
+            p.entries,
+            vec![Entry::Add(base.join("lms-context")), Entry::Add(base.join("lms-other"))]
+        );
+        // The open project itself isn't offered again as a folder to add.
+        let mut p = ProjectsPopup::new(ProjectsBar {
+            open: vec![("alpha".into(), base.join("alpha"))],
+            active: 0,
+            recent: vec![],
+        });
+        typed(&mut p, "alp");
+        assert_eq!(p.entries, vec![Entry::Open(0)]);
+    }
+
+    #[test]
+    fn whole_words_rank_above_letters_inside_a_word() {
+        assert_eq!(folder_score("lms-context", "lms"), Some(0));
+        assert_eq!(folder_score("project-two", "two"), Some(1));
+        assert_eq!(folder_score("my_TWO", "two"), Some(1));
+        assert_eq!(folder_score("NetworkExtension", "two"), Some(2));
+        assert_eq!(folder_score("alpha", "two"), None);
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        std::fs::create_dir_all(a.join("NetworkStuff")).unwrap();
+        std::fs::create_dir_all(b.join("project-two")).unwrap();
+        assert_eq!(
+            matching_folders_in(&[&a, &b], "two"),
+            vec![b.join("project-two"), a.join("NetworkStuff")]
+        );
     }
 
     #[test]
