@@ -62,6 +62,15 @@ folder_colours = true
 
 Several projects can be open at once, as tabs at the left of the top bar: click one to switch, its `×` to close it, `+` (or `Ctrl-O`) to open the Projects popup. There, type a few letters: open and recent projects match, and so do folders next to them (`lms` finds `~/Repositories/lms-context` when another project lives in `~/Repositories`). Or type part of a path (`~/Repositories/lm`): the folders there that match are listed, `Tab` completes the selected one to go deeper. `Enter` switches to, reopens or adds the selected folder; `Ctrl-W` closes the selected open project. `Alt-.` / `Alt-,` step through open projects. Each project keeps its own tree, tabs, Commit window, git status, file watcher and editor; settings and the look are shared. The projects open when vista quits are reopened next time (alongside the one you start it in).
 
+### Terminal tabs
+
+Programs such as `claude agents` run in terminal tabs (`▶ claude agents`) next to the project tabs, full screen. Open one from `Ctrl-O`: the commands in `[terminal] commands` are listed (`claude agents` by default), or type `>` and any command. It runs through your login shell (your `PATH`) in the active project's folder. Every key goes to the program except `Ctrl-\` (back to the project); click a tab in the top bar to switch, its `×` to close it. When the program ends, `Enter` closes the tab. Quitting vista with terminal tabs still running asks first.
+
+```toml
+[terminal]
+commands = ["claude agents", "htop"]
+```
+
 ### Remembered settings
 
 View settings you change in the app are saved to `state.toml` next to `config.toml` and restored on the next run: line numbers, wrapping (separately for Markdown and code), the diff's unified/collapse/whitespace options, Commit-window grouping, showing ignored files, Find in Files case/words/regex, and the look picked with `Ctrl-T`. Until you change one, the default comes from `config.toml` (or vista's built-in). `--theme` and `VISTA_THEME` still win over the remembered look. Delete `state.toml` to reset.

@@ -1337,6 +1337,8 @@ impl App {
                 }
             }
             AppEvent::Term(_) => {}
+            // Terminal tabs belong to the workspace.
+            AppEvent::TermOutput(_) | AppEvent::TermExited => {}
             AppEvent::Nvim(e) => self.on_nvim(e),
             AppEvent::DiffLoaded { tab, generation, load } => {
                 let picker = self.picker.clone();
@@ -1732,11 +1734,9 @@ impl App {
             if m.row == self.areas.top.y
                 && let Some(h) = self.project_hits.iter().find(|h| (h.x.0..h.x.1).contains(&m.column))
             {
-                let on_close = h.close.is_some_and(|c| (c.0..c.1).contains(&m.column));
-                match (h.index, on_close) {
-                    (Some(i), true) => self.ws_request = Some(crate::projects::WsRequest::Close(i)),
-                    (Some(i), false) => self.ws_request = Some(crate::projects::WsRequest::Switch(i)),
-                    (None, _) => self.handle_action(Action::Projects),
+                match h.request(m.column) {
+                    Some(req) => self.ws_request = Some(req),
+                    None => self.handle_action(Action::Projects),
                 }
                 return;
             }
@@ -2259,6 +2259,7 @@ mod tests {
             ],
             active: 1,
             recent: vec![],
+            ..Default::default()
         };
         crate::testing::render(&mut app, 120, 30);
         let click = |app: &mut App, col: u16| {

@@ -8,6 +8,7 @@ pub mod goto;
 pub mod help;
 pub mod project;
 pub mod projects;
+pub mod term;
 pub mod viewer;
 
 use ratatui::Frame;
@@ -225,7 +226,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
 }
 
-fn top_bar(f: &mut Frame, area: Rect, app: &mut App) {
+/// The top bar (project and terminal tabs, hints) on its own, for screens
+/// that aren't a project (terminal tabs).
+pub fn top_bar(f: &mut Frame, area: Rect, app: &mut App) {
+    app.areas.top = area;
     f.render_widget(Block::new().style(app.theme.bg("ui.panel")), area);
     // The right side (hints, branch) first: project tabs draw over it when
     // there are many.

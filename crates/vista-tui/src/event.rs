@@ -58,6 +58,10 @@ pub enum AppEvent {
         path: std::path::PathBuf,
         image: Result<Box<image::DynamicImage>, String>,
     },
+    /// A terminal tab has new output (clear the flag once drawn).
+    TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
+    /// A terminal tab's program ended.
+    TermExited,
 }
 
 /// Which open project an event belongs to.

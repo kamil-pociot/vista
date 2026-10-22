@@ -3430,6 +3430,7 @@ dependencies = [
  "dirs",
  "image",
  "insta",
+ "portable-pty",
  "ratatui",
  "ratatui-image",
  "tempfile",
@@ -3444,6 +3445,7 @@ dependencies = [
  "vista-render",
  "vista-search",
  "vista-theme",
+ "vt100",
 ]
 
 [[package]]

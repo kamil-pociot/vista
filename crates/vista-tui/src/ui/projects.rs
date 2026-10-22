@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
-use crate::projects::ProjectHit;
+use crate::projects::{ProjectHit, TabTarget};
 use crate::style::ThemeStyle;
 
 /// The open projects as tabs at the left of the top bar, then `+`.
@@ -26,7 +26,7 @@ pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
     let mut hits = Vec::new();
     let mut x = area.x + 1;
     for (i, (name, _)) in open.iter().enumerate() {
-        let active = i == app.projects.active;
+        let active = i == app.projects.active && app.projects.terminal.is_none();
         let label = format!(" {name} ");
         let style = if active {
             t.fg_bg("ui.text.strong", "ui.selection.inactive")
@@ -47,16 +47,41 @@ pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
             end += 2;
         }
         hits.push(ProjectHit {
-            index: Some(i),
+            target: TabTarget::Project(i),
             x: (x, end),
             close,
         });
         spans.push(Span::raw(" "));
         x = end + 1;
     }
+    // Terminal tabs, after the projects: always closable.
+    for (i, title) in app.projects.terminals.iter().enumerate() {
+        let active = app.projects.terminal == Some(i);
+        let label = format!(" ▶ {title} ");
+        let style = if active {
+            t.fg_bg("ui.text.strong", "ui.selection.inactive")
+                .add_modifier(Modifier::BOLD)
+        } else {
+            t.fg("ui.dim")
+        };
+        let w = label.width() as u16;
+        let close_style = match style.bg {
+            Some(bg) => t.fg("ui.dim").bg(bg),
+            None => t.fg("ui.dim"),
+        };
+        spans.push(Span::styled(label, style));
+        spans.push(Span::styled("× ", close_style));
+        hits.push(ProjectHit {
+            target: TabTarget::Terminal(i),
+            x: (x, x + w + 2),
+            close: Some((x + w, x + w + 1)),
+        });
+        spans.push(Span::raw(" "));
+        x += w + 3;
+    }
     spans.push(Span::styled(" + ", t.fg("ui.accent")));
     hits.push(ProjectHit {
-        index: None,
+        target: TabTarget::Plus,
         x: (x, x + 3),
         close: None,
     });
@@ -127,6 +152,8 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
                     crate::projects::Entry::Open(_) => "○ ",
                     crate::projects::Entry::Recent(_) => "  ",
                     crate::projects::Entry::Add(_) => "+ ",
+                    crate::projects::Entry::Terminal(_) => "▶ ",
+                    crate::projects::Entry::Run(_) => "▷ ",
                 };
                 let mut line = Line::from(vec![
                     Span::styled(format!(" {mark}"), t.fg("ui.accent")),

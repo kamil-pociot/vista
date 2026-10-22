@@ -15,6 +15,34 @@ pub fn rgb_u32(v: u32) -> Color {
     Color::Rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
 }
 
+/// The style of one cell of a terminal tab; the program's default colours
+/// are the look's text and background.
+pub fn term_cell(theme: &Theme, cell: &vt100::Cell) -> Style {
+    let conv = |c: vt100::Color, default: &str| match c {
+        vt100::Color::Default => color(theme.color(default)),
+        vt100::Color::Idx(i) => Color::Indexed(i),
+        vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
+    };
+    let (mut fg, mut bg) = (conv(cell.fgcolor(), "syntax.text"), conv(cell.bgcolor(), "ui.bg"));
+    if cell.inverse() {
+        std::mem::swap(&mut fg, &mut bg);
+    }
+    let mut style = Style::new().fg(fg).bg(bg);
+    if cell.bold() {
+        style = style.add_modifier(Modifier::BOLD);
+    }
+    if cell.dim() {
+        style = style.add_modifier(Modifier::DIM);
+    }
+    if cell.italic() {
+        style = style.add_modifier(Modifier::ITALIC);
+    }
+    if cell.underline() {
+        style = style.add_modifier(Modifier::UNDERLINED);
+    }
+    style
+}
+
 pub fn rgb_of(color: Color) -> Option<Rgb> {
     match color {
         Color::Rgb(r, g, b) => Some(Rgb(r, g, b)),

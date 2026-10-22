@@ -11,15 +11,15 @@ use anyhow::Result;
 use ratatui::crossterm::event;
 
 use crate::event::{AppEvent, EventTx};
+use crate::terminal;
 use crate::workspace::Workspace;
-use crate::{terminal, ui};
 
 const TICK: Duration = Duration::from_millis(500);
 const POLL: Duration = Duration::from_millis(250);
 
 pub fn run(mut ws: Workspace) -> Result<()> {
     let t = std::time::Instant::now();
-    let title = |ws: &mut Workspace| format!("vista — {}", ws.active_app().project_name);
+    let title = |ws: &mut Workspace| ws.title();
     let mut shown_title = title(&mut ws);
     let (mut term, _guard) = terminal::setup(&shown_title)?;
     tracing::info!("terminal ready in {:?}", t.elapsed());
@@ -40,12 +40,12 @@ pub fn run(mut ws: Workspace) -> Result<()> {
     spawn_input_thread(ws.input_tx(), paused.clone());
     // Show the first frame before starting watchers and background jobs.
     let t = std::time::Instant::now();
-    term.draw(|f| ui::draw(f, ws.active_app()))?;
+    term.draw(|f| ws.draw(f))?;
     tracing::info!("first frame drawn in {:?}", t.elapsed());
     let active = ws.active;
     ws.activate(active);
     loop {
-        term.draw(|f| ui::draw(f, ws.active_app()))?;
+        term.draw(|f| ws.draw(f))?;
         if ws.should_quit {
             break;
         }

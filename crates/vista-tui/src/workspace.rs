@@ -12,7 +12,9 @@ use vista_core::{Config, Paths, UiState};
 
 use crate::app::{App, AppOptions, MsgKind, SharedUi};
 use crate::event::{self, AppEvent, EventRx, EventTx, INPUT, ProjectId};
-use crate::projects::{ProjectsBar, WsRequest, project_name};
+use crate::projects::{ProjectsBar, TabTarget, WsRequest, project_name};
+use crate::style::ThemeStyle;
+use crate::term_tab::TermTab;
 
 /// At most this many closed projects are remembered as recent.
 const MAX_RECENT: usize = 20;
@@ -42,6 +44,10 @@ pub struct Workspace {
     look: Option<String>,
     confirm: Option<(Confirm, Instant)>,
     pub should_quit: bool,
+    /// Terminal tabs (programs such as `claude agents`), after the projects.
+    pub terminals: Vec<TermTab>,
+    /// The terminal tab on screen (full screen), if any.
+    pub terminal: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +79,8 @@ impl Workspace {
             look: None,
             confirm: None,
             should_quit: false,
+            terminals: Vec::new(),
+            terminal: None,
         }
     }
 
@@ -140,6 +148,7 @@ impl Workspace {
             return;
         }
         self.active = i;
+        self.terminal = None;
         let look = self.look.clone();
         let ui = self.ui.borrow().clone();
         let app = &mut self.projects[i].app;
@@ -187,6 +196,9 @@ impl Workspace {
             open,
             active: self.active,
             recent,
+            terminals: self.terminals.iter().map(|t| t.title.clone()).collect(),
+            terminal: self.terminal,
+            commands: self.config.terminal.commands.clone(),
         };
         for p in &mut self.projects {
             p.app.projects = bar.clone();
@@ -219,6 +231,21 @@ impl Workspace {
     /// Delivers one event: terminal input to the active project, the rest
     /// to the project that asked for it. Then acts on what it requested.
     pub fn handle(&mut self, id: ProjectId, ev: AppEvent) {
+        if let Some(ti) = self.terminals.iter().position(|t| t.id == id) {
+            match ev {
+                // Drawn after this; the reader may wake us again.
+                AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
+                AppEvent::TermExited => self.terminals[ti].mark_exited(),
+                _ => {}
+            }
+            return;
+        }
+        if id == INPUT
+            && let Some(ti) = self.terminal
+        {
+            self.terminal_input(ti, ev);
+            return;
+        }
         let i = if id == INPUT {
             Some(self.active)
         } else {
@@ -270,6 +297,120 @@ impl Workspace {
                 Err(e) => self.active_app().notify(format!("{e:#}"), MsgKind::Error),
             },
             WsRequest::Close(i) => self.close(i),
+            WsRequest::ShowTerminal(i) => {
+                if i < self.terminals.len() {
+                    self.terminal = Some(i);
+                    self.refresh_bars();
+                }
+            }
+            WsRequest::CloseTerminal(i) => self.close_terminal(i),
+            WsRequest::Run(cmd) => self.run_terminal(&cmd),
+        }
+    }
+
+    /// Runs `command` in a new terminal tab, in the active project's folder.
+    pub fn run_terminal(&mut self, command: &str) {
+        let id = self.next_id;
+        self.next_id += 1;
+        let app = &self.projects[self.active].app;
+        let cwd = app.root.clone();
+        // The full window below the top bar (resized to fit when drawn).
+        let size = (app.areas.top.width.max(20), app.areas.bottom.y.max(10));
+        match TermTab::spawn(id, command, &cwd, size, self.tx.for_project(id)) {
+            Ok(t) => {
+                self.terminals.push(t);
+                self.terminal = Some(self.terminals.len() - 1);
+                self.refresh_bars();
+            }
+            Err(e) => self.active_app().notify(format!("{e:#}"), MsgKind::Error),
+        }
+    }
+
+    /// Closes terminal tab `i` (stopping its program).
+    pub fn close_terminal(&mut self, i: usize) {
+        if i >= self.terminals.len() {
+            return;
+        }
+        self.terminals.remove(i);
+        self.terminal = match self.terminal {
+            Some(j) if j == i => None,
+            Some(j) if j > i => Some(j - 1),
+            other => other,
+        };
+        self.refresh_bars();
+    }
+
+    /// Input while a terminal tab is on screen: everything goes to the
+    /// program except Ctrl-\ (back to the project) and the top bar's tabs.
+    fn terminal_input(&mut self, ti: usize, ev: AppEvent) {
+        use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+        match ev {
+            AppEvent::Term(Event::Key(key)) if key.kind != KeyEventKind::Release => {
+                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                // Legacy terminals report Ctrl-\ as Ctrl-4.
+                if ctrl && matches!(key.code, KeyCode::Char('\\') | KeyCode::Char('4')) {
+                    self.terminal = None;
+                    self.refresh_bars();
+                } else if self.terminals[ti].exited.is_some() && key.code == KeyCode::Enter {
+                    self.close_terminal(ti);
+                } else {
+                    self.terminals[ti].key(&key);
+                }
+            }
+            AppEvent::Term(Event::Paste(text)) => self.terminals[ti].paste(&text),
+            AppEvent::Term(Event::Mouse(m)) => {
+                if m.row == 0 {
+                    if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+                        let hit = self.projects[self.active]
+                            .app
+                            .project_hits
+                            .iter()
+                            .find(|h| (h.x.0..h.x.1).contains(&m.column))
+                            .copied();
+                        match hit.map(|h| (h.target, h.request(m.column))) {
+                            Some((_, Some(req))) => self.request(req),
+                            Some((TabTarget::Plus, None)) => {
+                                self.terminal = None;
+                                self.refresh_bars();
+                                self.active_app().handle_action(crate::keymap::Action::Projects);
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    self.terminals[ti].mouse(&m, m.column, m.row - 1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Draws the screen: a terminal tab full size, or the active project.
+    pub fn draw(&mut self, f: &mut ratatui::Frame) {
+        let Some(ti) = self.terminal.filter(|t| *t < self.terminals.len()) else {
+            crate::ui::draw(f, self.active_app());
+            return;
+        };
+        let area = f.area();
+        let app = &mut self.projects[self.active].app;
+        f.render_widget(ratatui::widgets::Block::new().style(app.theme.base()), area);
+        let top = ratatui::layout::Rect { height: 1, ..area };
+        crate::ui::top_bar(f, top, app);
+        let body = ratatui::layout::Rect {
+            y: area.y + 1,
+            height: area.height.saturating_sub(1),
+            ..area
+        };
+        let tab = &mut self.terminals[ti];
+        tab.resize(body.width, body.height);
+        crate::ui::term::draw(f, body, tab, &app.theme);
+    }
+
+    /// The window title: the active project or terminal.
+    pub fn title(&mut self) -> String {
+        match self.terminal.and_then(|t| self.terminals.get(t)) {
+            Some(t) => format!("vista — {}", t.title),
+            None => format!("vista — {}", self.active_app().project_name),
         }
     }
 
@@ -317,6 +458,17 @@ impl Workspace {
             .map(|(_, p)| unsaved(&p.app))
             .sum();
         let confirmed = matches!(&self.confirm, Some((Confirm::Quit, at)) if at.elapsed() < CONFIRM);
+        let running = self.terminals.iter().filter(|t| t.exited.is_none()).count();
+        if running > 0 && !confirmed {
+            self.confirm = Some((Confirm::Quit, Instant::now()));
+            let app = self.active_app();
+            app.should_quit = false;
+            app.notify(
+                format!("{running} terminal tab(s) still running; press q again to stop them and quit"),
+                MsgKind::Error,
+            );
+            return;
+        }
         if unsaved > 0 && !confirmed {
             self.confirm = Some((Confirm::Quit, Instant::now()));
             let app = self.active_app();
@@ -340,6 +492,7 @@ impl Workspace {
 
     pub fn on_exit(&mut self) {
         self.persist();
+        self.terminals.clear();
         for p in &mut self.projects {
             p.app.on_exit();
         }

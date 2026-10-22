@@ -110,6 +110,23 @@ impl Default for EditorConfig {
     }
 }
 
+/// Terminal tabs (full-screen programs such as `claude agents`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TerminalConfig {
+    /// Commands offered in the Projects popup (Ctrl-O); any other runs as
+    /// `>command`. They run through your login shell in the project folder.
+    pub commands: Vec<String>,
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            commands: vec!["claude agents".into()],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TreeConfig {
@@ -136,6 +153,7 @@ pub struct Config {
     pub images: ImagesConfig,
     pub editor: EditorConfig,
     pub tree: TreeConfig,
+    pub terminal: TerminalConfig,
     /// Key overrides: `"ctrl+p" = "goto-file"`.
     pub keys: BTreeMap<String, String>,
 }
@@ -147,6 +165,7 @@ impl Default for Config {
             images: ImagesConfig::default(),
             editor: EditorConfig::default(),
             tree: TreeConfig::default(),
+            terminal: TerminalConfig::default(),
             keys: BTreeMap::new(),
         }
     }

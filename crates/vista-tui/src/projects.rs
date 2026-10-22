@@ -15,15 +15,44 @@ pub struct ProjectsBar {
     pub active: usize,
     /// Projects opened before (most recent first), not open now.
     pub recent: Vec<PathBuf>,
+    /// Open terminal tabs (their commands), after the projects.
+    pub terminals: Vec<String>,
+    /// The terminal tab on screen, if any (then no project is).
+    pub terminal: Option<usize>,
+    /// Commands offered for new terminal tabs (`[terminal] commands`).
+    pub commands: Vec<String>,
 }
 
-/// Where a project tab (or the + button, `index: None`) was drawn in the top
-/// bar: screen columns of the whole tab and of its ×.
+/// What a tab in the top bar is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabTarget {
+    Project(usize),
+    Terminal(usize),
+    /// The + button.
+    Plus,
+}
+
+/// Where a tab was drawn in the top bar: screen columns of the whole tab
+/// and of its ×.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProjectHit {
-    pub index: Option<usize>,
+    pub target: TabTarget,
     pub x: (u16, u16),
     pub close: Option<(u16, u16)>,
+}
+
+impl ProjectHit {
+    /// What clicking column `col` of this tab asks for.
+    pub fn request(&self, col: u16) -> Option<WsRequest> {
+        let on_close = self.close.is_some_and(|c| (c.0..c.1).contains(&col));
+        match (self.target, on_close) {
+            (TabTarget::Project(i), true) => Some(WsRequest::Close(i)),
+            (TabTarget::Project(i), false) => Some(WsRequest::Switch(i)),
+            (TabTarget::Terminal(i), true) => Some(WsRequest::CloseTerminal(i)),
+            (TabTarget::Terminal(i), false) => Some(WsRequest::ShowTerminal(i)),
+            (TabTarget::Plus, _) => None,
+        }
+    }
 }
 
 /// What a project asks the workspace to do.
@@ -37,6 +66,11 @@ pub enum WsRequest {
     Open(PathBuf),
     /// Close open project `i`.
     Close(usize),
+    /// Show terminal tab `i`.
+    ShowTerminal(usize),
+    CloseTerminal(usize),
+    /// Run a command in a new terminal tab.
+    Run(String),
 }
 
 /// The name a project goes by: its folder's name.
@@ -73,6 +107,10 @@ pub enum Entry {
     Recent(PathBuf),
     /// A folder typed as a path, to add.
     Add(PathBuf),
+    /// An open terminal tab.
+    Terminal(usize),
+    /// A command to run in a new terminal tab.
+    Run(String),
 }
 
 /// At most this many folders are offered while typing.
@@ -165,6 +203,12 @@ impl ProjectsPopup {
             }
             Entry::Recent(p) => (project_name(p), p.display().to_string(), false),
             Entry::Add(p) => (project_name(p), p.display().to_string(), false),
+            Entry::Terminal(i) => (
+                self.bar.terminals[*i].clone(),
+                "terminal tab".into(),
+                self.bar.terminal == Some(*i),
+            ),
+            Entry::Run(cmd) => (cmd.clone(), "run in a new terminal tab".into(), false),
         }
     }
 
@@ -179,7 +223,13 @@ impl ProjectsPopup {
             Some(i) => Entry::Open(i),
             None => Entry::Add(path),
         };
-        if looks_like_path {
+        if let Some(cmd) = self.query.trim().strip_prefix('>') {
+            // `>command`: run it in a terminal tab.
+            let cmd = cmd.trim();
+            if !cmd.is_empty() {
+                entries.push(Entry::Run(cmd.to_string()));
+            }
+        } else if looks_like_path {
             // `~/Repos/lm` → folders in ~/Repos matching "lm"; `~/Repos/` → all.
             let typed = self.query.trim();
             let full = expand_home(typed);
@@ -202,9 +252,19 @@ impl ProjectsPopup {
                     entries.push(Entry::Open(i));
                 }
             }
+            for (i, t) in self.bar.terminals.iter().enumerate() {
+                if q.is_empty() || t.to_lowercase().contains(&q) {
+                    entries.push(Entry::Terminal(i));
+                }
+            }
             for r in &self.bar.recent {
                 if matches(&project_name(r), r) {
                     entries.push(Entry::Recent(r.clone()));
+                }
+            }
+            for c in &self.bar.commands {
+                if q.is_empty() || c.to_lowercase().contains(&q) {
+                    entries.push(Entry::Run(c.clone()));
                 }
             }
             // Folders next to known projects (often all in ~/Repositories),
@@ -233,21 +293,23 @@ impl ProjectsPopup {
                 return match self.entries.get(self.selected) {
                     Some(Entry::Open(i)) => PopupOutcome::Request(WsRequest::Switch(*i)),
                     Some(Entry::Recent(p) | Entry::Add(p)) => PopupOutcome::Request(WsRequest::Open(p.clone())),
+                    Some(Entry::Terminal(i)) => PopupOutcome::Request(WsRequest::ShowTerminal(*i)),
+                    Some(Entry::Run(cmd)) => PopupOutcome::Request(WsRequest::Run(cmd.clone())),
                     None => PopupOutcome::Handled,
                 };
             }
             // Ctrl-W closes the selected open project.
-            KeyCode::Char('w') if ctrl => {
-                if let Some(Entry::Open(i)) = self.entries.get(self.selected) {
-                    return PopupOutcome::Request(WsRequest::Close(*i));
-                }
-            }
+            KeyCode::Char('w') if ctrl => match self.entries.get(self.selected) {
+                Some(Entry::Open(i)) => return PopupOutcome::Request(WsRequest::Close(*i)),
+                Some(Entry::Terminal(i)) => return PopupOutcome::Request(WsRequest::CloseTerminal(*i)),
+                _ => {}
+            },
             // Tab: complete the selected folder into the query, to go deeper.
             KeyCode::Tab => {
                 let path = match self.entries.get(self.selected) {
                     Some(Entry::Open(i)) => Some(self.bar.open[*i].1.clone()),
                     Some(Entry::Recent(p) | Entry::Add(p)) => Some(p.clone()),
-                    None => None,
+                    _ => None,
                 };
                 if let Some(p) = path {
                     self.query = format!("{}/", tilde(&p));
@@ -293,6 +355,7 @@ mod tests {
             open: vec![("alpha".into(), dir.join("alpha")), ("beta".into(), dir.join("beta"))],
             active: 0,
             recent: vec![dir.join("gamma")],
+            ..ProjectsBar::default()
         }
     }
 
@@ -404,6 +467,7 @@ mod tests {
             open: vec![("alpha".into(), base.join("alpha"))],
             active: 0,
             recent: vec![],
+            ..ProjectsBar::default()
         };
         let mut p = ProjectsPopup::new(bar);
         typed(&mut p, "lms");
@@ -416,6 +480,7 @@ mod tests {
             open: vec![("alpha".into(), base.join("alpha"))],
             active: 0,
             recent: vec![],
+            ..ProjectsBar::default()
         });
         typed(&mut p, "alp");
         assert_eq!(p.entries, vec![Entry::Open(0)]);
@@ -435,6 +500,37 @@ mod tests {
         assert_eq!(
             matching_folders_in(&[&a, &b], "two"),
             vec![b.join("project-two"), a.join("NetworkStuff")]
+        );
+    }
+
+    #[test]
+    fn terminals_and_commands_are_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        let bar = ProjectsBar {
+            terminals: vec!["claude agents".into()],
+            commands: vec!["claude agents".into(), "htop".into()],
+            ..bar(dir.path())
+        };
+        let mut p = ProjectsPopup::new(bar.clone());
+        assert!(p.entries.contains(&Entry::Terminal(0)));
+        assert!(p.entries.contains(&Entry::Run("htop".into())));
+        typed(&mut p, "htop");
+        assert_eq!(p.entries, vec![Entry::Run("htop".into())]);
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Run("htop".into()))
+        );
+        // `>anything` runs that command.
+        let mut p = ProjectsPopup::new(bar.clone());
+        typed(&mut p, ">git log --oneline");
+        assert_eq!(p.entries, vec![Entry::Run("git log --oneline".into())]);
+        // Ctrl-W on a terminal closes it.
+        let mut p = ProjectsPopup::new(bar);
+        typed(&mut p, "claude");
+        assert_eq!(p.entries[0], Entry::Terminal(0));
+        assert_eq!(
+            p.handle_key(&KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL)),
+            PopupOutcome::Request(WsRequest::CloseTerminal(0))
         );
     }
 
