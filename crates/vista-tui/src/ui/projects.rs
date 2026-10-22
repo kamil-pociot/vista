@@ -91,8 +91,8 @@ pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
 
 /// The Projects popup (Ctrl-O).
 pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
-    let Some(p) = &app.projects_popup else { return };
     let t = &app.theme;
+    let Some(p) = app.projects_popup.as_mut() else { return };
     let w = area.width.saturating_sub(4).min(90);
     let h = (p.entries.len() as u16 + 5).clamp(7, area.height.saturating_sub(2).max(7));
     let rect = crate::ui::help::centered(area, w, h);
@@ -141,9 +141,11 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
             t.fg("ui.dim"),
         )]
     } else {
+        p.keep_visible(list.height as usize);
         p.entries
             .iter()
             .enumerate()
+            .skip(p.scroll)
             .take(list.height as usize)
             .map(|(i, e)| {
                 let (name, detail, active) = p.describe(e);

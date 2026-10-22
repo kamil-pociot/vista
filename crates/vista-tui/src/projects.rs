@@ -176,6 +176,8 @@ pub struct ProjectsPopup {
     pub query: String,
     pub selected: usize,
     pub entries: Vec<Entry>,
+    /// First entry shown; the list scrolls to keep `selected` in view.
+    pub scroll: usize,
     bar: ProjectsBar,
 }
 
@@ -192,6 +194,7 @@ impl ProjectsPopup {
             query: String::new(),
             selected: 0,
             entries: Vec::new(),
+            scroll: 0,
             bar,
         };
         p.refilter();
@@ -250,6 +253,11 @@ impl ProjectsPopup {
                 (full.parent().map(Path::to_path_buf).unwrap_or_default(), partial)
             };
             let dir = dir.canonicalize().unwrap_or(dir);
+            // `~/Repos/app/` (what Tab completes to) offers app itself
+            // first, so Enter opens it; its sub-folders follow.
+            if typed.ends_with('/') && dir.is_dir() {
+                entries.push(as_entry(dir.clone(), &self.bar));
+            }
             for path in matching_folders(&dir, &partial) {
                 entries.push(as_entry(path, &self.bar));
             }
@@ -343,8 +351,20 @@ impl ProjectsPopup {
         PopupOutcome::Handled
     }
 
-    /// Clicking row `i` of the list opens that entry.
-    pub fn click(&mut self, i: usize) -> PopupOutcome {
+    /// Scrolls so the selected entry is among the `rows` shown.
+    pub fn keep_visible(&mut self, rows: usize) {
+        let rows = rows.max(1);
+        if self.selected < self.scroll {
+            self.scroll = self.selected;
+        } else if self.selected >= self.scroll + rows {
+            self.scroll = self.selected + 1 - rows;
+        }
+        self.scroll = self.scroll.min(self.entries.len().saturating_sub(rows));
+    }
+
+    /// Clicking row `row` of the list opens the entry shown there.
+    pub fn click(&mut self, row: usize) -> PopupOutcome {
+        let i = self.scroll + row;
         if i < self.entries.len() {
             self.selected = i;
             return self.handle_key(&KeyEvent::from(KeyCode::Enter));
@@ -446,21 +466,58 @@ mod tests {
                 Entry::Add(base.join("other-project")),
             ]
         );
-        // A trailing slash lists everything there (not hidden folders).
+        // A trailing slash offers that folder, then everything in it (not hidden folders).
         let mut p = ProjectsPopup::new(ProjectsBar::default());
         typed(&mut p, &format!("{}/", base.display()));
-        assert_eq!(p.entries.len(), 4);
-        // Tab completes the selected folder and lists inside it.
+        assert_eq!(p.entries.len(), 5);
+        assert_eq!(p.entries[0], Entry::Add(base.clone()));
+        // Tab completes the selected folder; Enter then opens it, not its first sub-folder.
         std::fs::create_dir(base.join("zeta/inner")).unwrap();
         let mut p = ProjectsPopup::new(ProjectsBar::default());
         typed(&mut p, &format!("{}/ze", base.display()));
         p.handle_key(&KeyEvent::from(KeyCode::Tab));
         assert!(p.query.ends_with("zeta/"), "{}", p.query);
-        assert_eq!(p.entries, vec![Entry::Add(base.join("zeta/inner"))]);
+        assert_eq!(
+            p.entries,
+            vec![Entry::Add(base.join("zeta")), Entry::Add(base.join("zeta/inner"))]
+        );
+        assert_eq!(
+            p.handle_key(&KeyEvent::from(KeyCode::Enter)),
+            PopupOutcome::Request(WsRequest::Open(base.join("zeta")))
+        );
+        p.handle_key(&KeyEvent::from(KeyCode::Down));
         assert_eq!(
             p.handle_key(&KeyEvent::from(KeyCode::Enter)),
             PopupOutcome::Request(WsRequest::Open(base.join("zeta/inner")))
         );
+        // A completed folder without sub-folders can still be opened.
+        let mut p = ProjectsPopup::new(ProjectsBar::default());
+        typed(&mut p, &format!("{}/project-one/", base.display()));
+        assert_eq!(p.entries, vec![Entry::Add(base.join("project-one"))]);
+    }
+
+    #[test]
+    fn the_list_scrolls_to_the_selection_and_clicks_follow() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        for i in 0..10 {
+            std::fs::create_dir(base.join(format!("d{i}"))).unwrap();
+        }
+        let mut p = ProjectsPopup::new(ProjectsBar::default());
+        typed(&mut p, &format!("{}/d", base.display()));
+        assert_eq!(p.entries.len(), 10);
+        for _ in 0..7 {
+            p.handle_key(&KeyEvent::from(KeyCode::Down));
+        }
+        p.keep_visible(3);
+        assert_eq!(p.scroll, 5, "d7 is the last of three rows");
+        // Row 0 on screen is d5 now.
+        assert_eq!(p.click(0), PopupOutcome::Request(WsRequest::Open(base.join("d5"))));
+        for _ in 0..7 {
+            p.handle_key(&KeyEvent::from(KeyCode::Up));
+        }
+        p.keep_visible(3);
+        assert_eq!(p.scroll, 0);
     }
 
     #[test]

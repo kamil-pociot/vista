@@ -81,4 +81,10 @@ vista.expect_text("two").to_have_bg("diff.inserted");
 
 ## Docs
 
-When behaviour changes, update the matching file in `docs/` (and `docs/README.md` if a feature is added), the keys table in `README.md`, and milestone notes in `ROADMAP.md` where relevant.
+Every feature has its own document in `docs/`, numbered in order (`01-project-tree.md` … `16-testing.md`):
+
+- **A new feature gets a new file** with the next free number (`17-<feature>.md`), never a section squeezed into an existing one. Follow the shape of the others: what it does, keys, settings, code and tests. Add a row for it to the index in `docs/README.md` and link related docs both ways.
+- **A change to an existing feature** updates that feature's file (and `15-keyboard-reference.md` / `14-configuration-and-settings.md` if keys or settings changed).
+- Numbers are never reused or reshuffled, so links stay stable.
+
+Also keep the keys table in `README.md` and the milestone notes in `ROADMAP.md` up to date where relevant.

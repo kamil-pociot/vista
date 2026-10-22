@@ -8,7 +8,8 @@ Several projects can be open at once, shown as tabs at the left of the top bar.
 - `Alt-.` / `Alt-,` step through open projects.
 - **Projects popup** (`Ctrl-O`):
   - Type a few letters: open and recent projects match, and so do folders next to them (`lms` finds `~/Repositories/lms-context` when another project lives in `~/Repositories`).
-  - Or type part of a path (`~/Repositories/lm`): matching folders there are listed, and `Tab` completes the selected one to go deeper.
+  - Or type part of a path (`~/Repositories/lm`): matching folders there are listed, and `Tab` completes the selected one (`~/Repositories/lms-context/`). A path ending in `/` lists that folder itself first, so `Enter` opens it, followed by its sub-folders to go deeper (`↓`, `Tab`).
+  - The list scrolls with the selection when there are more folders than rows.
   - `Enter` switches to, reopens or adds the selected folder; `Ctrl-W` closes the selected open project.
   - `>` starts a terminal instead ([11](11-terminals.md)).
 - **Each project keeps its own** tree, file tabs, Commit window, git status, file watcher, editor and bottom terminal. Settings and the look are shared.

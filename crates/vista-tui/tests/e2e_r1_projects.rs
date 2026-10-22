@@ -141,3 +141,61 @@ fn folders_complete_while_typing_a_path_or_a_name() {
     vista.expect_text(" project-one × ");
     vista.expect_text(" project-two × ");
 }
+
+#[test]
+fn a_tab_completed_folder_opens_itself() {
+    let base = tempfile::tempdir().unwrap();
+    let base = base.path().canonicalize().unwrap();
+    std::fs::create_dir_all(base.join("app/src")).unwrap();
+    std::fs::write(base.join("app/readme.txt"), "x\n").unwrap();
+    std::fs::create_dir(base.join("empty")).unwrap();
+    let a = project("alpha.txt", "in alpha\n");
+    let mut vista = Vista::launch(BIN, &a).size(160, 40).start();
+    vista.expect_text_in("alpha.txt", 0..40);
+
+    // Tab completes to `…/app/`: app itself comes first, then its sub-folders,
+    // and Enter opens app (not app/src).
+    vista.press("ctrl+o");
+    vista.type_text(&format!("{}/ap", base.display()));
+    vista.expect_text("+ app");
+    vista.press("tab");
+    vista.expect_text("app/▏");
+    vista.expect_text("+ src");
+    vista.expect_text("+ app").to_have_bg("ui.selection");
+    vista.press("enter");
+    vista.expect_text_in("readme.txt", 0..40);
+    vista.expect_text(" app × ");
+
+    // A folder with no sub-folders can be opened the same way.
+    vista.press("ctrl+o");
+    vista.type_text(&format!("{}/empty/", base.display()));
+    vista.expect_text("+ empty").to_have_bg("ui.selection");
+    vista.press("enter");
+    vista.expect_text(" empty × ");
+}
+
+#[test]
+fn a_long_folder_list_scrolls_to_the_selection() {
+    let base = tempfile::tempdir().unwrap();
+    let base = base.path().canonicalize().unwrap();
+    for i in 0..40 {
+        std::fs::create_dir(base.join(format!("d{i:02}"))).unwrap();
+    }
+    std::fs::write(base.join("d30/thirty.txt"), "x\n").unwrap();
+    let a = project("alpha.txt", "in alpha\n");
+    let mut vista = Vista::launch(BIN, &a).size(160, 20).start();
+    vista.expect_text_in("alpha.txt", 0..40);
+
+    vista.press("ctrl+o");
+    vista.type_text(&format!("{}/d", base.display()));
+    vista.expect_text("+ d00").to_have_bg("ui.selection");
+    vista.expect_no_text("+ d30");
+    for _ in 0..30 {
+        vista.press("down");
+    }
+    // The list followed the selection down.
+    vista.expect_text("+ d30").to_have_bg("ui.selection");
+    vista.expect_no_text("+ d00");
+    vista.press("enter");
+    vista.expect_text_in("thirty.txt", 0..40);
+}
