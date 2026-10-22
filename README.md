@@ -107,7 +107,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 VISTA_PERF_REPO=~/some/repo cargo test --release --test perf -- --ignored --nocapture
 ```
 
-End-to-end tests run the real binary in a pseudo-terminal (`crates/vista-e2e`): they type keys, click, and assert on the screen with auto-waiting locators. A failing test writes an HTML trace of every step to `target/e2e-traces/`. Snapshot tests use `insta` (`cargo insta review`). See `ROADMAP.md` for the plan and what each milestone covers.
+End-to-end tests run the real binary in a pseudo-terminal (`crates/vista-e2e`): they type keys, click, and assert on the screen with auto-waiting locators. A failing test writes an HTML trace of every step to `target/e2e-traces/`. Snapshot tests use `insta` (`cargo insta review`). See `ROADMAP.md` for the plan and what each milestone covers, [`docs/`](docs/README.md) for a document per feature, and `AGENTS.md` for working on the code.
 
 | Crate | Role |
 |---|---|
