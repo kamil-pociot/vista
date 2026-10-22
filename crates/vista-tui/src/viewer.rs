@@ -95,6 +95,9 @@ pub struct Tab {
     /// Scroll limit while wrapping, where lines take several rows (set when
     /// drawing; `None` means one row per line).
     pub wrapped_max: Option<usize>,
+    /// The view was scrolled (wheel) rather than the cursor moved: the
+    /// cursor follows the view instead of the view following the cursor.
+    pub scrolled: bool,
     pub search: Option<Search>,
     pub view_height: usize,
     pub view_width: usize,
@@ -281,6 +284,7 @@ impl Viewer {
             wrap: false,
             land: None,
             wrapped_max: None,
+            scrolled: false,
             search: None,
             view_height: 20,
             view_width: 80,
@@ -610,6 +614,7 @@ impl Tab {
     }
 
     pub fn set_cursor(&mut self, line: usize) {
+        self.scrolled = false;
         let n = self.total_lines();
         self.cursor = line.min(n.saturating_sub(1));
         if self.has_cursor() {
@@ -636,20 +641,41 @@ impl Tab {
             self.scroll = 0;
             return;
         };
-        let cursor = self.cursor.min(last);
-        if self.has_cursor() && cursor >= self.scroll {
-            let mut used: usize = heights[self.scroll..=cursor].iter().sum();
-            while used > h && self.scroll < cursor {
-                used -= heights[self.scroll];
-                self.scroll += 1;
-            }
-        }
         let max = wrapped_max_scroll(heights, h);
         self.wrapped_max = Some(max);
-        self.scroll = self.scroll.min(max);
+        if !self.has_cursor() {
+            self.scroll = self.scroll.min(max);
+            return;
+        }
+        let cursor = self.cursor.min(last);
+        if self.scrolled {
+            // Wheel: keep the view, pull the cursor onto its last full line.
+            self.scroll = self.scroll.min(max).min(last);
+            let mut used = 0;
+            let mut bottom = self.scroll;
+            for (i, rows) in heights.iter().enumerate().skip(self.scroll) {
+                used += rows;
+                if used > h {
+                    break;
+                }
+                bottom = i;
+            }
+            self.cursor = cursor.clamp(self.scroll, bottom);
+        } else {
+            // Cursor moved: scroll until its whole line is on screen.
+            if cursor >= self.scroll {
+                let mut used: usize = heights[self.scroll..=cursor].iter().sum();
+                while used > h && self.scroll < cursor {
+                    used -= heights[self.scroll];
+                    self.scroll += 1;
+                }
+            }
+            self.scroll = self.scroll.min(max);
+        }
     }
 
     pub fn scroll_by(&mut self, delta: isize) {
+        self.scrolled = true;
         let n = self.total_lines();
         let max = self.max_scroll();
         self.scroll = (self.scroll as isize + delta).clamp(0, max as isize) as usize;
@@ -1149,5 +1175,34 @@ mod tests {
         assert_eq!(t.max_scroll(), 27);
         t.scroll_by(1000);
         assert_eq!(t.scroll, 27);
+    }
+
+    #[test]
+    fn wheel_scrolls_up_through_wrapped_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.txt");
+        std::fs::write(&p, "x\n".repeat(30)).unwrap();
+        let (ctx, _rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        let t = v.active_tab_mut().unwrap();
+        t.view_height = 20;
+        let heights = [4usize; 30];
+        // At the end of the file…
+        t.set_cursor(29);
+        t.fit_wrapped(&heights);
+        let end = t.scroll;
+        assert!(end > 20);
+        // …each wheel step up sticks, and the cursor comes along.
+        for _ in 0..20 {
+            t.scroll_by(-3);
+            t.fit_wrapped(&heights);
+        }
+        assert_eq!(t.scroll, 0, "reached the top");
+        assert!(t.cursor <= 4, "cursor on a visible line: {}", t.cursor);
+        // Moving the cursor afterwards follows it again.
+        t.set_cursor(29);
+        t.fit_wrapped(&heights);
+        assert_eq!(t.scroll, end);
     }
 }

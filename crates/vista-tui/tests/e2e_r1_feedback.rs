@@ -267,6 +267,14 @@ fn wrapped_diff_reaches_the_last_line() {
         vista.scroll_down(100, 20);
     }
     vista.expect_text("END60");
+    // …and scrolls all the way back up (the cursor comes along instead of
+    // pulling the view back down).
+    vista.press("end");
+    vista.expect_text("END60");
+    for _ in 0..150 {
+        vista.scroll_up(100, 20);
+    }
+    vista.expect_text("END01");
     // Walking down line by line keeps the cursor line on screen.
     vista.press("home");
     for _ in 0..59 {
