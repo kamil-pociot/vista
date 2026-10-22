@@ -25,6 +25,8 @@ expression: "vista_tui::testing::text(&buf)"
                        │                    i  Show/hide ignored files      │
                        │              Shift-L  Show/hide line numbers       │
                        │               Ctrl-O  Projects: switch, open, add  │
+                       │                Alt-9  Git log tool window          │
+                       │                Alt-H  History of the current file  │
                        │         Ctrl-Shift-→  Widen the left panel         │
                        │         Ctrl-Shift-←  Narrow the left panel        │
                        │                Alt-.  Next project                 │
@@ -33,6 +35,4 @@ expression: "vista_tui::testing::text(&buf)"
                        │                    -  Collapse all folders         │
                        │               Ctrl-T  Switch to next look          │
                        │           Ctrl-Alt-↓  Next Find result             │
-                       │           Ctrl-Alt-↑  Previous Find result         │
-                       └ any key to close ──────────────────────────────────┘
- 1: Project   2: Commit   3: Find   ?: Help                                         Darcula Classic
+ 1: Project   2: Commit└ any key to close ──────────────────────────────────┘       Darcula Classic

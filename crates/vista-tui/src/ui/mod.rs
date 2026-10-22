@@ -6,6 +6,7 @@ pub mod diff;
 pub mod find;
 pub mod goto;
 pub mod help;
+pub mod log;
 pub mod project;
 pub mod projects;
 pub mod term;
@@ -50,6 +51,9 @@ pub struct Areas {
     pub reveal_button: Option<Rect>,
     /// The entry list of the Projects popup.
     pub projects_list: Option<Rect>,
+    /// The Git window's commit and file lists.
+    pub log_commits: Option<Rect>,
+    pub log_files: Option<Rect>,
     pub main: Rect,
     pub bottom: Rect,
     pub keyhints: Option<Rect>,
@@ -68,7 +72,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
     let (top, mut body, bottom) = (v[0], v[1], v[2]);
     // Bottom tool window (Find) spans the full width under the panels.
     let mut bottom_panel = None;
-    if app.find_window.visible && !app.find_window.tabs.is_empty() && body.height > 12 {
+    let find = app.find_window.visible && !app.find_window.tabs.is_empty();
+    if (find || app.log.visible) && body.height > 12 {
         let h = (body.height * 35 / 100).max(8);
         bottom_panel = Some(Rect {
             y: body.y + body.height - h,
@@ -107,6 +112,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             commit_message: None,
             reveal_button: None,
             projects_list: None,
+            log_commits: None,
+            log_files: None,
             main: body,
             bottom,
             keyhints,
@@ -149,6 +156,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         commit_message: None,
         reveal_button: None,
         projects_list: None,
+        log_commits: None,
+        log_files: None,
         main,
         bottom,
         keyhints,
@@ -180,8 +189,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.change_hop.is_some() {
         viewer::draw_change_hop(f, areas.main, app);
     }
+    app.areas.log_commits = None;
+    app.areas.log_files = None;
     if let Some(b) = areas.panel_bottom {
-        find::draw_window(f, b, app);
+        if app.log.visible {
+            log::draw(f, b, app);
+        } else {
+            find::draw_window(f, b, app);
+        }
     }
     chrome::bottom_bar(f, areas.bottom, app);
     if let Some(k) = areas.keyhints {
@@ -212,6 +227,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
     let (reveal_button, projects_list) = (app.areas.reveal_button, app.areas.projects_list);
+    let (log_commits, log_files) = (app.areas.log_commits, app.areas.log_files);
     app.areas = Areas {
         tabs,
         viewer: viewer_area,
@@ -222,6 +238,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         commit_message,
         reveal_button,
         projects_list,
+        log_commits,
+        log_files,
         ..areas
     };
 }

@@ -6,8 +6,10 @@
 //! working.
 
 pub mod cmd;
+pub mod log;
 pub mod status;
 pub mod write;
 
 pub use cmd::{Git, GitError};
+pub use log::{Commit, CommitFile};
 pub use status::{BranchInfo, Change, FileStatus, StatusSnapshot};

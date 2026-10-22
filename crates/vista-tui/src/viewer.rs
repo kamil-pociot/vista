@@ -196,13 +196,16 @@ impl Viewer {
         self.tabs.iter().position(|t| t.path == path && t.diff.is_none())
     }
 
-    pub fn diff_position(&self, path: &Path) -> Option<usize> {
-        self.tabs.iter().position(|t| t.path == path && t.diff.is_some())
+    /// The diff tab of `path` for these revisions (HEAD ⇄ working tree when `None`).
+    pub fn diff_position(&self, path: &Path, revs: &Option<crate::diffview::Revs>) -> Option<usize> {
+        self.tabs
+            .iter()
+            .position(|t| t.path == path && t.diff.as_ref().is_some_and(|d| d.revs == *revs))
     }
 
     /// Opens (or reuses) the diff tab for `path`.
     pub fn open_diff(&mut self, path: &Path, spec: DiffSpec, ctx: &LoadCtx) {
-        if let Some(i) = self.diff_position(path) {
+        if let Some(i) = self.diff_position(path, &spec.revs) {
             self.activate(i);
             let t = &mut self.tabs[i];
             t.diff = Some(spec);

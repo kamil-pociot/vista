@@ -112,7 +112,15 @@ fn fold_line(t: &Theme, len: usize, width: usize) -> Line<'static> {
     Line::from(vec![Span::raw(" ".repeat(pad)), Span::styled(text, t.fg("ui.dim"))]).style(t.bg("ui.panel.alt"))
 }
 
-pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, root: &Path, commit: &CommitView) {
+pub fn draw(
+    f: &mut Frame,
+    area: Rect,
+    tab: &mut Tab,
+    t: &Theme,
+    focused: bool,
+    root: &Path,
+    commit: Option<&CommitView>,
+) {
     if area.height < 4 {
         return;
     }
@@ -139,7 +147,7 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         .sbs
         .hunks
         .iter()
-        .filter(|h| commit.hunk_included(&tab.path, h.id))
+        .filter(|h| commit.is_some_and(|c| c.hunk_included(&tab.path, h.id)))
         .count();
     let position = if n == 0 {
         // Git counts a missing final newline; the lines themselves match.
@@ -148,6 +156,8 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &mut Tab, t: &Theme, focused: bool, 
         } else {
             "no changes ".to_string()
         }
+    } else if commit.is_none() {
+        format!("read-only   [ ◂ change {k} of {n} ▸ ] ")
     } else {
         format!("{ticked} of {n} in commit (␣)   [ ◂ change {k} of {n} ▸ ] ")
     };
@@ -270,7 +280,7 @@ fn draw_side_by_side(
     t: &Theme,
     ln_w: usize,
     focused: bool,
-    commit: &CommitView,
+    commit: Option<&CommitView>,
 ) {
     let starts = hunk_start_rows(doc);
     let gutter = 2usize;
@@ -284,12 +294,9 @@ fn draw_side_by_side(
     };
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(
-                header(format!("HEAD · {} (read-only)", doc.head), half),
-                t.fg("ui.header"),
-            ),
+            Span::styled(header(doc.sides.0.clone(), half), t.fg("ui.header")),
             Span::raw(" ".repeat(gutter)),
-            Span::styled(header("Working tree".into(), right_w), t.fg("ui.header")),
+            Span::styled(header(doc.sides.1.clone(), right_w), t.fg("ui.header")),
         ]))
         .style(t.bg("ui.panel.alt")),
         cols,
@@ -348,8 +355,8 @@ fn draw_side_by_side(
         }
         // A checkbox where each change starts (partial commits), else the cursor.
         let g = match starts.iter().find(|(r, _)| *r == di) {
-            Some((_, id)) if !doc.opts.ignore_whitespace => {
-                if commit.hunk_included(&tab.path, *id) {
+            Some((_, id)) if !doc.opts.ignore_whitespace && commit.is_some() => {
+                if commit.is_some_and(|c| c.hunk_included(&tab.path, *id)) {
                     "☑ "
                 } else {
                     "☐ "
@@ -400,12 +407,12 @@ fn draw_unified(
     t: &Theme,
     ln_w: usize,
     focused: bool,
-    commit: &CommitView,
+    commit: Option<&CommitView>,
 ) {
     let starts = hunk_start_rows(doc);
     f.render_widget(
         Paragraph::new(Span::styled(
-            format!(" HEAD · {} ⇄ working tree", doc.head),
+            format!(" {} ⇄ {}", doc.sides.0, doc.sides.1),
             t.fg("ui.header"),
         ))
         .style(t.bg("ui.panel.alt")),
@@ -481,8 +488,8 @@ fn draw_unified(
             t.fg("ui.linenr")
         };
         let tick = match starts.iter().find(|(r, _)| *r == di) {
-            Some((_, id)) if !doc.opts.ignore_whitespace => {
-                if commit.hunk_included(&tab.path, *id) {
+            Some((_, id)) if !doc.opts.ignore_whitespace && commit.is_some() => {
+                if commit.is_some_and(|c| c.hunk_included(&tab.path, *id)) {
                     "☑ "
                 } else {
                     "☐ "

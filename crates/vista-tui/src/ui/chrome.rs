@@ -285,10 +285,22 @@ pub fn bottom_bar(f: &mut Frame, area: Rect, app: &App) {
                 app,
                 &km.tool_number(Action::ToggleFind),
                 "Find",
-                app.focus == Focus::Bottom,
+                app.focus == Focus::Bottom && !app.log.visible,
+            ),
+            tool_label(
+                app,
+                &km.tool_number(Action::ToggleLog),
+                "Git",
+                app.focus == Focus::Bottom && app.log.visible,
             ),
             tool_label(app, "?", "Help", app.show_help),
         ];
+        // Labels give way to the status on the right when the row is narrow.
+        let status_w = Line::from(status_spans(app)).width();
+        let mut spans = spans;
+        while spans.len() > 1 && Line::from(spans.clone()).width() + status_w > area.width as usize {
+            spans.pop();
+        }
         f.render_widget(Paragraph::new(Line::from(spans)), area);
     } else {
         let mode = Span::styled(

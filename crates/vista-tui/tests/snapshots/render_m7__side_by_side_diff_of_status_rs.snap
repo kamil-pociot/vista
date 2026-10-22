@@ -41,7 +41,7 @@ expression: snap
 
 
  u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit             side-by-side · whitespace: compare · lines: scroll · collapse: off
- 1: Project   2: Commit   3: Find   ?: Help                                                                    4 changed · 2 unversioned   3:1   Diff
+ 1: Project   2: Commit   3: Find   9: Git   ?: Help                                                           4 changed · 2 unversioned   3:1   Diff
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..120 fg=ui.text bg=ui.panel] [120..126 fg=ui.dim bg=ui.panel] [126..143 fg=ui.text bg=ui.panel] [143..145 fg=ui.dim bg=ui.panel] [145..150 fg=ui.text bg=ui.panel]
   1: [0..13 fg=git.modified bg=ui.bg +underline] [13..15 fg=ui.dim bg=ui.bg] [15..150 fg=ui.text bg=ui.panel]
@@ -78,4 +78,4 @@ expression: snap
  32: [0..73 fg=ui.filler bg=ui.bg] [73..75 fg=ui.text.strong bg=gutter.added] [75..79 fg=ui.dim bg=ui.bg] [79..149 fg=ui.text bg=diff.inserted]
  33: [0..4 fg=ui.dim bg=ui.bg] [73..75 fg=ui.text.strong bg=ui.panel.alt] [75..79 fg=ui.dim bg=ui.bg]
  38: [0..70 fg=ui.dim bg=ui.panel] [70..83 fg=ui.text bg=ui.panel] [83..150 fg=ui.dim bg=ui.panel]
- 39: [0..45 fg=ui.header bg=ui.panel] [45..111 fg=ui.text bg=ui.panel] [111..120 fg=git.modified bg=ui.panel] [120..123 fg=ui.dim bg=ui.panel] [123..136 fg=git.unversioned bg=ui.panel] [136..145 fg=ui.text bg=ui.panel] [145..150 fg=ui.dim bg=ui.panel]
+ 39: [0..54 fg=ui.header bg=ui.panel] [54..111 fg=ui.text bg=ui.panel] [111..120 fg=git.modified bg=ui.panel] [120..123 fg=ui.dim bg=ui.panel] [123..136 fg=git.unversioned bg=ui.panel] [136..145 fg=ui.text bg=ui.panel] [145..150 fg=ui.dim bg=ui.panel]

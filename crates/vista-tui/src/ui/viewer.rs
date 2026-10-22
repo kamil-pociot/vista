@@ -32,7 +32,13 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let name = if t.diff.is_some() { format!("Δ {name}") } else { name };
+            let name = match &t.diff {
+                Some(spec) => match &spec.revs {
+                    Some(r) => format!("Δ {name} @{}", r.short),
+                    None => format!("Δ {name}"),
+                },
+                None => name,
+            };
             let token = app.status.file_status(&t.path).map(|s| s.token()).unwrap_or("ui.text");
             (name, token, app.dirty.contains(&t.path))
         })
@@ -200,7 +206,12 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             "ui.dim",
             t,
         ),
-        Content::Diff(_) => crate::ui::diff::draw(f, area, tab, t, focused, &root, commit),
+        Content::Diff(_) => {
+            // History diffs are read-only: no picking changes for the commit.
+            let history = tab.diff.as_ref().is_some_and(|d| d.revs.is_some());
+            let commit = (!history).then_some(commit);
+            crate::ui::diff::draw(f, area, tab, t, focused, &root, commit)
+        }
         Content::DiffLoading => message(f, area, "Loading diff…", "ui.dim", t),
         Content::Error(e) => message(f, area, e, "ui.error", t),
     }

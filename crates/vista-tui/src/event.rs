@@ -62,6 +62,16 @@ pub enum AppEvent {
     TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
     /// A terminal tab's program ended.
     TermExited,
+    /// The commit log (Git window) loaded.
+    Log {
+        generation: u64,
+        result: Result<Vec<vista_git::Commit>, String>,
+    },
+    /// The files a commit changed.
+    CommitFiles {
+        hash: String,
+        result: Result<Vec<vista_git::CommitFile>, String>,
+    },
 }
 
 /// Which open project an event belongs to.

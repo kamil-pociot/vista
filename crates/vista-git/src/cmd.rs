@@ -111,6 +111,12 @@ impl Git {
         self.run_bytes(&["cat-file", "blob", &format!("HEAD:{rel}")]).ok()
     }
 
+    /// The content of `path` at revision `rev`, if it exists there.
+    pub fn content_at(&self, rev: &str, path: &Path) -> Option<Vec<u8>> {
+        let rel = self.relative(path)?;
+        self.run_bytes(&["cat-file", "blob", &format!("{rev}:{rel}")]).ok()
+    }
+
     /// Path relative to the repository top level, with `/` separators.
     pub fn relative(&self, path: &Path) -> Option<String> {
         let rel = path.strip_prefix(&self.toplevel).ok()?;

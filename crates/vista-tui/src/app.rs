@@ -125,6 +125,7 @@ enum ClickList {
     FindPopup,
     FindWindow,
     Goto,
+    LogFiles,
 }
 
 /// The active diff tab, as the side-by-side editor opens it.
@@ -197,6 +198,8 @@ pub struct App {
     pub project_hits: Vec<crate::projects::ProjectHit>,
     /// The divider between the tree and the editor is being dragged.
     dragging_divider: bool,
+    /// The Git tool window (log, file history).
+    pub log: crate::log::LogWindow,
     ui_path: PathBuf,
     /// Where each tab and its × were drawn (last frame), for clicks.
     pub tab_hits: Vec<crate::ui::chrome::TabHit>,
@@ -317,6 +320,7 @@ impl App {
             projects_popup: None,
             project_hits: Vec::new(),
             dragging_divider: false,
+            log: crate::log::LogWindow::default(),
             tab_hits: Vec::new(),
             last_click: None,
             pending_external: None,
@@ -1072,14 +1076,112 @@ impl App {
         let ctx = self.load_ctx();
         let spec = crate::diffview::DiffSpec {
             orig_path: change.orig_path.clone(),
+            revs: None,
         };
         self.viewer.open_diff(&change.path, spec, &ctx);
         self.focus = Focus::Main;
     }
 
+    // ----- Git window: log and file history -----------------------------------
+
+    /// Shows the Git window (instead of Find), loading the log.
+    fn show_log(&mut self, path: Option<PathBuf>) {
+        if self.git.is_none() {
+            self.notify("Not a git repository", MsgKind::Info);
+            return;
+        }
+        self.find_window.visible = false;
+        self.log.visible = true;
+        if self.log.path != path {
+            self.log.path = path;
+            self.log.commits.clear();
+            self.log.selected = 0;
+            self.log.scroll = 0;
+        }
+        self.log.on_files = false;
+        self.focus = Focus::Bottom;
+        self.load_log();
+    }
+
+    fn load_log(&mut self) {
+        let Some(git) = self.git.clone() else { return };
+        self.log.generation += 1;
+        self.log.loading = true;
+        let (generation, path, tx) = (self.log.generation, self.log.path.clone(), self.tx.clone());
+        std::thread::spawn(move || {
+            let result = vista_git::log::log(&git, path.as_deref(), crate::log::MAX_COMMITS).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::Log { generation, result });
+        });
+    }
+
+    fn load_commit_files(&mut self, commit: vista_git::Commit) {
+        let Some(git) = self.git.clone() else { return };
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let result = vista_git::log::commit_files(&git, &commit).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::CommitFiles {
+                hash: commit.hash,
+                result,
+            });
+        });
+    }
+
+    fn log_outcome(&mut self, outcome: crate::log::LogOutcome) -> bool {
+        use crate::log::LogOutcome;
+        match outcome {
+            LogOutcome::Unhandled => return false,
+            LogOutcome::Handled => {}
+            LogOutcome::Close => {
+                self.log.visible = false;
+                self.focus = Focus::Main;
+            }
+            LogOutcome::NeedFiles(c) => self.load_commit_files(c),
+            LogOutcome::Open(c, f) => self.open_history_diff(&c, &f),
+            LogOutcome::Reload => self.load_log(),
+        }
+        true
+    }
+
+    /// A file's change in a commit, as a read-only diff (parent ⇄ commit).
+    fn open_history_diff(&mut self, commit: &vista_git::Commit, file: &vista_git::CommitFile) {
+        let ctx = self.load_ctx();
+        let spec = crate::diffview::DiffSpec {
+            orig_path: file.old_path.clone(),
+            revs: Some(crate::diffview::Revs {
+                parent: commit.parents.first().cloned(),
+                commit: commit.hash.clone(),
+                short: commit.short.clone(),
+                subject: commit.subject.clone(),
+            }),
+        };
+        self.viewer.open_diff(&file.path, spec, &ctx);
+        self.focus = Focus::Main;
+    }
+
     /// Shows the diff of the next/previous file in the Commit list.
-    /// Changed files in Commit-window order.
+    /// Changed files in Commit-window order (in a history diff: that
+    /// commit's files).
     fn changed_files(&self) -> Vec<Change> {
+        let history = self
+            .viewer
+            .active_tab()
+            .and_then(|t| t.diff.as_ref())
+            .and_then(|d| d.revs.as_ref());
+        if let Some(r) = history {
+            return self
+                .log
+                .files_of(&r.commit)
+                .unwrap_or_default()
+                .iter()
+                .map(|f| Change {
+                    path: f.path.clone(),
+                    status: vista_git::FileStatus::Modified,
+                    orig_path: f.old_path.clone(),
+                    staged: false,
+                    unstaged: false,
+                })
+                .collect();
+        }
         self.commit
             .rows
             .iter()
@@ -1196,8 +1298,15 @@ impl App {
             self.commit.selected = row;
         }
         let ctx = self.load_ctx();
+        // Stepping within a history diff stays in that commit.
+        let revs = self
+            .viewer
+            .active_tab()
+            .and_then(|t| t.diff.as_ref())
+            .and_then(|d| d.revs.clone());
         let spec = crate::diffview::DiffSpec {
             orig_path: change.orig_path.clone(),
+            revs,
         };
         self.viewer.retarget_diff(&change.path, spec, &ctx);
         if let Some(t) = self.viewer.active_tab_mut() {
@@ -1339,6 +1448,24 @@ impl App {
             AppEvent::Term(_) => {}
             // Terminal tabs belong to the workspace.
             AppEvent::TermOutput(_) | AppEvent::TermExited => {}
+            AppEvent::Log { generation, result } => {
+                if generation == self.log.generation {
+                    match result {
+                        Ok(commits) => {
+                            self.log.set_commits(commits);
+                            let need = self.log.need_files();
+                            self.log_outcome(need);
+                        }
+                        Err(e) => {
+                            self.log.loading = false;
+                            self.log.error = Some(e);
+                        }
+                    }
+                }
+            }
+            AppEvent::CommitFiles { hash, result } => {
+                self.log.files.insert(hash, result);
+            }
             AppEvent::Nvim(e) => self.on_nvim(e),
             AppEvent::DiffLoaded { tab, generation, load } => {
                 let picker = self.picker.clone();
@@ -1529,6 +1656,12 @@ impl App {
             self.find_key(&key);
             return;
         }
+        if self.focus == Focus::Bottom && self.log.visible {
+            let outcome = self.log.handle_key(&key);
+            if self.log_outcome(outcome) {
+                return;
+            }
+        }
         if self.focus == Focus::Bottom && self.find_window.visible && self.find_window_key(&key) {
             return;
         }
@@ -1607,6 +1740,10 @@ impl App {
                 }
                 ViewerOutcome::DiffFile(forward) => {
                     self.step_diff_file(forward);
+                    return;
+                }
+                ViewerOutcome::ToggleHunk(..) if tab.diff.as_ref().is_some_and(|d| d.revs.is_some()) => {
+                    self.notify("History diffs are read-only", MsgKind::Info);
                     return;
                 }
                 ViewerOutcome::ToggleHunk(id, all) => {
@@ -1800,6 +1937,51 @@ impl App {
             }
             return;
         }
+        for (rect, files) in [(self.areas.log_commits, false), (self.areas.log_files, true)] {
+            let Some(r) = rect.filter(|r| r.contains(pos)) else {
+                continue;
+            };
+            match m.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    self.focus = Focus::Bottom;
+                    self.log.on_files = files;
+                    let row = (m.row - r.y) as usize;
+                    if files {
+                        let i = self.log.file_scroll + row;
+                        if i < self.log.current_files().len() {
+                            self.log.file_selected = i;
+                            if self.is_double_click(ClickList::LogFiles, i) {
+                                let open = self.log.open_selected();
+                                self.log_outcome(open);
+                            }
+                        }
+                    } else {
+                        let i = self.log.scroll + row;
+                        if i < self.log.commits.len() {
+                            let need = self.log.select_commit(i);
+                            self.log_outcome(need);
+                        }
+                    }
+                }
+                MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                    let down = matches!(m.kind, MouseEventKind::ScrollDown);
+                    let code = if down {
+                        ratatui::crossterm::event::KeyCode::Down
+                    } else {
+                        ratatui::crossterm::event::KeyCode::Up
+                    };
+                    let saved = self.log.on_files;
+                    self.log.on_files = files;
+                    for _ in 0..3 {
+                        let o = self.log.handle_key(&KeyEvent::from(code));
+                        self.log_outcome(o);
+                    }
+                    self.log.on_files = saved;
+                }
+                _ => {}
+            }
+            return;
+        }
         if let Some(r) = self.areas.find_window.filter(|r| r.contains(pos)) {
             let h = self.find_window.view_height;
             let mut open = false;
@@ -1955,6 +2137,7 @@ impl App {
                 self.open_find(q);
             }
             Action::ToggleFind => {
+                self.log.visible = false;
                 if self.find_window.tabs.is_empty() {
                     self.notify("No Find results yet (Ctrl-F, then Alt-O)", MsgKind::Info);
                 } else if self.find_window.visible && self.focus == Focus::Bottom {
@@ -2010,6 +2193,19 @@ impl App {
                 self.sync_editor_buffer();
             }
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
+            Action::ToggleLog => {
+                if self.log.visible && self.focus == Focus::Bottom {
+                    self.log.visible = false;
+                    self.focus = Focus::Main;
+                } else {
+                    let path = self.log.path.clone();
+                    self.show_log(path);
+                }
+            }
+            Action::FileHistory => match self.viewer.active_tab().map(|t| t.path.clone()) {
+                Some(path) => self.show_log(Some(path)),
+                None => self.notify("No file open", MsgKind::Info),
+            },
             Action::Projects => self.projects_popup = Some(crate::projects::ProjectsPopup::new(self.projects.clone())),
             Action::NextProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(true)),
             Action::PrevProject => self.ws_request = Some(crate::projects::WsRequest::Cycle(false)),
@@ -2108,7 +2304,7 @@ impl App {
     }
 
     fn cycle_focus(&mut self) {
-        let bottom = self.find_window.visible && !self.find_window.tabs.is_empty();
+        let bottom = (self.find_window.visible && !self.find_window.tabs.is_empty()) || self.log.visible;
         self.focus = match (self.focus, self.left, bottom) {
             (Focus::Left, _, _) => Focus::Main,
             (Focus::Main, _, true) => Focus::Bottom,

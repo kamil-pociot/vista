@@ -11,8 +11,20 @@ use crate::viewer::ImageState;
 /// Which file a diff tab compares.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffSpec {
-    /// HEAD path for renames.
+    /// HEAD path for renames (the parent's path, for history diffs).
     pub orig_path: Option<PathBuf>,
+    /// A commit from the history (read-only); `None` is HEAD ⇄ working tree.
+    pub revs: Option<Revs>,
+}
+
+/// A history diff: the commit's parent ⇄ the commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Revs {
+    /// First parent (none for a root commit).
+    pub parent: Option<String>,
+    pub commit: String,
+    pub short: String,
+    pub subject: String,
 }
 
 pub enum DiffBody {
@@ -34,6 +46,8 @@ pub struct DiffDoc {
     pub udisplay: Vec<Unified>,
     /// Short id of HEAD (column header).
     pub head: String,
+    /// Column headers: (left, right).
+    pub sides: (String, String),
     pub body: DiffBody,
 }
 
@@ -56,6 +70,7 @@ impl DiffDoc {
             sbs: SideBySide::default(),
             display: Vec::new(),
             udisplay: Vec::new(),
+            sides: (format!("HEAD · {head} (read-only)"), "Working tree".into()),
             head,
             body: DiffBody::Text,
         };
@@ -280,12 +295,36 @@ pub fn load(git: Option<&vista_git::Git>, path: &Path, spec: &DiffSpec, images_e
         };
     };
     let head_path = spec.orig_path.as_deref().unwrap_or(path);
-    let old = git.head_content(head_path);
-    let new = std::fs::read(path).ok();
-    let head = git
-        .run(&["rev-parse", "--short", "HEAD"])
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "(no commits)".into());
+    let (old, new, head, sides) = match &spec.revs {
+        // From the history: the commit's parent ⇄ the commit, both from git.
+        Some(r) => {
+            let old = r.parent.as_deref().and_then(|p| git.content_at(p, head_path));
+            let new = git.content_at(&r.commit, path);
+            let parent = r.parent.as_deref().map(|p| &p[..p.len().min(7)]).unwrap_or("(none)");
+            let sides = (
+                format!("{parent} · parent (read-only)"),
+                format!("{} · {} (read-only)", r.short, r.subject),
+            );
+            (old, new, r.short.clone(), sides)
+        }
+        None => {
+            let head = git
+                .run(&["rev-parse", "--short", "HEAD"])
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "(no commits)".into());
+            let sides = (format!("HEAD · {head} (read-only)"), "Working tree".to_string());
+            (git.head_content(head_path), std::fs::read(path).ok(), head, sides)
+        }
+    };
+    let mut load = build(path, old, new, head, images_enabled);
+    if let Some(doc) = load.doc.as_mut() {
+        doc.sides = sides;
+    }
+    load
+}
+
+/// The diff of `old` ⇄ `new` (text, image or binary).
+fn build(path: &Path, old: Option<Vec<u8>>, new: Option<Vec<u8>>, head: String, images_enabled: bool) -> DiffLoad {
     if vista_render::filetype::is_image_path(path) {
         let dec = |b: &Option<Vec<u8>>| b.as_ref().and_then(|b| image::load_from_memory(b).ok()).map(Box::new);
         let body = DiffBody::Image {

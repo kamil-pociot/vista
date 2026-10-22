@@ -9,6 +9,7 @@ pub mod event;
 pub mod find;
 pub mod goto;
 pub mod keymap;
+pub mod log;
 pub mod probe;
 pub mod project;
 pub mod projects;
