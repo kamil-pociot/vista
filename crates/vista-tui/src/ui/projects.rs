@@ -14,6 +14,10 @@ use crate::style::ThemeStyle;
 /// The open projects as tabs at the left of the top bar, then `+`.
 /// Returns where each landed, for clicks.
 pub fn tabs(f: &mut Frame, area: Rect, app: &App) -> Vec<ProjectHit> {
+    // The sidebar lists them instead.
+    if app.projects.sidebar {
+        return Vec::new();
+    }
     let t = &app.theme;
     let single = [(app.project_name.clone(), app.root.clone())];
     let open = if app.projects.open.is_empty() {

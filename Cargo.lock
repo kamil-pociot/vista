@@ -3433,6 +3433,8 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "ratatui-image",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",

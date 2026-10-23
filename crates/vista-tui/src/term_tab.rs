@@ -30,6 +30,8 @@ pub struct TermTab {
     /// The program asked for a notification (Claude Code waiting for input)
     /// while its tab wasn't on screen; the tab is marked until shown.
     pub waiting: bool,
+    /// The Claude session it's attached to (opened from the sidebar).
+    pub session: Option<String>,
     size: (u16, u16),
 }
 
@@ -179,6 +181,7 @@ impl TermTab {
             child,
             exited: None,
             waiting: false,
+            session: None,
             size: (cols, rows),
         })
     }

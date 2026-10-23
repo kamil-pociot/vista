@@ -26,6 +26,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Ctrl-R` (`F5`) | refresh |
 | `Ctrl-T` | next look |
 | `Ctrl-\` | leave the editor or a terminal |
+| `Alt-B` | sidebar: projects and Claude sessions |
 | `?` (`F1`) | help |
 | `q`, `Ctrl-Q` | quit |
 

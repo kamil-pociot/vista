@@ -149,6 +149,30 @@ impl Default for TreeConfig {
     }
 }
 
+/// The sidebar (Alt-B): projects, terminal tabs and Claude sessions.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SidebarConfig {
+    /// Shown when nothing was remembered yet (Alt-B toggles and remembers).
+    pub show: bool,
+    pub width: u16,
+    /// Lists Claude sessions as JSON; empty for none.
+    pub sessions: String,
+    /// Opens session `{id}` in a terminal tab.
+    pub attach: String,
+}
+
+impl Default for SidebarConfig {
+    fn default() -> Self {
+        Self {
+            show: false,
+            width: 30,
+            sessions: "claude agents --json".into(),
+            attach: "claude attach {id}".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MouseConfig {
@@ -173,6 +197,7 @@ pub struct Config {
     pub tree: TreeConfig,
     pub terminal: TerminalConfig,
     pub mouse: MouseConfig,
+    pub sidebar: SidebarConfig,
     /// Key overrides: `"ctrl+p" = "goto-file"`.
     pub keys: BTreeMap<String, String>,
 }
@@ -186,6 +211,7 @@ impl Default for Config {
             tree: TreeConfig::default(),
             terminal: TerminalConfig::default(),
             mouse: MouseConfig::default(),
+            sidebar: SidebarConfig::default(),
             keys: BTreeMap::new(),
         }
     }

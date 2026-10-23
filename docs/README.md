@@ -21,5 +21,6 @@ vista is a lean, keyboard-driven terminal replacement for the parts of IntelliJ 
 | 15 | [Keyboard reference](15-keyboard-reference.md) | Every default shortcut in one place |
 | 16 | [Testing](16-testing.md) | Unit, snapshot, property, integration and PTY end-to-end tests |
 | 17 | [Clickable labels and buttons](17-clickable-labels.md) | Tool-window names, hints, toggles and buttons do what their keys do |
+| 18 | [Sidebar: projects and Claude sessions](18-sidebar.md) | Herdr-style sidebar (`Alt-B`): projects, terminal tabs and Claude sessions with their state; click to attach |
 
 See also: [`../README.md`](../README.md) (install and quick reference), [`../ROADMAP.md`](../ROADMAP.md) (research, decisions, milestones), [`../AGENTS.md`](../AGENTS.md) (working on the code).

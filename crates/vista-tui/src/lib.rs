@@ -16,6 +16,7 @@ pub mod projects;
 pub mod recent;
 pub mod run;
 pub mod selection;
+pub mod sessions;
 pub mod style;
 pub mod term_tab;
 pub mod terminal;

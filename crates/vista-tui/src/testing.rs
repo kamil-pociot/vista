@@ -36,7 +36,7 @@ pub fn app_at(root: &Path, home: &Path, theme: Option<&str>) -> App {
 
 pub fn render(app: &mut App, width: u16, height: u16) -> Buffer {
     let mut term = Terminal::new(TestBackend::new(width, height)).expect("test terminal");
-    term.draw(|f| ui::draw(f, app)).expect("draw");
+    term.draw(|f| ui::draw(f, f.area(), app)).expect("draw");
     term.backend().buffer().clone()
 }
 

@@ -19,6 +19,8 @@ pub struct ProjectsBar {
     pub terminals: Vec<String>,
     /// The terminal tab on screen, if any (then no project is).
     pub terminal: Option<usize>,
+    /// The sidebar lists the tabs; the top bar doesn't.
+    pub sidebar: bool,
     /// Tabs whose program asked for a notification (Claude Code waiting for
     /// input) since they were last on screen.
     pub waiting: Vec<TabTarget>,
@@ -74,6 +76,8 @@ pub enum WsRequest {
     CloseTerminal(usize),
     /// Run a command in a new terminal tab.
     Run(String),
+    /// Show or hide the sidebar.
+    ToggleSidebar,
 }
 
 /// Whether a tab dragged from slot `from` should move to slot `to`, with

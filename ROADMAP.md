@@ -395,6 +395,11 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] `Cmd-C` / `Cmd-A` work like `Ctrl-C` / `Ctrl-A` when the terminal passes Cmd on. Ghostty only does that with `keybind = performable:super+c=copy_to_clipboard:mixed`: its default Cmd-C binding always takes the key.
 - [x] Tests: `e2e_r1_selection` (copy on release, Cmd-C as the kitty keyboard protocol sends it).
 
+### Sidebar ✅
+- [x] `Alt-B` (remembered): herdr-style sidebar with the open projects on top and terminal tabs plus Claude Code sessions below. Sessions come from `claude agents --json` every 2 s while shown, marked by state (needs input, working, done, failed, stopped); a click opens one in a terminal tab (`claude attach <id>`), or shows its tab if open. The top bar drops its tabs meanwhile.
+- [x] `[sidebar] show / width / sessions / attach` in `config.toml`.
+- [x] Tests: `sessions` and `ui::sidebar` units, `e2e_r1_sidebar` (fake session list and attach command).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

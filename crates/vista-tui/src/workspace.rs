@@ -58,6 +58,20 @@ pub struct Workspace {
     /// Where the top bar's tabs were in the last frame drawn (the same for
     /// every project; a project switched to may not have drawn them yet).
     top_hits: Vec<crate::projects::ProjectHit>,
+    /// The sidebar (Alt-B): projects, terminal tabs, Claude sessions.
+    sidebar: bool,
+    sessions: Vec<crate::sessions::Session>,
+    /// Why the session list couldn't be read, if it couldn't.
+    sessions_note: Option<String>,
+    /// The session poller's events carry this id.
+    sessions_id: ProjectId,
+    /// The poller runs while this is set (the sidebar is shown).
+    sessions_wanted: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// The sidebar's rows in the last frame, for clicks.
+    sidebar_hits: Vec<(ratatui::layout::Rect, crate::ui::sidebar::SidebarHit)>,
+    sidebar_area: Option<ratatui::layout::Rect>,
+    /// Where the terminal tab on screen was drawn.
+    term_body: ratatui::layout::Rect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,12 +88,22 @@ impl Workspace {
             tracing::warn!("{w}");
         }
         let (tx, rx) = event::channel(INPUT);
+        let sidebar = ui.layout.sidebar.unwrap_or(config.sidebar.show);
+        let sessions_id = INPUT + 1;
+        let sessions_wanted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(sidebar));
+        if !config.sidebar.sessions.trim().is_empty() {
+            crate::sessions::spawn_poller(
+                config.sidebar.sessions.clone(),
+                sessions_wanted.clone(),
+                tx.for_project(sessions_id),
+            );
+        }
         Workspace {
             projects: Vec::new(),
             active: 0,
             tx,
             rx,
-            next_id: INPUT + 1,
+            next_id: sessions_id + 1,
             config,
             paths,
             theme,
@@ -94,6 +118,14 @@ impl Workspace {
             dragging: None,
             drag_col: 0,
             top_hits: Vec::new(),
+            sidebar,
+            sessions: Vec::new(),
+            sessions_note: None,
+            sessions_id,
+            sessions_wanted,
+            sidebar_hits: Vec::new(),
+            sidebar_area: None,
+            term_body: ratatui::layout::Rect::default(),
         }
     }
 
@@ -215,6 +247,7 @@ impl Workspace {
             recent,
             terminals: self.terminals.iter().map(|t| t.title.clone()).collect(),
             terminal: self.terminal,
+            sidebar: self.sidebar,
             waiting: (self.projects.iter().enumerate())
                 .filter(|(_, p)| p.waiting)
                 .map(|(i, _)| TabTarget::Project(i))
@@ -257,6 +290,26 @@ impl Workspace {
     /// Delivers one event: terminal input to the active project, the rest
     /// to the project that asked for it. Then acts on what it requested.
     pub fn handle(&mut self, id: ProjectId, ev: AppEvent) {
+        if id == self.sessions_id {
+            if let AppEvent::Sessions(result) = ev {
+                match result {
+                    Ok(list) => {
+                        self.sessions = list;
+                        self.sessions_note = None;
+                    }
+                    Err(e) => self.sessions_note = Some(e),
+                }
+            }
+            return;
+        }
+        if id == INPUT
+            && let AppEvent::Term(ratatui::crossterm::event::Event::Mouse(m)) = &ev
+            && let Some(area) = self.sidebar_area
+            && area.contains(ratatui::layout::Position::new(m.column, m.row))
+        {
+            self.sidebar_mouse(m);
+            return;
+        }
         if let Some(ti) = self.terminals.iter().position(|t| t.id == id) {
             match ev {
                 // Drawn after this; the reader may wake us again.
@@ -438,6 +491,22 @@ impl Workspace {
                 }
             }
             WsRequest::CloseTerminal(i) => self.close_terminal(i),
+            WsRequest::ToggleSidebar => {
+                self.sidebar = !self.sidebar;
+                self.sessions_wanted
+                    .store(self.sidebar, std::sync::atomic::Ordering::SeqCst);
+                let on = self.sidebar;
+                let result = {
+                    let mut ui = self.ui.borrow_mut();
+                    ui.layout.sidebar = Some(on);
+                    ui.save(&self.ui_path)
+                };
+                if let Err(e) = result {
+                    self.active_app()
+                        .notify(format!("cannot save settings: {e}"), MsgKind::Error);
+                }
+                self.refresh_bars();
+            }
             WsRequest::Run(cmd) => self.run_terminal(&cmd),
         }
     }
@@ -512,22 +581,36 @@ impl Workspace {
                         }
                     }
                 } else {
-                    self.terminals[ti].mouse(&m, m.column, m.row - 1);
+                    let body = self.term_body;
+                    if body.contains(ratatui::layout::Position::new(m.column, m.row)) {
+                        self.terminals[ti].mouse(&m, m.column - body.x, m.row - body.y);
+                    }
                 }
             }
             _ => {}
         }
     }
 
-    /// Draws the screen: a terminal tab full size, or the active project.
+    /// Draws the screen: the sidebar when shown, then a terminal tab or the
+    /// active project in the rest.
     pub fn draw(&mut self, f: &mut ratatui::Frame) {
         self.unmark_shown();
+        let mut area = f.area();
+        self.sidebar_area = None;
+        self.sidebar_hits.clear();
+        let width = self.config.sidebar.width.max(12);
+        if self.sidebar && area.width >= width + 40 {
+            let side = ratatui::layout::Rect { width, ..area };
+            self.draw_sidebar(f, side);
+            self.sidebar_area = Some(side);
+            area.x += width;
+            area.width -= width;
+        }
         let Some(ti) = self.terminal.filter(|t| *t < self.terminals.len()) else {
-            crate::ui::draw(f, self.active_app());
+            crate::ui::draw(f, area, self.active_app());
             self.top_hits = self.active_app().project_hits.clone();
             return;
         };
-        let area = f.area();
         let app = &mut self.projects[self.active].app;
         f.render_widget(ratatui::widgets::Block::new().style(app.theme.base()), area);
         let top = ratatui::layout::Rect { height: 1, ..area };
@@ -538,6 +621,7 @@ impl Workspace {
             ..area
         };
         self.top_hits = app.project_hits.clone();
+        self.term_body = body;
         let tab = &mut self.terminals[ti];
         tab.resize(body.width, body.height);
         crate::ui::term::draw(
@@ -548,6 +632,90 @@ impl Workspace {
             true,
             "Enter closes the tab, Ctrl-\\ goes back",
         );
+    }
+
+    fn draw_sidebar(&mut self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        use crate::ui::sidebar::{Item, View};
+        let on_project = self.terminal.is_none();
+        let names: Vec<String> = self.projects.iter().map(|p| project_name(&p.app.root)).collect();
+        let projects = (self.projects.iter().enumerate())
+            .map(|(i, p)| Item {
+                name: &names[i],
+                active: on_project && i == self.active,
+                waiting: p.waiting,
+            })
+            .collect();
+        let terminals = (self.terminals.iter().enumerate())
+            .filter(|(_, t)| t.session.is_none())
+            .map(|(i, t)| {
+                (
+                    i,
+                    Item {
+                        name: &t.title,
+                        active: self.terminal == Some(i),
+                        waiting: t.waiting,
+                    },
+                )
+            })
+            .collect();
+        let shown_session = self
+            .terminal
+            .and_then(|i| self.terminals.get(i))
+            .and_then(|t| t.session.as_deref());
+        let view = View {
+            projects,
+            terminals,
+            sessions: &self.sessions,
+            shown_session,
+            note: self.sessions_note.as_deref(),
+        };
+        let theme = self.projects[self.active].app.theme.clone();
+        self.sidebar_hits = crate::ui::sidebar::draw(f, area, &view, &theme);
+    }
+
+    /// A click in the sidebar opens what's on that row.
+    fn sidebar_mouse(&mut self, m: &ratatui::crossterm::event::MouseEvent) {
+        use crate::ui::sidebar::SidebarHit;
+        use ratatui::crossterm::event::{MouseButton, MouseEventKind};
+        if !matches!(m.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return;
+        }
+        let pos = ratatui::layout::Position::new(m.column, m.row);
+        let Some(hit) = self.sidebar_hits.iter().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h) else {
+            return;
+        };
+        match hit {
+            SidebarHit::Project(i) => self.activate(i),
+            SidebarHit::Terminal(i) => self.request(WsRequest::ShowTerminal(i)),
+            SidebarHit::NewProject => {
+                self.terminal = None;
+                self.refresh_bars();
+                self.active_app().handle_action(crate::keymap::Action::Projects);
+            }
+            SidebarHit::Session(k) => {
+                if let Some(s) = self.sessions.get(k).cloned() {
+                    self.open_session(&s);
+                }
+            }
+        }
+    }
+
+    /// Shows session `s`: its tab if it's open, else a new tab attached to it.
+    fn open_session(&mut self, s: &crate::sessions::Session) {
+        if let Some(i) = self.terminals.iter().position(|t| t.session.as_deref() == Some(&s.id)) {
+            self.request(WsRequest::ShowTerminal(i));
+            return;
+        }
+        let command = self.config.sidebar.attach.replace("{id}", &s.id);
+        let before = self.terminals.len();
+        self.run_terminal(&command);
+        if self.terminals.len() > before
+            && let Some(t) = self.terminals.last_mut()
+        {
+            t.session = Some(s.id.clone());
+            t.title = s.name.clone();
+            self.refresh_bars();
+        }
     }
 
     /// The tab on screen no longer needs attention.

@@ -19,6 +19,8 @@ commands = ["claude agents", "htop"]
 notify_sound = "Glass"     # a macOS system sound, a file, or "none"
 ```
 
+With the sidebar shown (`Alt-B`), terminal tabs are listed there along with your Claude Code sessions; clicking a session opens it in a terminal tab (`claude attach`). See [18 · Sidebar](18-sidebar.md).
+
 ## Terminal tool window
 
 `Alt-T` opens a shell under the editor, in the project's folder (IntelliJ's Terminal). Each project keeps its own.
