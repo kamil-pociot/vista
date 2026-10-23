@@ -199,6 +199,17 @@ impl Fixture {
         };
         if self.git {
             run_git(repo.path(), repo.home(), &["init", "-q", "-b", "main"]);
+            // In the repo's own config too: git run by vista inside a test
+            // process doesn't get `git_env`, and CI machines have no identity
+            // (nor should a developer's signing setup apply).
+            for (key, value) in [
+                ("user.name", "Vista Test"),
+                ("user.email", "test@vista.invalid"),
+                ("commit.gpgsign", "false"),
+                ("tag.gpgsign", "false"),
+            ] {
+                run_git(repo.path(), repo.home(), &["config", key, value]);
+            }
         }
         for op in self.ops {
             match op {
