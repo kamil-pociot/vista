@@ -57,6 +57,7 @@ pub fn run(mut ws: Workspace) -> Result<()> {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+        ws.follow_herdr();
         let now = title(&mut ws);
         if now != shown_title {
             terminal::set_title(&now);

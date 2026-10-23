@@ -319,8 +319,26 @@ pub enum ThemeError {
 /// Built-in looks, embedded in the binary.
 pub const BUILTIN: &[(&str, &str)] = &[
     ("darcula", include_str!("../themes/darcula.toml")),
-    ("quiet", include_str!("../themes/quiet.toml")),
     ("paper", include_str!("../themes/paper.toml")),
+    ("quiet", include_str!("../themes/quiet.toml")),
+    // herdr's themes, so vista can follow herdr (`theme = "herdr"`).
+    ("catppuccin", include_str!("../themes/catppuccin.toml")),
+    ("catppuccin-latte", include_str!("../themes/catppuccin-latte.toml")),
+    ("tokyo-night", include_str!("../themes/tokyo-night.toml")),
+    ("tokyo-night-day", include_str!("../themes/tokyo-night-day.toml")),
+    ("dracula", include_str!("../themes/dracula.toml")),
+    ("nord", include_str!("../themes/nord.toml")),
+    ("gruvbox", include_str!("../themes/gruvbox.toml")),
+    ("gruvbox-light", include_str!("../themes/gruvbox-light.toml")),
+    ("one-dark", include_str!("../themes/one-dark.toml")),
+    ("one-light", include_str!("../themes/one-light.toml")),
+    ("solarized", include_str!("../themes/solarized.toml")),
+    ("solarized-light", include_str!("../themes/solarized-light.toml")),
+    ("kanagawa", include_str!("../themes/kanagawa.toml")),
+    ("kanagawa-lotus", include_str!("../themes/kanagawa-lotus.toml")),
+    ("rose-pine", include_str!("../themes/rose-pine.toml")),
+    ("rose-pine-dawn", include_str!("../themes/rose-pine-dawn.toml")),
+    ("vesper", include_str!("../themes/vesper.toml")),
 ];
 
 /// Finds and resolves looks from the built-in set and an optional user directory.
@@ -335,9 +353,11 @@ impl ThemeLoader {
         Self { user_dir }
     }
 
-    /// Ids of all available looks, sorted.
+    /// Ids of all available looks: the built-in ones in their order (Ctrl-T
+    /// steps through them so), then the user's, sorted.
     pub fn available(&self) -> Vec<String> {
-        let mut ids: BTreeSet<String> = BUILTIN.iter().map(|(id, _)| id.to_string()).collect();
+        let mut ids: Vec<String> = BUILTIN.iter().map(|(id, _)| id.to_string()).collect();
+        let mut user = BTreeSet::new();
         if let Some(dir) = &self.user_dir
             && let Ok(entries) = std::fs::read_dir(dir)
         {
@@ -345,12 +365,14 @@ impl ThemeLoader {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "toml")
                     && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                    && !ids.iter().any(|i| i == stem)
                 {
-                    ids.insert(stem.to_string());
+                    user.insert(stem.to_string());
                 }
             }
         }
-        ids.into_iter().collect()
+        ids.extend(user);
+        ids
     }
 
     /// The user file backing a look, if there is one (used for hot reload).
@@ -593,8 +615,10 @@ mod tests {
     fn lists_builtin_and_user_looks() {
         let dir = user_dir(&[("zz.toml", "inherits = \"darcula\"\n"), ("notes.txt", "")]);
         let ids = ThemeLoader::new(Some(dir.path().to_path_buf())).available();
-        assert!(ids.contains(&"darcula".to_string()));
-        assert!(ids.contains(&"zz".to_string()));
+        // vista's own looks first, herdr's next, the user's last.
+        assert_eq!(&ids[..4], ["darcula", "paper", "quiet", "catppuccin"]);
+        assert_eq!(ids.last().map(String::as_str), Some("zz"));
+        assert_eq!(ids.len(), BUILTIN.len() + 1);
         assert!(!ids.iter().any(|i| i == "notes"));
     }
 

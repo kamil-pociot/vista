@@ -14,6 +14,9 @@ use crate::app::{App, AppOptions, MsgKind, SharedUi};
 use crate::event::{self, AppEvent, EventRx, EventTx, INPUT, ProjectId};
 use crate::projects::{ProjectsBar, TabTarget, WsRequest, project_name};
 
+/// How often herdr's theme is looked at (`theme = "herdr"`).
+const HERDR_CHECK: Duration = Duration::from_secs(2);
+
 /// At most this many closed projects are remembered as recent.
 const MAX_RECENT: usize = 20;
 
@@ -49,6 +52,9 @@ pub struct Workspace {
     /// Where the top bar's tabs were in the last frame drawn (the same for
     /// every project; a project switched to may not have drawn them yet).
     top_hits: Vec<crate::projects::ProjectHit>,
+    /// When herdr's theme was last looked at, and what it was.
+    herdr_checked: Option<Instant>,
+    herdr_theme: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +89,8 @@ impl Workspace {
             dragging: None,
             drag_col: 0,
             top_hits: Vec::new(),
+            herdr_checked: None,
+            herdr_theme: None,
         }
     }
 
@@ -347,6 +355,37 @@ impl Workspace {
                 Err(e) => self.active_app().notify(format!("{e:#}"), MsgKind::Error),
             },
             WsRequest::Close(i) => self.close(i),
+        }
+    }
+
+    /// `theme = "herdr"`: when herdr's theme changes, so does the look (a
+    /// look picked with Ctrl-T meanwhile stays until then).
+    pub fn follow_herdr(&mut self) {
+        if !self.projects.get(self.active).is_some_and(|p| p.app.follows_herdr)
+            || self.herdr_checked.is_some_and(|t| t.elapsed() < HERDR_CHECK)
+        {
+            return;
+        }
+        self.herdr_checked = Some(Instant::now());
+        let now = vista_core::herdr::current_theme();
+        let Some(before) = self.herdr_theme.replace(now.clone()) else {
+            // The first look: the one App started with.
+            return;
+        };
+        if before == now {
+            return;
+        }
+        let app = self.active_app();
+        match app.set_theme(&now) {
+            Ok(()) => {
+                let name = app.theme.name.clone();
+                app.notify(format!("Look: {name} (following herdr)"), MsgKind::Info);
+                self.look = Some(now);
+            }
+            Err(_) => app.notify(
+                format!("herdr's theme \"{now}\" has no vista look; keeping {}", app.theme.name),
+                MsgKind::Error,
+            ),
         }
     }
 

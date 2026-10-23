@@ -33,6 +33,9 @@ use vista_git::write::{CommitFile, CommitResult};
 use vista_nvim::{Grid, Nvim, NvimEvent};
 use vista_search::FileIndex;
 
+/// `theme = "herdr"`: use herdr's theme.
+pub const HERDR: &str = "herdr";
+
 /// Which panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -149,6 +152,8 @@ pub struct App {
     pub config: Config,
     pub paths: Paths,
     pub theme: Theme,
+    /// `theme = "herdr"`: the look follows herdr's theme (see `Workspace::follow_herdr`).
+    pub follows_herdr: bool,
     theme_loader: ThemeLoader,
     theme_stamp: Option<SystemTime>,
     pub keymap: Keymap,
@@ -257,16 +262,29 @@ impl App {
                 (Rc::new(RefCell::new(ui)), warning)
             }
         };
-        // --theme / VISTA_THEME › the look picked last (Ctrl-T) › config.
+        // --theme / VISTA_THEME › the look picked last (Ctrl-T) › config;
+        // following herdr (`theme = "herdr"` in the config) beats Ctrl-T.
+        let following = opts.config.theme == HERDR;
         let theme_id = opts
             .theme
             .clone()
             .or_else(|| std::env::var("VISTA_THEME").ok().filter(|t| !t.is_empty()))
-            .or_else(|| ui.borrow().look.clone())
+            .or_else(|| (!following).then(|| ui.borrow().look.clone()).flatten())
             .unwrap_or_else(|| opts.config.theme.clone());
+        let follows_herdr = theme_id == HERDR;
+        let theme_id = if follows_herdr {
+            vista_core::herdr::current_theme()
+        } else {
+            theme_id
+        };
         let mut startup_error = ui_warning;
         let theme = match theme_loader.load(&theme_id) {
             Ok(t) => t,
+            Err(e) if follows_herdr => {
+                tracing::warn!("herdr's theme: {e}");
+                startup_error = Some(format!("herdr's theme \"{theme_id}\" has no vista look; using darcula"));
+                Theme::default_theme()
+            }
             Err(e) => {
                 startup_error = Some(format!("{e}; using darcula"));
                 Theme::default_theme()
@@ -299,6 +317,7 @@ impl App {
             theme,
             theme_loader,
             theme_stamp,
+            follows_herdr,
             keymap,
             focus: Focus::Left,
             left: Some(LeftPanel::Project),

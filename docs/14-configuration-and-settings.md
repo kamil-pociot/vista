@@ -15,7 +15,7 @@ vista --probe-image   draw a test gradient with the image protocol
 `~/.config/vista/config.toml`, or `$VISTA_CONFIG_DIR/config.toml`. **Open Settings** (`Ctrl-,`, the `⚙` at the right of the top bar, or `?` → help) opens it for editing; when there is none yet it is written first, with every setting at its default and a comment on each. Changes apply when vista starts again.
 
 ```toml
-theme = "darcula"            # or quiet, paper, or a file in ~/.config/vista/themes/
+theme = "darcula"            # or quiet, paper, a herdr theme (kanagawa, nord, …), "herdr" to follow herdr, or a file in ~/.config/vista/themes/
 
 [images]
 protocol = "auto"            # auto | kitty | halfblocks | off

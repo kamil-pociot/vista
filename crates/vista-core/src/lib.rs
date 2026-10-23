@@ -2,6 +2,7 @@
 //! file watching.
 
 pub mod config;
+pub mod herdr;
 pub mod state;
 pub mod tree;
 pub mod watch;

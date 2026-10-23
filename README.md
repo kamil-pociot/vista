@@ -89,7 +89,7 @@ View settings you change in the app are saved to `state.toml` next to `config.to
 
 ## Looks
 
-A look is one TOML file: a `[palette]` of semantic colour tokens (`git.modified`, `syntax.keyword`, `diff.word.inserted`, …) and `[chrome]` layout options (borders, panel headers, tabs, tool-window bar, git indicators, key hints, spacing). Built in: **darcula** (IntelliJ classic), **quiet** (borderless, modal), **paper** (light, rounded). Make your own:
+A look is one TOML file: a `[palette]` of semantic colour tokens (`git.modified`, `syntax.keyword`, `diff.word.inserted`, …) and `[chrome]` layout options (borders, panel headers, tabs, tool-window bar, git indicators, key hints, spacing). Built in: **darcula** (IntelliJ classic), **quiet** (borderless, modal), **paper** (light, rounded), and herdr's 17 themes under the same names (`kanagawa`, `catppuccin`, `tokyo-night`, `nord`, `gruvbox`, `rose-pine`, … and their light variants). `theme = "herdr"` uses whichever theme herdr has and follows it while vista runs ([docs](docs/13-looks.md#following-herdr)). Make your own:
 
 ```toml
 # ~/.config/vista/themes/mine.toml

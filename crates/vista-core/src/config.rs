@@ -222,7 +222,7 @@ impl Config {
 pub const TEMPLATE: &str = r#"# vista settings. Changes apply when vista starts again.
 # Every value below is the default; delete a line to keep the default.
 
-theme = "darcula"                    # darcula, quiet, paper, or a file in themes/
+theme = "darcula"                    # darcula, quiet, paper, kanagawa, nord, … (herdr's themes), "herdr" to follow herdr, or a file in themes/
 
 [images]
 protocol = "auto"                    # auto, kitty, halfblocks, off
