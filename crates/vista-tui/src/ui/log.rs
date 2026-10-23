@@ -60,15 +60,28 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         .style(t.bg("ui.panel")),
         header,
     );
-    let hint = if w.path.is_some() {
-        "↑↓ commits · Tab files · ⏎ diff · a all commits · r refresh · Esc "
-    } else {
-        "↑↓ commits · Tab files · ⏎ diff · r refresh · Esc "
-    };
-    f.render_widget(
-        Paragraph::new(Span::styled(hint, t.fg("ui.dim"))).right_aligned(),
-        header,
-    );
+    {
+        use crate::app::Focus;
+        use crate::ui::click;
+        use ratatui::crossterm::event::KeyCode;
+        // Hint keys act on this window, so a click focuses it first.
+        let k = |c: KeyCode| click::key(c, Some(Focus::Bottom));
+        let mut parts = vec![("Tab files", k(KeyCode::Tab)), ("⏎ diff", k(KeyCode::Enter))];
+        if w.path.is_some() {
+            parts.push(("a all commits", k(KeyCode::Char('a'))));
+        }
+        parts.extend([("r refresh", k(KeyCode::Char('r'))), ("Esc", k(KeyCode::Esc))]);
+        let mut items: Vec<click::Item> = vec![(Span::styled("↑↓ commits · ", t.fg("ui.dim")), None)];
+        items.extend(click::hints(&parts, " · ", t.fg("ui.dim")));
+        items.push((Span::raw(" "), None));
+        click::line(
+            f,
+            header,
+            items,
+            ratatui::layout::Alignment::Right,
+            ratatui::style::Style::default(),
+        );
+    }
     let body = Rect {
         y: area.y + 1,
         height: area.height.saturating_sub(1),

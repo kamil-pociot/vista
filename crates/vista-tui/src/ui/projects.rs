@@ -115,13 +115,34 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
         .title(Span::styled(
             " Projects ",
             t.fg("ui.text.strong").add_modifier(Modifier::BOLD),
-        ))
-        .title_bottom(Span::styled(
-            " Enter open · Tab complete folder · Ctrl-W close project · Esc ",
-            t.fg("ui.dim"),
         ));
     let inner = block.inner(rect);
     f.render_widget(block, rect);
+    // The keys along the bottom edge, each clickable.
+    use crate::ui::click;
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+    let mut items: Vec<click::Item> = vec![(Span::styled(" ", t.fg("ui.dim")), None)];
+    items.extend(click::hints(
+        &[
+            ("Enter open", click::key(KeyCode::Enter, None)),
+            ("Tab complete folder", click::key(KeyCode::Tab, None)),
+            (
+                "Ctrl-W close project",
+                click::chord(KeyCode::Char('w'), KeyModifiers::CONTROL, None),
+            ),
+            ("Esc", click::key(KeyCode::Esc, None)),
+        ],
+        " · ",
+        t.fg("ui.dim"),
+    ));
+    items.push((Span::styled(" ", t.fg("ui.dim")), None));
+    let edge = Rect {
+        x: rect.x + 1,
+        y: rect.y + rect.height.saturating_sub(1),
+        width: rect.width.saturating_sub(2),
+        height: 1,
+    };
+    click::line(f, edge, items, ratatui::layout::Alignment::Left, t.bg("ui.popup"));
     if inner.height < 3 {
         return;
     }

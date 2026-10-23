@@ -1,6 +1,7 @@
 //! Drawing. Every colour comes from the theme via [`crate::style::ThemeStyle`].
 
 pub mod chrome;
+pub mod click;
 pub mod commit;
 pub mod diff;
 pub mod find;
@@ -13,7 +14,7 @@ pub mod term;
 pub mod viewer;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use vista_theme::{Borders, PanelHeaders, Spacing, ToolWindows};
@@ -171,6 +172,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     f.render_widget(Block::new().style(app.theme.base()), area);
+    click::begin();
     let mut areas = compute_areas(area, app);
     // Regions recorded while drawing (cleared first, kept at the end).
     app.areas.commit_list = None;
@@ -209,6 +211,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let Some(k) = areas.keyhints {
         chrome::keyhints(f, k, app);
     }
+    // Buttons under a popup can't be clicked.
+    let under_popups = click::mark();
+    let popup = app.recent_popup.is_some()
+        || app.goto.is_some()
+        || app.find.is_some()
+        || app.projects_popup.is_some()
+        || app.confirm.is_some()
+        || app.show_help;
     if app.recent_popup.is_some() {
         viewer::draw_recent(f, area, app);
     }
@@ -230,6 +240,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_help {
         help::draw(f, area, app);
     }
+    if popup {
+        click::only_since(under_popups);
+    }
+    app.buttons = click::take();
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
     let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
@@ -266,27 +280,31 @@ pub fn top_bar(f: &mut Frame, area: Rect, app: &mut App) {
 fn right_of_top_bar(f: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme;
     let km = &app.keymap;
-    let hint = |a: Action, label: &str| {
+    let hint = |a: Action, label: &str| -> Vec<click::Item> {
+        let c = Some(click::Click::Action(a));
         vec![
-            Span::styled(km.hint(a), t.fg("ui.dim")),
-            Span::styled(format!(" {label}   "), t.fg("ui.text")),
+            (Span::styled(km.hint(a), t.fg("ui.dim")), c),
+            (Span::styled(format!(" {label}"), t.fg("ui.text")), c),
+            (Span::raw("   "), None),
         ]
     };
-    let mut spans = hint(Action::GotoFile, "Go to File");
-    spans.extend(hint(Action::FindInFiles, "Find in Files"));
+    let mut items = hint(Action::GotoFile, "Go to File");
+    items.extend(hint(Action::FindInFiles, "Find in Files"));
     if app.git.is_some() {
+        // The branch opens the Git window.
+        let c = Some(click::Click::Action(Action::ToggleLog));
         let b = &app.status.branch;
-        spans.push(Span::styled("⎇ ", t.fg("ui.dim")));
-        spans.push(Span::styled(b.label(), t.fg("ui.text")));
+        items.push((Span::styled("⎇ ", t.fg("ui.dim")), c));
+        items.push((Span::styled(b.label(), t.fg("ui.text")), c));
         if b.ahead > 0 {
-            spans.push(Span::styled(format!(" ↑{}", b.ahead), t.fg("git.added")));
+            items.push((Span::styled(format!(" ↑{}", b.ahead), t.fg("git.added")), c));
         }
         if b.behind > 0 {
-            spans.push(Span::styled(format!(" ↓{}", b.behind), t.fg("git.modified")));
+            items.push((Span::styled(format!(" ↓{}", b.behind), t.fg("git.modified")), c));
         }
-        spans.push(Span::raw(" "));
+        items.push((Span::raw(" "), None));
     }
-    f.render_widget(Paragraph::new(Line::from(spans)).right_aligned(), area);
+    click::line(f, area, items, Alignment::Right, ratatui::style::Style::default());
 }
 
 fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
@@ -351,27 +369,40 @@ fn main_area(f: &mut Frame, area: Rect, app: &mut App) {
 pub(crate) fn empty_state(f: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme;
     let km = &app.keymap;
-    let row = |a: Action, label: &str| {
-        Line::from(vec![
-            Span::styled(format!("{:>12}  ", km.hint(a)), t.fg("ui.accent")),
-            Span::styled(format!("{label:<16}"), t.fg("ui.dim")),
-        ])
-    };
-    let lines = vec![
-        Line::styled("No file open", t.fg("ui.text")),
-        Line::raw(""),
-        row(Action::GotoFile, "Go to File"),
-        row(Action::FindInFiles, "Find in Files"),
-        row(Action::ToggleProject, "Project"),
-        row(Action::ToggleCommit, "Commit"),
-        row(Action::Help, "Help"),
+    let actions = [
+        (Action::GotoFile, "Go to File"),
+        (Action::FindInFiles, "Find in Files"),
+        (Action::ToggleProject, "Project"),
+        (Action::ToggleCommit, "Commit"),
+        (Action::Help, "Help"),
     ];
-    let h = lines.len() as u16;
+    let h = actions.len() as u16 + 2;
     let y = area.y + area.height.saturating_sub(h) / 2;
-    let rect = Rect {
-        y,
-        height: h.min(area.height),
+    let row = |i: u16| Rect {
+        y: y + i,
+        height: 1,
         ..area
     };
-    f.render_widget(Paragraph::new(lines).centered(), rect);
+    if y + h > area.y + area.height {
+        return;
+    }
+    f.render_widget(
+        Paragraph::new(Line::styled("No file open", t.fg("ui.text"))).centered(),
+        row(0),
+    );
+    // Each row runs its action when clicked.
+    for (i, (a, label)) in actions.into_iter().enumerate() {
+        let c = Some(click::Click::Action(a));
+        let items = vec![
+            (Span::styled(format!("{:>12}  ", km.hint(a)), t.fg("ui.accent")), c),
+            (Span::styled(format!("{label:<16}"), t.fg("ui.dim")), c),
+        ];
+        click::line(
+            f,
+            row(i as u16 + 2),
+            items,
+            Alignment::Center,
+            ratatui::style::Style::default(),
+        );
+    }
 }

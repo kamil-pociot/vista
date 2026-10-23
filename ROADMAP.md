@@ -380,6 +380,10 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Shift-Enter reaches terminal programs as `ESC CR`, so it's a newline in Claude Code again. Programs inside vista can't use the kitty keyboard protocol, so a plain CR was all they got.
 - [x] Tests: OSC filtering units, `e2e_r1_terminal` (passed-on bytes via `expect_output`, both marks, Shift-Enter bytes read by a real program).
 
+### Clickable labels ✅
+- [x] Every label that names a window, option or key can be clicked and does what its key does: top and bottom bars, icon rail, key hints, Find and Go to File popups (scopes, toggles, fields, tabs, footers), Projects popup footer, Git window hints, Commit window (Amend, Commit, Commit & Push), confirm dialog, diff header and hints, find-in-file bar. Popups cover what's under them.
+- [x] Tests: `ui::click` units (placement for every alignment, popups), `e2e_r1_clicks` (4 PTY tests).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

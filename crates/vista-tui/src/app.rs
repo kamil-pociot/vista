@@ -164,6 +164,8 @@ pub struct App {
     pub rx: Option<EventRx>,
     /// Screen regions from the last draw (mouse hit-testing).
     pub areas: crate::ui::Areas,
+    /// Clickable labels in the last frame (on top of `areas`).
+    pub buttons: Vec<crate::ui::click::Button>,
     pub project: ProjectView,
     /// The repository, if the project is inside one.
     pub git: Option<Git>,
@@ -306,6 +308,7 @@ impl App {
             tx,
             rx,
             areas: Default::default(),
+            buttons: Vec::new(),
             project,
             git,
             status: StatusSnapshot::default(),
@@ -914,7 +917,12 @@ impl App {
     fn goto_key(&mut self, key: &KeyEvent) {
         let root = self.root.clone();
         let Some(g) = self.goto.as_mut() else { return };
-        match g.handle_key(key, &root) {
+        let outcome = g.handle_key(key, &root);
+        self.goto_outcome(outcome);
+    }
+
+    fn goto_outcome(&mut self, outcome: GotoOutcome) {
+        match outcome {
             GotoOutcome::Handled => self.refresh_goto(),
             GotoOutcome::Close => self.goto = None,
             GotoOutcome::Open { path, line, edit } => {
@@ -2009,6 +2017,17 @@ impl App {
             _ => {}
         }
         if let MouseEventKind::Down(MouseButton::Left) = m.kind {
+            // Help closes on any click, as on any key.
+            if self.show_help {
+                self.show_help = false;
+                return;
+            }
+            let on_project_tab =
+                m.row == self.areas.top.y && self.project_hits.iter().any(|h| (h.x.0..h.x.1).contains(&m.column));
+            if !on_project_tab && let Some(c) = crate::ui::click::at(&self.buttons, m.column, m.row) {
+                self.click(c);
+                return;
+            }
             if self.projects_popup.is_some() {
                 if let Some(r) = self.areas.projects_list.filter(|r| r.contains(pos)) {
                     let row = (m.row - r.y) as usize;
@@ -2280,6 +2299,52 @@ impl App {
             MouseEventKind::ScrollDown if inside(tree) => self.project.scroll_by(3),
             MouseEventKind::ScrollUp if inside(tree) => self.project.scroll_by(-3),
             _ => {}
+        }
+    }
+
+    /// A click on a label or button: does what its key does.
+    pub fn click(&mut self, c: crate::ui::click::Click) {
+        use crate::ui::click::Click;
+        let tab = KeyEvent::from(KeyCode::Tab);
+        match c {
+            Click::Action(a) => self.handle_action(a),
+            Click::Key(key, focus) => {
+                if let Some(f) = focus {
+                    self.focus = f;
+                }
+                self.handle_key(key);
+            }
+            // Scopes and tabs step round with their key until the clicked one.
+            Click::FindScope(s) => {
+                let alt_s = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT);
+                for _ in crate::find::ScopeKind::ALL {
+                    if self.find.as_ref().is_none_or(|p| p.scope == s) {
+                        break;
+                    }
+                    self.find_key(&alt_s);
+                }
+            }
+            Click::FindField(field) => {
+                if self.find.as_ref().is_some_and(|p| p.field != field) {
+                    self.find_key(&tab);
+                }
+            }
+            Click::GotoTab(t) => {
+                if let Some(outcome) = self.goto.as_mut().map(|g| g.set_tab(t)) {
+                    self.goto_outcome(outcome);
+                }
+            }
+            Click::FindWindowTab(i) => {
+                if i < self.find_window.tabs.len() {
+                    self.find_window.active = i;
+                    self.focus = Focus::Bottom;
+                }
+            }
+            Click::Amend => {
+                self.focus = Focus::Left;
+                self.commit.editing_message = false;
+                self.commit_key(&KeyEvent::from(KeyCode::Char('m')));
+            }
         }
     }
 

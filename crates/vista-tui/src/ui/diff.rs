@@ -149,21 +149,45 @@ pub fn draw(
         .iter()
         .filter(|h| commit.is_some_and(|c| c.hunk_included(&tab.path, h.id)))
         .count();
-    let position = if n == 0 {
+    use crate::app::Focus;
+    use crate::keymap::Action;
+    use crate::ui::click::{self, Click};
+    use ratatui::crossterm::event::KeyCode;
+    let text = |s: String| Span::styled(s, t.fg("ui.text"));
+    let position: Vec<click::Item> = if n == 0 {
         // Git counts a missing final newline; the lines themselves match.
         if doc.old_text != doc.new_text {
-            "only the final newline changed ".to_string()
+            vec![(text("only the final newline changed ".into()), None)]
         } else {
-            "no changes ".to_string()
+            vec![(text("no changes ".into()), None)]
         }
-    } else if commit.is_none() {
-        format!("read-only   [ ◂ change {k} of {n} ▸ ] ")
     } else {
-        format!("{ticked} of {n} in commit (␣)   [ ◂ change {k} of {n} ▸ ] ")
+        // ◂ ▸ step through changes; ␣ ticks the current one for the commit.
+        let mut items = match commit {
+            None => vec![(text("read-only".into()), None)],
+            Some(_) => vec![
+                (text(format!("{ticked} of {n} in commit ")), None),
+                (
+                    text("(␣)".into()),
+                    Some(click::key(KeyCode::Char(' '), Some(Focus::Main))),
+                ),
+            ],
+        };
+        items.extend([
+            (text("   [ ".into()), None),
+            (text("◂".into()), Some(Click::Action(Action::PrevChange))),
+            (text(format!(" change {k} of {n} ")), None),
+            (text("▸".into()), Some(Click::Action(Action::NextChange))),
+            (text(" ] ".into()), None),
+        ]);
+        items
     };
-    f.render_widget(
-        Paragraph::new(Span::styled(position, t.fg("ui.text"))).right_aligned(),
+    click::line(
+        f,
         header,
+        position,
+        ratatui::layout::Alignment::Right,
+        ratatui::style::Style::default(),
     );
 
     let body = Rect {
@@ -176,14 +200,35 @@ pub fn draw(
         height: 1,
         ..area
     };
-    f.render_widget(
-        Paragraph::new(Span::styled(
-            " u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit",
-            t.fg("ui.dim"),
-        ))
-        .style(t.bg("ui.panel")),
-        hints,
-    );
+    let k = |c: char| click::key(KeyCode::Char(c), Some(Focus::Main));
+    let dim = t.fg("ui.dim");
+    let mut items: Vec<click::Item> = vec![(Span::styled(" ", dim), None)];
+    items.extend(click::hints(
+        &[
+            ("u unified", k('u')),
+            ("i whitespace", k('i')),
+            ("w wrap", k('w')),
+            ("z collapse", k('z')),
+        ],
+        "  ",
+        dim,
+    ));
+    items.extend([
+        (Span::styled("  ", dim), None),
+        (Span::styled("J", dim), Some(k('J'))),
+        (Span::styled("/", dim), None),
+        (Span::styled("K", dim), Some(k('K'))),
+        (Span::styled(" file  ", dim), None),
+    ]);
+    items.extend(click::hints(
+        &[
+            ("⏎ open", click::key(KeyCode::Enter, Some(Focus::Main))),
+            ("e edit", k('e')),
+        ],
+        "  ",
+        dim,
+    ));
+    click::line(f, hints, items, ratatui::layout::Alignment::Left, t.bg("ui.panel"));
     let opts = format!(
         "{} · whitespace: {} · lines: {} · collapse: {} ",
         if doc.unified { "unified" } else { "side-by-side" },

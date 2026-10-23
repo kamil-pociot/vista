@@ -212,25 +212,47 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     };
     let included = cv.included.len();
     let total = cv.total(&app.status);
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(if cv.amend { "[x] Amend" } else { "[ ] Amend" }, t.fg("ui.text")),
-            Span::styled(format!("   {included} of {total} files"), t.fg("ui.dim")),
-        ])),
+    use crate::ui::click::{self, Click};
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+    let left = ratatui::layout::Alignment::Left;
+    click::line(
+        f,
         row,
+        vec![
+            (
+                Span::styled(if cv.amend { "[x] Amend" } else { "[ ] Amend" }, t.fg("ui.text")),
+                Some(Click::Amend),
+            ),
+            (
+                Span::styled(format!("   {included} of {total} files"), t.fg("ui.dim")),
+                None,
+            ),
+        ],
+        left,
+        ratatui::style::Style::default(),
     );
     let buttons = Rect { y: row.y + 1, ..row };
     let label = if cv.busy { " Committing… " } else { " Commit ^K " };
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                label,
-                t.fg_bg("ui.button.text", "ui.button").add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
-            Span::styled(" Commit & Push (P) ", t.fg_bg("ui.text", "ui.panel")),
-        ])),
+    let commit = |m| Some(click::chord(KeyCode::Char('k'), m, Some(crate::app::Focus::Left)));
+    click::line(
+        f,
         buttons,
+        vec![
+            (
+                Span::styled(
+                    label,
+                    t.fg_bg("ui.button.text", "ui.button").add_modifier(Modifier::BOLD),
+                ),
+                commit(KeyModifiers::CONTROL),
+            ),
+            (Span::raw("  "), None),
+            (
+                Span::styled(" Commit & Push (P) ", t.fg_bg("ui.text", "ui.panel")),
+                commit(KeyModifiers::CONTROL | KeyModifiers::ALT),
+            ),
+        ],
+        left,
+        ratatui::style::Style::default(),
     );
 }
 
@@ -252,16 +274,32 @@ pub fn draw_confirm(f: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     f.render_widget(
-        Paragraph::new(vec![
-            Line::styled(format!(" {}", c.text), t.fg("ui.text")),
-            Line::raw(""),
-            Line::from(vec![
-                Span::styled(" y ", t.fg_bg("ui.button.text", "ui.button")),
-                Span::styled(" yes   ", t.fg("ui.text")),
-                Span::styled(" n ", t.fg_bg("ui.text", "ui.panel")),
-                Span::styled(" no", t.fg("ui.text")),
-            ]),
-        ]),
+        Paragraph::new(Line::styled(format!(" {}", c.text), t.fg("ui.text"))),
         inner,
     );
+    use crate::ui::click;
+    use ratatui::crossterm::event::KeyCode;
+    let (yes, no) = (
+        Some(click::key(KeyCode::Char('y'), None)),
+        Some(click::key(KeyCode::Char('n'), None)),
+    );
+    if inner.height >= 3 {
+        click::line(
+            f,
+            Rect {
+                y: inner.y + 2,
+                height: 1,
+                ..inner
+            },
+            vec![
+                (Span::styled(" y ", t.fg_bg("ui.button.text", "ui.button")), yes),
+                (Span::styled(" yes", t.fg("ui.text")), yes),
+                (Span::raw("   "), None),
+                (Span::styled(" n ", t.fg_bg("ui.text", "ui.panel")), no),
+                (Span::styled(" no", t.fg("ui.text")), no),
+            ],
+            ratatui::layout::Alignment::Left,
+            ratatui::style::Style::default(),
+        );
+    }
 }

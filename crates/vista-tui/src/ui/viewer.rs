@@ -18,6 +18,7 @@ use vista_render::{Highlighter, StyledLine};
 use crate::app::{App, Focus};
 use crate::style::{ThemeStyle, styled_line};
 use crate::ui::chrome::{self, TabLabel};
+use crate::ui::click;
 use crate::viewer::{Content, ImageState, Tab};
 
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
@@ -65,44 +66,54 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         body.height -= 1;
     }
     draw_active(f, body, app);
-    if let Some(line) = bar {
+    if let Some(items) = bar {
         let r = Rect {
             y: inner.y + inner.height - 1,
             height: 1,
             ..inner
         };
-        f.render_widget(Paragraph::new(line).style(app.theme.bg("ui.panel")), r);
+        click::line(f, r, items, ratatui::layout::Alignment::Left, app.theme.bg("ui.panel"));
     }
 }
 
-fn search_or_prompt_line(app: &App) -> Option<Line<'static>> {
+fn search_or_prompt_line(app: &App) -> Option<Vec<click::Item>> {
     let t = &app.theme;
     if let Some(p) = &app.prompt {
-        return Some(Line::from(vec![
-            Span::styled(format!(" {}: ", p.label), t.fg("ui.text.strong")),
-            Span::styled(format!("{}▏", p.input), t.fg("ui.text")),
-        ]));
+        return Some(vec![
+            (Span::styled(format!(" {}: ", p.label), t.fg("ui.text.strong")), None),
+            (Span::styled(format!("{}▏", p.input), t.fg("ui.text")), None),
+        ]);
     }
     let tab = app.viewer.active_tab()?;
     let s = tab.search.as_ref()?;
-    let mut spans = vec![
-        Span::styled(" Find: ", t.fg("ui.text.strong")),
-        Span::styled(s.query.clone(), t.fg("ui.text")),
+    let mut items = vec![
+        (Span::styled(" Find: ", t.fg("ui.text.strong")), None),
+        (Span::styled(s.query.clone(), t.fg("ui.text")), None),
     ];
     if s.editing {
-        spans.push(Span::styled("▏", t.fg("ui.text")));
+        items.push((Span::styled("▏", t.fg("ui.text")), None));
     }
     if s.query.is_empty() {
     } else if s.matches.is_empty() {
-        spans.push(Span::styled("   no matches", t.fg("ui.error")));
+        items.push((Span::styled("   no matches", t.fg("ui.error")), None));
     } else {
-        spans.push(Span::styled(
-            format!("   {}/{}", s.current + 1, s.matches.len()),
-            t.fg("ui.dim"),
-        ));
-        spans.push(Span::styled("   n/N next/prev · Esc close", t.fg("ui.dim")));
+        use ratatui::crossterm::event::KeyCode;
+        let k = |c: KeyCode| Some(click::key(c, Some(Focus::Main)));
+        let dim = t.fg("ui.dim");
+        items.extend([
+            (
+                Span::styled(format!("   {}/{}", s.current + 1, s.matches.len()), dim),
+                None,
+            ),
+            (Span::styled("   ", dim), None),
+            (Span::styled("n", dim), k(KeyCode::Char('n'))),
+            (Span::styled("/", dim), None),
+            (Span::styled("N", dim), k(KeyCode::Char('N'))),
+            (Span::styled(" next/prev · ", dim), None),
+            (Span::styled("Esc close", dim), k(KeyCode::Esc)),
+        ]);
     }
-    Some(Line::from(spans))
+    Some(items)
 }
 
 fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {

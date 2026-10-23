@@ -136,7 +136,12 @@ impl GotoPopup {
         let tabs = GotoTab::ALL;
         let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0) as isize;
         let n = tabs.len() as isize;
-        self.tab = tabs[((i + delta) % n + n) as usize % tabs.len()];
+        self.set_tab(tabs[((i + delta) % n + n) as usize % tabs.len()])
+    }
+
+    /// Shows `tab` (Text hands the query to Find in Files).
+    pub fn set_tab(&mut self, tab: GotoTab) -> GotoOutcome {
+        self.tab = tab;
         self.selected = 0;
         self.scroll = 0;
         if self.tab == GotoTab::Text {

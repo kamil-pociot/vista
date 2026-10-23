@@ -7,9 +7,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::layout::Alignment;
+
 use crate::app::App;
 use crate::goto::GotoTab;
 use crate::style::ThemeStyle;
+use crate::ui::click::{self, Click};
 
 /// Preview lines of the selected file (read lazily, plain text).
 fn preview(path: &std::path::Path, n: usize) -> Vec<String> {
@@ -50,7 +54,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     // Row 0: scope tabs + include-ignored toggle.
-    let mut tabs = vec![Span::raw(" ")];
+    let mut tabs: Vec<click::Item> = vec![(Span::raw(" "), None)];
     for tab in GotoTab::ALL {
         let style = if tab == p.tab {
             t.fg("ui.text.strong")
@@ -58,17 +62,33 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         } else {
             t.fg("ui.text")
         };
-        tabs.push(Span::styled(format!(" {} ", tab.label()), style));
-        tabs.push(Span::raw("  "));
+        tabs.push((
+            Span::styled(format!(" {} ", tab.label()), style),
+            Some(Click::GotoTab(tab)),
+        ));
+        tabs.push((Span::raw("  "), None));
     }
-    f.render_widget(Paragraph::new(Line::from(tabs)), Rect { height: 1, ..inner });
+    click::line(
+        f,
+        Rect { height: 1, ..inner },
+        tabs,
+        Alignment::Left,
+        ratatui::style::Style::default(),
+    );
     let toggle = format!(
-        "[{}] include ignored (Alt-I) ",
+        "[{}] include ignored (Alt-I)",
         if p.include_ignored { "x" } else { " " }
     );
-    f.render_widget(
-        Paragraph::new(Span::styled(toggle, t.fg("ui.dim"))).right_aligned(),
+    let alt_i = click::chord(KeyCode::Char('i'), KeyModifiers::ALT, None);
+    click::line(
+        f,
         Rect { height: 1, ..inner },
+        vec![
+            (Span::styled(toggle, t.fg("ui.dim")), Some(alt_i)),
+            (Span::raw(" "), None),
+        ],
+        Alignment::Right,
+        ratatui::style::Style::default(),
     );
 
     // Row 1: query input.
@@ -171,13 +191,18 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         ..inner
     };
     let count = format!("{} of {} files ", p.results.len(), p.indexed);
-    f.render_widget(
-        Paragraph::new(Span::styled(
-            " ↑↓ select   ⏎ open   Alt-⏎ edit   Tab scope   name:42 → line",
-            t.fg("ui.dim"),
-        )),
-        footer,
-    );
+    let mut items: Vec<click::Item> = vec![(Span::styled(" ↑↓ select   ", t.fg("ui.dim")), None)];
+    items.extend(click::hints(
+        &[
+            ("⏎ open", click::key(KeyCode::Enter, None)),
+            ("Alt-⏎ edit", click::chord(KeyCode::Enter, KeyModifiers::ALT, None)),
+            ("Tab scope", click::key(KeyCode::Tab, None)),
+        ],
+        "   ",
+        t.fg("ui.dim"),
+    ));
+    items.push((Span::styled("   name:42 → line", t.fg("ui.dim")), None));
+    click::line(f, footer, items, Alignment::Left, ratatui::style::Style::default());
     f.render_widget(
         Paragraph::new(Span::styled(count, t.fg("ui.dim"))).right_aligned(),
         footer,

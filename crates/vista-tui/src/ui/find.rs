@@ -9,9 +9,13 @@ use unicode_width::UnicodeWidthStr;
 use vista_render::StyledLine;
 use vista_render::styled::{StyledSpan, TokStyle, expand_tabs, overlay, slice_cols};
 
+use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::layout::Alignment;
+
 use crate::app::{App, Focus};
 use crate::find::{Field, ScopeKind, WindowRow};
 use crate::style::{ThemeStyle, styled_line};
+use crate::ui::click::{self, Click};
 
 /// A hit's line with matches highlighted, leading whitespace trimmed.
 fn hit_line(text: &str, ranges: &[(usize, usize)], width: usize) -> StyledLine {
@@ -29,12 +33,15 @@ fn hit_line(text: &str, ranges: &[(usize, usize)], width: usize) -> StyledLine {
     slice_cols(&line, 0, width)
 }
 
-fn toggle(label: &str, on: bool, t: &vista_theme::Theme) -> Span<'static> {
-    if on {
-        Span::styled(format!(" {label} "), t.fg_bg("ui.button.text", "ui.button"))
+/// A Cc / W / .* toggle; a click presses its Alt key.
+fn toggle(label: &str, on: bool, key: char, t: &vista_theme::Theme) -> click::Item {
+    let style = if on {
+        t.fg_bg("ui.button.text", "ui.button")
     } else {
-        Span::styled(format!(" {label} "), t.fg("ui.dim"))
-    }
+        t.fg("ui.dim")
+    };
+    let c = click::chord(KeyCode::Char(key), KeyModifiers::ALT, None);
+    (Span::styled(format!(" {label} "), style), Some(c))
 }
 
 /// Lines of the file around `line` (1-based), highlighted, with the hit
@@ -159,26 +166,30 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
         )),
         row(0),
     );
-    let mut right = Vec::new();
+    let mut right: Vec<click::Item> = Vec::new();
     match (&p.error, &p.summary) {
-        (Some(e), _) => right.push(Span::styled(format!("{e}   "), t.fg("ui.error"))),
-        (None, _) if p.running => right.push(Span::styled("searching…   ".to_string(), t.fg("ui.dim"))),
-        (None, Some(s)) if !p.query.is_empty() => right.push(Span::styled(
-            format!(
-                "{}{} matches in {} files   ",
-                if s.truncated { "1000+ " } else { "" },
-                if s.truncated {
-                    String::new()
-                } else {
-                    p.results.len().to_string()
-                },
-                p.file_count()
+        (Some(e), _) => right.push((Span::styled(format!("{e}   "), t.fg("ui.error")), None)),
+        (None, _) if p.running => right.push((Span::styled("searching…   ".to_string(), t.fg("ui.dim")), None)),
+        (None, Some(s)) if !p.query.is_empty() => right.push((
+            Span::styled(
+                format!(
+                    "{}{} matches in {} files   ",
+                    if s.truncated { "1000+ " } else { "" },
+                    if s.truncated {
+                        String::new()
+                    } else {
+                        p.results.len().to_string()
+                    },
+                    p.file_count()
+                ),
+                t.fg("ui.dim"),
             ),
-            t.fg("ui.dim"),
+            None,
         )),
         _ => {}
     }
-    right.push(Span::styled("File mask: ", t.fg("ui.dim")));
+    let mask_click = Some(Click::FindField(Field::Mask));
+    right.push((Span::styled("File mask: ", t.fg("ui.dim")), mask_click));
     let mask_style = if p.field == Field::Mask {
         t.fg_bg("ui.text.strong", "ui.input")
     } else {
@@ -189,14 +200,17 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
     } else {
         p.mask.clone()
     };
-    right.push(Span::styled(
-        format!(" {mask_text}{} ", if p.field == Field::Mask { "▏" } else { "" }),
-        mask_style,
+    right.push((
+        Span::styled(
+            format!(" {mask_text}{} ", if p.field == Field::Mask { "▏" } else { "" }),
+            mask_style,
+        ),
+        mask_click,
     ));
-    f.render_widget(Paragraph::new(Line::from(right)).right_aligned(), row(0));
+    click::line(f, row(0), right, Alignment::Right, ratatui::style::Style::default());
 
     // Scopes.
-    let mut scopes = vec![Span::raw(" ")];
+    let mut scopes: Vec<click::Item> = vec![(Span::raw(" "), None)];
     for s in ScopeKind::ALL {
         let style = if s == p.scope {
             t.fg("ui.text.strong")
@@ -204,17 +218,20 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
         } else {
             t.fg("ui.text")
         };
-        scopes.push(Span::styled(format!(" {} ", s.label()), style));
-        scopes.push(Span::raw(" "));
+        scopes.push((
+            Span::styled(format!(" {} ", s.label()), style),
+            Some(Click::FindScope(s)),
+        ));
+        scopes.push((Span::raw(" "), None));
     }
     if p.scope == ScopeKind::Directory {
         let d = p.dir.strip_prefix(&root).unwrap_or(&p.dir).display().to_string();
-        scopes.push(Span::styled(
-            format!("  {}/", if d.is_empty() { "." } else { &d }),
-            t.fg("ui.dim"),
+        scopes.push((
+            Span::styled(format!("  {}/", if d.is_empty() { "." } else { &d }), t.fg("ui.dim")),
+            None,
         ));
     }
-    f.render_widget(Paragraph::new(Line::from(scopes)), row(1));
+    click::line(f, row(1), scopes, Alignment::Left, ratatui::style::Style::default());
 
     // Query + toggles.
     let qstyle = if p.fresh {
@@ -232,18 +249,17 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
         .style(t.bg("ui.input")),
         row(2),
     );
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            toggle("Cc", p.case, t),
-            Span::raw(" "),
-            toggle("W", p.word, t),
-            Span::raw(" "),
-            toggle(".*", p.regex, t),
-            Span::raw(" "),
-        ]))
-        .right_aligned(),
-        row(2),
-    );
+    // A click on the query puts the cursor there (the toggles, drawn after, win).
+    click::add(row(2), Click::FindField(Field::Query));
+    let toggles = vec![
+        toggle("Cc", p.case, 'c', t),
+        (Span::raw(" "), None),
+        toggle("W", p.word, 'w', t),
+        (Span::raw(" "), None),
+        toggle(".*", p.regex, 'x', t),
+        (Span::raw(" "), None),
+    ];
+    click::line(f, row(2), toggles, Alignment::Right, ratatui::style::Style::default());
 
     // Results, separator, preview, footer.
     let body = inner.height - 4;
@@ -329,13 +345,27 @@ pub fn draw_popup(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let footer = row(inner.height - 1);
-    f.render_widget(
-        Paragraph::new(Span::styled(
-            " ⏎ open   Alt-⏎ edit   Alt-O Find window   Alt-↑↓ history   Alt-C/W/X toggles   Alt-S scope   Tab mask",
-            t.fg("ui.dim"),
-        )),
-        footer,
-    );
+    let alt = |c: char| click::chord(KeyCode::Char(c), KeyModifiers::ALT, None);
+    let mut items: Vec<click::Item> = vec![(Span::raw(" "), None)];
+    items.extend(click::hints(
+        &[
+            ("⏎ open", click::key(KeyCode::Enter, None)),
+            ("Alt-⏎ edit", click::chord(KeyCode::Enter, KeyModifiers::ALT, None)),
+            ("Alt-O Find window", alt('o')),
+        ],
+        "   ",
+        t.fg("ui.dim"),
+    ));
+    items.push((
+        Span::styled("   Alt-↑↓ history   Alt-C/W/X toggles   ", t.fg("ui.dim")),
+        None,
+    ));
+    items.extend(click::hints(
+        &[("Alt-S scope", alt('s')), ("Tab mask", click::key(KeyCode::Tab, None))],
+        "   ",
+        t.fg("ui.dim"),
+    ));
+    click::line(f, footer, items, Alignment::Left, ratatui::style::Style::default());
     if let Some(s) = &p.summary {
         f.render_widget(
             Paragraph::new(Span::styled(format!("{} ms ", s.elapsed.as_millis()), t.fg("ui.dim"))).right_aligned(),
@@ -356,7 +386,7 @@ pub fn draw_window(f: &mut Frame, area: Rect, app: &mut App) {
     let root = app.root.clone();
     let win = &mut app.find_window;
     // Result tabs.
-    let mut spans = vec![Span::raw(" ")];
+    let mut items: Vec<click::Item> = vec![(Span::raw(" "), None)];
     for (i, tab) in win.tabs.iter().enumerate() {
         let style = if i == win.active {
             t.fg("ui.text.strong")
@@ -364,9 +394,18 @@ pub fn draw_window(f: &mut Frame, area: Rect, app: &mut App) {
         } else {
             t.fg("ui.dim")
         };
-        spans.push(Span::styled(format!(" {} ({}) ", tab.title, tab.hits.len()), style));
+        items.push((
+            Span::styled(format!(" {} ({}) ", tab.title, tab.hits.len()), style),
+            Some(Click::FindWindowTab(i)),
+        ));
     }
-    f.render_widget(Paragraph::new(Line::from(spans)), Rect { height: 1, ..inner });
+    click::line(
+        f,
+        Rect { height: 1, ..inner },
+        items,
+        Alignment::Left,
+        ratatui::style::Style::default(),
+    );
     let list = Rect {
         y: inner.y + 1,
         height: inner.height - 1,

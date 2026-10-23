@@ -2,7 +2,7 @@
 //! panels, separators, tab strips, the tool-window bar and key hints.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Modifier;
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
@@ -12,6 +12,7 @@ use vista_theme::{Borders, PanelHeaders, Tabs, Theme, ToolWindows};
 use crate::app::{App, Focus, LeftPanel, MsgKind};
 use crate::keymap::Action;
 use crate::style::ThemeStyle;
+use crate::ui::click::{self, Click};
 
 fn border_set(b: Borders) -> border::Set<'static> {
     match b {
@@ -201,14 +202,17 @@ pub fn tab_strip(
     )
 }
 
-fn tool_label(app: &App, key: &str, name: &str, active: bool) -> Span<'static> {
+fn tool_label(app: &App, key: &str, name: &str, active: bool, action: Action) -> click::Item {
     let t = &app.theme;
     let style = if active {
         t.fg("ui.text.strong").add_modifier(Modifier::BOLD)
     } else {
         t.fg("ui.header")
     };
-    Span::styled(format!(" {key}: {name}  "), style)
+    (
+        Span::styled(format!(" {key}: {name}  "), style),
+        Some(Click::Action(action)),
+    )
 }
 
 fn status_spans(app: &App) -> Vec<Span<'static>> {
@@ -268,46 +272,30 @@ pub fn bottom_bar(f: &mut Frame, area: Rect, app: &App) {
     if t.chrome.tool_windows == ToolWindows::BottomBar {
         let left_active = |p| app.left == Some(p) && app.focus == Focus::Left;
         let km = &app.keymap;
-        let spans = vec![
-            tool_label(
-                app,
-                &km.tool_number(Action::ToggleProject),
-                "Project",
-                left_active(LeftPanel::Project),
-            ),
-            tool_label(
-                app,
-                &km.tool_number(Action::ToggleCommit),
-                "Commit",
-                left_active(LeftPanel::Commit),
-            ),
-            tool_label(
-                app,
-                &km.tool_number(Action::ToggleFind),
+        let tool = |a: Action, name: &str, active: bool| tool_label(app, &km.tool_number(a), name, active, a);
+        let mut items = vec![
+            tool(Action::ToggleProject, "Project", left_active(LeftPanel::Project)),
+            tool(Action::ToggleCommit, "Commit", left_active(LeftPanel::Commit)),
+            tool(
+                Action::ToggleFind,
                 "Find",
                 app.focus == Focus::Bottom && !app.log.visible && !app.shell_visible,
             ),
-            tool_label(
-                app,
-                &km.tool_number(Action::ToggleTerminal),
+            tool(
+                Action::ToggleTerminal,
                 "Terminal",
                 app.focus == Focus::Bottom && app.shell_visible,
             ),
-            tool_label(
-                app,
-                &km.tool_number(Action::ToggleLog),
-                "Git",
-                app.focus == Focus::Bottom && app.log.visible,
-            ),
-            tool_label(app, "?", "Help", app.show_help),
+            tool(Action::ToggleLog, "Git", app.focus == Focus::Bottom && app.log.visible),
+            tool_label(app, "?", "Help", app.show_help, Action::Help),
         ];
         // Labels give way to the status on the right when the row is narrow.
         let status_w = Line::from(status_spans(app)).width();
-        let mut spans = spans;
-        while spans.len() > 1 && Line::from(spans.clone()).width() + status_w > area.width as usize {
-            spans.pop();
+        let width = |items: &[click::Item]| items.iter().map(|(s, _)| s.width()).sum::<usize>();
+        while items.len() > 1 && width(&items) + status_w > area.width as usize {
+            items.pop();
         }
-        f.render_widget(Paragraph::new(Line::from(spans)), area);
+        click::line(f, area, items, Alignment::Left, ratatui::style::Style::default());
     } else {
         let mode = Span::styled(
             format!(" {} ", if app.focus == Focus::Left { "TREE" } else { "VIEW" }),
@@ -340,13 +328,25 @@ pub fn icon_rail(f: &mut Frame, area: Rect, app: &App) {
         item("?", app.show_help),
     ];
     f.render_widget(Paragraph::new(lines), area);
+    let actions = [
+        Action::ToggleProject,
+        Action::ToggleCommit,
+        Action::FindInFiles,
+        Action::Help,
+    ];
+    for (i, a) in actions.into_iter().enumerate() {
+        let y = area.y + 2 * i as u16;
+        if y < area.y + area.height {
+            click::add(Rect::new(area.x, y, area.width, 1), Click::Action(a));
+        }
+    }
 }
 
 /// A line of key hints (looks with `keyhints = true`).
 pub fn keyhints(f: &mut Frame, area: Rect, app: &App) {
     let t = &app.theme;
     let km = &app.keymap;
-    let mut spans = vec![Span::raw(" ")];
+    let mut items: Vec<click::Item> = vec![(Span::raw(" "), None)];
     for (a, label) in [
         (Action::GotoFile, "files"),
         (Action::FindInFiles, "find in files"),
@@ -354,10 +354,12 @@ pub fn keyhints(f: &mut Frame, area: Rect, app: &App) {
         (Action::FocusNext, "focus"),
         (Action::Help, "help"),
     ] {
-        spans.push(Span::styled(km.hint(a), t.fg("ui.warning")));
-        spans.push(Span::styled(format!(" {label}    "), t.fg("ui.dim")));
+        let c = Some(Click::Action(a));
+        items.push((Span::styled(km.hint(a), t.fg("ui.warning")), c));
+        items.push((Span::styled(format!(" {label}"), t.fg("ui.dim")), c));
+        items.push((Span::styled("    ", t.fg("ui.dim")), None));
     }
-    f.render_widget(Paragraph::new(Line::from(spans)).style(t.bg("ui.bg")), area);
+    click::line(f, area, items, Alignment::Left, t.bg("ui.bg"));
 }
 
 /// Splits off the rightmost column of `area` for a scrollbar.

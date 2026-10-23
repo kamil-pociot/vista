@@ -19,7 +19,7 @@
 ## Focus and mouse
 
 - `Tab` / `Shift-Tab` cycle focus between panels; `Alt-1`, `Alt-2`, `Alt-3`, `Alt-9`, `Alt-T` show, focus or hide tool windows. Labels such as `2: Commit` come from the key binding.
-- Mouse: click to focus and select, double-click to open from every list (one 500 ms detector), the wheel scrolls, shift+wheel or a trackpad scrolls sideways, drag the divider to resize, drag tabs to reorder, drag text to select.
+- Mouse: click to focus and select, double-click to open from every list (one 500 ms detector), the wheel scrolls, shift+wheel or a trackpad scrolls sideways, drag the divider to resize, drag tabs to reorder, drag text to select. Tool-window names, hints, toggles and buttons can be clicked too: see [17 · Clickable labels and buttons](17-clickable-labels.md).
 - `?` shows every shortcut, generated from the active key map.
 
 ## No F-keys needed
