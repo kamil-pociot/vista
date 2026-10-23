@@ -69,6 +69,8 @@ pub struct Workspace {
     sessions: Vec<crate::sessions::Session>,
     /// Why the session list couldn't be read, if it couldn't.
     sessions_note: Option<String>,
+    /// A list arrived since the sidebar was shown: the next is compared with it.
+    sessions_seen: bool,
     /// The session poller's events carry this id.
     sessions_id: ProjectId,
     /// The poller runs while this is set (the sidebar is shown).
@@ -131,6 +133,7 @@ impl Workspace {
             sidebar,
             sessions: Vec::new(),
             sessions_note: None,
+            sessions_seen: false,
             sessions_id,
             sessions_wanted,
             sidebar_hits: Vec::new(),
@@ -306,7 +309,22 @@ impl Workspace {
             if let AppEvent::Sessions(result) = ev {
                 match result {
                     Ok(list) => {
+                        // Background sessions write nothing to vista: their
+                        // changes are only seen here (herdr does the same).
+                        if self.sessions_seen {
+                            let sounds = &self.config.terminal;
+                            match crate::sessions::change(&self.sessions, &list) {
+                                Some(crate::sessions::Change::NeedsInput) => {
+                                    crate::terminal::play(&sounds.notify_sound)
+                                }
+                                Some(crate::sessions::Change::Finished) => {
+                                    crate::terminal::play(crate::terminal::done_sound(sounds))
+                                }
+                                None => {}
+                            }
+                        }
                         self.sessions = list;
+                        self.sessions_seen = true;
                         self.sessions_note = None;
                     }
                     Err(e) => self.sessions_note = Some(e),
@@ -514,6 +532,8 @@ impl Workspace {
                 self.sidebar = !self.sidebar;
                 self.sessions_wanted
                     .store(self.sidebar, std::sync::atomic::Ordering::SeqCst);
+                // Changes while it was hidden went unseen: start afresh.
+                self.sessions_seen = false;
                 let on = self.sidebar;
                 let result = {
                     let mut ui = self.ui.borrow_mut();

@@ -24,13 +24,15 @@
 
 | Mark | State |
 |---|---|
-| `●` (warning colour) | needs input: a question or a permission |
+| `●` (warning colour) | needs input: a question or a permission (its process is `waiting`) |
 | `◐` | working |
-| `✓` | done |
+| `✓` | done: its turn ended (its process is `idle`) |
 | `✗` | failed |
 | `○` | stopped |
 
 The list is refreshed every two seconds while the sidebar is shown (a run costs about 0.1 s of CPU), and not at all while it's hidden. When the command fails (no `claude` on `PATH`), the section says so.
+
+**Sounds.** Background sessions write nothing to vista's terminals, so their notifications never reach it. Instead, when a refresh shows a working session now needing input, vista plays `[terminal] notify_sound`; when one finished or failed, `notify_sound_done` ([11 · Terminals](11-terminals.md)). That is how herdr does it. Sessions already waiting or done when the sidebar opens make no sound, and nothing is heard while it's hidden.
 
 ## Clicks and keys
 
@@ -62,5 +64,5 @@ The commands run through your login shell, so your `PATH` applies.
 - `vista-tui/src/sessions.rs`: parsing `claude agents --json` (id, name, folder, state) and the poller thread, which runs only while the sidebar is shown.
 - `vista-tui/src/ui/sidebar.rs`: drawing the rows and where each landed for clicks.
 - `vista-tui/src/workspace.rs`: the toggle, splitting the window, clicks, opening a session's tab (`TermTab::session` remembers which session a tab shows).
-- Unit: parsing every state, rows and marks where their clicks land, branch and folder rows.
-- E2e: `e2e_r1_sidebar.rs` (sessions with their marks and folders from a fake list, the project's branch, a click attaching through a fake `attach`, the same tab on a second click, hiding, remembered across restarts, resizing by dragging and keeping the width).
+- Unit: parsing every state (the process status wins over a stale state), which change a new list brings, rows and marks where their clicks land, branch and folder rows.
+- E2e: `e2e_r1_sidebar.rs` (sessions with their marks and folders from a fake list, the project's branch, a click attaching through a fake `attach`, the same tab on a second click, hiding, remembered across restarts, resizing by dragging and keeping the width, a session going idle and then waiting playing the done and then the needs-input sound).

@@ -56,8 +56,14 @@ pub fn notify(n: &crate::term_tab::Notification, from: &str, sounds: &vista_core
     if let Some((bin, args)) = herdr_command(n, from, |k| std::env::var(k).ok()) {
         run_detached(bin, args);
     }
-    if !n.partial
-        && let Some(file) = sound_file(sound)
+    if !n.partial {
+        play(sound);
+    }
+}
+
+/// Plays a `notify_sound`-style setting, at most once a second.
+pub fn play(sound: &str) {
+    if let Some(file) = sound_file(sound)
         && sound_due(std::time::Instant::now())
     {
         // `VISTA_SOUND_PLAYER` is for tests; without afplay, the terminal's bell.
@@ -68,13 +74,21 @@ pub fn notify(n: &crate::term_tab::Notification, from: &str, sounds: &vista_core
     }
 }
 
+/// `notify_sound_done` (or `notify_sound` when that is empty).
+pub fn done_sound(sounds: &vista_core::config::TerminalConfig) -> &str {
+    if sounds.notify_sound_done.trim().is_empty() {
+        &sounds.notify_sound
+    } else {
+        &sounds.notify_sound_done
+    }
+}
+
 /// `notify_sound_done` when the notification says something finished or
 /// failed (Claude's agent view: "<session> finished"), else `notify_sound`.
 fn sound_for<'a>(n: &crate::term_tab::Notification, sounds: &'a vista_core::config::TerminalConfig) -> &'a str {
     let text = n.body.trim_end().trim_end_matches('.');
-    let done = text.ends_with(" finished") || text.ends_with(" failed");
-    if done && !sounds.notify_sound_done.trim().is_empty() {
-        &sounds.notify_sound_done
+    if text.ends_with(" finished") || text.ends_with(" failed") {
+        done_sound(sounds)
     } else {
         &sounds.notify_sound
     }

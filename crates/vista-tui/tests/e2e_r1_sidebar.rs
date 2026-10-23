@@ -115,3 +115,51 @@ fn dragging_the_border_resizes_it_and_the_width_is_kept() {
     let state = std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap();
     assert!(state.contains("sidebar_width = 42"), "{state}");
 }
+
+/// Background sessions write nothing to vista: a session that finishes or
+/// starts waiting is noticed in the polled list, and plays its sound.
+#[test]
+fn a_session_that_finishes_or_needs_input_plays_a_sound() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = Fixture::git().file("a.txt", "one\n").commit("init").build();
+    let list = repo.home().join("sessions.json");
+    let write = |status: &str| {
+        let json =
+            format!(r#"[{{"id": "w1", "name": "worker", "cwd": "/r/x", "state": "working", "status": "{status}"}}]"#);
+        std::fs::write(&list, json).unwrap();
+    };
+    write("busy");
+    let played = repo.home().join("played");
+    let player = repo.home().join("player");
+    std::fs::write(
+        &player,
+        format!("#!/bin/sh\nprintf '%s\\n' \"$1\" >> '{}'\n", played.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&player, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config = format!(
+        "[sidebar]\nsessions = \"cat '{}'\"\n[terminal]\nnotify_sound = \"Ping\"\nnotify_sound_done = \"Hero\"\n",
+        list.display()
+    );
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(&config)
+        .env("VISTA_SOUND_PLAYER", &player.to_string_lossy())
+        .size(150, 36)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("alt+b");
+    vista.expect_text_in("◐ worker", 0..30);
+    // Already working when first seen: quiet.
+    assert!(!played.exists());
+    let sounds = || std::fs::read_to_string(&played).unwrap_or_default();
+    write("idle");
+    vista.expect_text_in("✓ worker", 0..30).to_have_fg("git.added");
+    vista.wait_until("the done sound", |_| sounds().lines().count() == 1);
+    assert_eq!(sounds().trim(), "/System/Library/Sounds/Hero.aiff");
+    write("busy");
+    vista.expect_text_in("◐ worker", 0..30);
+    write("waiting");
+    vista.expect_text_in("● worker", 0..30).to_have_fg("ui.warning");
+    vista.wait_until("the needs-input sound", |_| sounds().lines().count() == 2);
+    assert_eq!(sounds().lines().last(), Some("/System/Library/Sounds/Ping.aiff"));
+}
