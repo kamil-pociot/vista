@@ -21,7 +21,7 @@ brew install neovim                        # optional: editing inside vista
 
 Or from a checkout: `cargo install --path crates/vista-tui`.
 
-Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise `$EDITOR` is used). Release binaries for macOS (Apple Silicon and Intel) and Linux are built by `.github/workflows/release.yml` on `v*` tags; `Formula/vista.rb` installs them (see [Releasing](#releasing)).
+Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise, or with an older one, `$EDITOR` is used). Release binaries for macOS (Apple Silicon and Intel) and Linux are built by `.github/workflows/release.yml` on `v*` tags; `Formula/vista.rb` installs them (see [Releasing](#releasing)).
 
 Terminal: any truecolor terminal works. Images use the kitty graphics protocol (Ghostty, kitty, WezTerm) and fall back to coloured half-blocks. On macOS, set Ghostty's `macos-option-as-alt = true` so `Alt-…` shortcuts reach vista.
 

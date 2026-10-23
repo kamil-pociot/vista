@@ -10,7 +10,7 @@ vista embeds a real Neovim (`nvim --embed`, msgpack-RPC, line grid) and draws it
 - `●` marks unsaved buffers in tabs and the tree; quitting vista with unsaved changes asks for a second `q`.
 - **Follows the viewer:** long lines wrap in Neovim if the viewer wrapped them, line numbers follow `Shift-L`, and `:set wrap` / `:set nowrap` carry back to the viewer.
 - **Theme sync:** Neovim is painted with the active look (~50 highlight groups), or keeps your colourscheme with `theme_sync = false`.
-- Without `nvim`, `$VISUAL` / `$EDITOR` runs instead (vista suspends and resumes the terminal).
+- Without `nvim`, or with one older than 0.10 (Ubuntu's own package is 0.9), `$VISUAL` / `$EDITOR` runs instead (vista suspends and resumes the terminal) and the status bar says why.
 
 ## Side-by-side diff editing
 
@@ -34,4 +34,5 @@ nvim = "nvim"
 
 - `vista-nvim` (RPC client, grid model, `open_diff.lua`, `close_diff.lua`), `vista-tui/src/editor.rs`.
 - Unit: grid model fed recorded `redraw` events, key notation, a real Neovim round trip.
-- E2e (skipped without `nvim`): `e2e_m3_editor.rs` (edit, save, colour flips to modified, unsaved marker, quit confirmation, theme sync, `$EDITOR` fallback), `e2e_r1_diff_edit.rs` (diff mode, opening line, alignment rows, wrap and collapse sync).
+- Unit: reading `nvim --version` (0.10 or newer counts as available).
+- E2e (skipped without Neovim 0.10+; CI installs it from Neovim's release, as Ubuntu's apt package is too old): `e2e_m3_editor.rs` (edit, save, colour flips to modified, unsaved marker, quit confirmation, theme sync, `$EDITOR` fallback), `e2e_r1_diff_edit.rs` (diff mode, opening line, alignment rows, wrap and collapse sync).

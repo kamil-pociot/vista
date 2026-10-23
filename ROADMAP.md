@@ -406,6 +406,9 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] The look picked last (Ctrl-T or Preferences, `herdr` included) wins over `theme = …` in config.toml.
 - [x] Tests: `prefs` units, `e2e_r1_prefs` (3 PTY tests), `e2e_r1_settings` (Edit config.toml…).
 
+### Linux CI ✅
+- [x] Neovim 0.10+ is required: an older one (Ubuntu's apt 0.9.5, which made the Linux CI fail: no change reports, wrong diff layout) is refused with a reason and `$EDITOR` is used; tests skip their Neovim cases. CI installs Neovim 0.11 from its release on Linux.
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

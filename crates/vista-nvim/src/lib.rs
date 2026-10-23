@@ -46,6 +46,8 @@ pub enum NvimError {
         #[source]
         source: std::io::Error,
     },
+    #[error("`{bin}` is Neovim {version}; vista needs {}.{} or newer", MIN_VERSION.0, MIN_VERSION.1)]
+    TooOld { bin: String, version: String },
     #[error(transparent)]
     Rpc(#[from] RpcError),
 }
@@ -114,6 +116,16 @@ impl Nvim {
     /// Starts Neovim and attaches as a UI. Events arrive via `on_event`
     /// (from a background thread).
     pub fn spawn(opts: &SpawnOptions, on_event: impl Fn(NvimEvent) + Send + Sync + 'static) -> Result<Nvim, NvimError> {
+        // An older Neovim starts but misbehaves (no change reports, diff
+        // layout): better the $EDITOR fallback with a reason.
+        if let Some(v) = version(&opts.bin)
+            && (v.0, v.1) < MIN_VERSION
+        {
+            return Err(NvimError::TooOld {
+                bin: opts.bin.clone(),
+                version: format!("{}.{}.{}", v.0, v.1, v.2),
+            });
+        }
         let mut cmd = Command::new(&opts.bin);
         cmd.arg("--embed").arg("-n");
         if opts.minimal {
@@ -376,20 +388,47 @@ impl Drop for Nvim {
     }
 }
 
-/// Is a Neovim binary available?
+/// The oldest Neovim vista works with.
+pub const MIN_VERSION: (u32, u32) = (0, 10);
+
+/// Is a Neovim vista can use available (it runs, and is new enough)?
 pub fn available(bin: &str) -> bool {
-    Command::new(bin)
+    version(bin).is_some_and(|v| (v.0, v.1) >= MIN_VERSION)
+}
+
+/// The version `bin --version` reports, if it runs and says one.
+pub fn version(bin: &str) -> Option<(u32, u32, u32)> {
+    let out = Command::new(bin)
         .arg("--version")
-        .stdout(Stdio::null())
+        .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    parse_version(String::from_utf8_lossy(&out.stdout).lines().next()?)
+}
+
+/// `NVIM v0.11.4` (or `NVIM v0.12.0-dev-1234+gabc`) → (0, 11, 4).
+fn parse_version(line: &str) -> Option<(u32, u32, u32)> {
+    let v = line.trim().strip_prefix("NVIM v")?;
+    let mut parts = v.split(|c: char| !c.is_ascii_digit()).map(|p| p.parse::<u32>().ok());
+    Some((parts.next()??, parts.next()??, parts.next()??))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::mpsc;
+
+    #[test]
+    fn reads_neovims_version_line() {
+        assert_eq!(parse_version("NVIM v0.11.4"), Some((0, 11, 4)));
+        assert_eq!(parse_version("NVIM v0.9.5"), Some((0, 9, 5)));
+        assert_eq!(parse_version("NVIM v0.12.0-dev-1234+gabcdef"), Some((0, 12, 0)));
+        assert_eq!(parse_version("vim 9.1"), None);
+        assert!((0, 9) < MIN_VERSION && (0, 10) >= MIN_VERSION && (1, 0) >= MIN_VERSION);
+        assert!(!available("/nonexistent/nvim"));
+    }
 
     /// Talks to a real Neovim when one is installed.
     #[test]
