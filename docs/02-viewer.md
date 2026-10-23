@@ -18,7 +18,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 
 ## Text selection
 
-- Drag with the mouse to select; double-click selects a word. Releasing the button copies the selection, as herdr and most terminals do. `[mouse] copy_on_select = false` turns that off, and the selection then waits for a key.
+- Drag with the mouse to select; double-click selects a word. Releasing the button copies the selection, as most terminals do. `[mouse] copy_on_select = false` turns that off, and the selection then waits for a key.
 - `Shift-↑`/`Shift-↓` extend the selection by lines, `Ctrl-A` (`Cmd-A`) selects everything.
 - `Ctrl-C`, `Cmd-C` or `y` copies, `Esc` clears.
 - Cmd-C reaches vista only when the terminal passes it on. Ghostty copies its own selection on Cmd-C and swallows the key even when it has none. To pass it on when Ghostty has no selection of its own, add `keybind = performable:super+c=copy_to_clipboard:mixed` to Ghostty's config (`~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`).

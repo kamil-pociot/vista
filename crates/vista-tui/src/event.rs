@@ -62,10 +62,6 @@ pub enum AppEvent {
     TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
     /// A terminal tab's program ended.
     TermExited,
-    /// A terminal tab's program asked for a desktop notification.
-    TermNotify(crate::term_tab::Notification),
-    /// The Claude sessions for the sidebar (`claude agents --json`).
-    Sessions(Result<Vec<crate::sessions::Session>, String>),
     /// The commit log (Git window) loaded.
     Log {
         generation: u64,

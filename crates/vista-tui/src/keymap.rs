@@ -42,7 +42,6 @@ pub enum Action {
     CycleTheme,
     NextOccurrence,
     PrevOccurrence,
-    ToggleSidebar,
     OpenSettings,
 }
 
@@ -82,7 +81,6 @@ impl Action {
         Action::CycleTheme,
         Action::NextOccurrence,
         Action::PrevOccurrence,
-        Action::ToggleSidebar,
         Action::OpenSettings,
     ];
 
@@ -120,7 +118,6 @@ impl Action {
             Action::RevealFile => "reveal-file",
             Action::CollapseAll => "collapse-all",
             Action::CycleTheme => "cycle-theme",
-            Action::ToggleSidebar => "sidebar",
             Action::OpenSettings => "settings",
             Action::NextOccurrence => "next-occurrence",
             Action::PrevOccurrence => "prev-occurrence",
@@ -165,7 +162,6 @@ impl Action {
             Action::RevealFile => "Reveal current file in tree",
             Action::CollapseAll => "Collapse all folders",
             Action::CycleTheme => "Switch to next look",
-            Action::ToggleSidebar => "Show/hide the sidebar (projects, Claude sessions)",
             Action::OpenSettings => "Open settings (config.toml)",
             Action::NextOccurrence => "Next Find result",
             Action::PrevOccurrence => "Previous Find result",
@@ -348,7 +344,6 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("alt+f1", Action::RevealFile),
     ("-", Action::CollapseAll),
     ("ctrl+t", Action::CycleTheme),
-    ("alt+b", Action::ToggleSidebar),
     // IntelliJ / macOS settings are Cmd-, (Ghostty keeps that for its own).
     ("ctrl+,", Action::OpenSettings),
     ("ctrl+alt+down", Action::NextOccurrence),

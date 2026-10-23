@@ -6,7 +6,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 
 | Key | Action |
 |---|---|
-| `Ctrl-O` | Projects popup (also terminal commands) |
+| `Ctrl-O` | Projects popup |
 | `Alt-.` / `Alt-,` | next / previous project |
 | `Ctrl-P`, `Ctrl-Shift-N` | Go to File |
 | `Ctrl-F`, `Ctrl-Shift-F` | Find in Files |
@@ -26,7 +26,6 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Ctrl-R` (`F5`) | refresh |
 | `Ctrl-T` | next look |
 | `Ctrl-\` | leave the editor or a terminal |
-| `Alt-B` | sidebar: projects and Claude sessions |
 | `Ctrl-,` (`⚙` in the top bar) | open settings (`config.toml`) |
 | `?` (`F1`) | help |
 | `q`, `Ctrl-Q` | quit |
@@ -44,8 +43,8 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | Git window | `Tab`/`←→` lists, `Enter` diff, `a` all commits, `r` reload, `Esc` hide |
 | Projects popup | type to match, `Tab` complete folder, `Enter` open, `Ctrl-W` close project, `>` command |
 | Editor | everything goes to Neovim; `Ctrl-\` leaves |
-| Terminals | everything goes to the program; `Ctrl-\` leaves; the bottom terminal also passes tool-window keys to vista; `Shift-Enter` is sent as `Alt-Enter` (a newline in Claude Code) |
+| Terminal tool window | everything goes to the shell except `Ctrl-\` (leave) and the tool-window keys; `Shift-Enter` is sent as `Alt-Enter` |
 
 ## Action names
 
-For `[keys]` in `config.toml`: `quit`, `help`, `focus-next`, `focus-prev`, `project`, `commit-window`, `find-window`, `goto-file`, `find-in-files`, `recent-files`, `edit`, `leave-editor`, `close-tab`, `next-tab`, `prev-tab`, `next-change`, `prev-change`, `commit`, `refresh`, `toggle-ignored`, `line-numbers`, `projects`, `git-log`, `terminal`, `file-history`, `grow-panel`, `shrink-panel`, `next-project`, `prev-project`, `reveal-file`, `collapse-all`, `cycle-theme`, `next-occurrence`, `prev-occurrence`. Use `"none"` to unbind a key.
+For `[keys]` in `config.toml`: `quit`, `help`, `focus-next`, `focus-prev`, `project`, `commit-window`, `find-window`, `goto-file`, `find-in-files`, `recent-files`, `edit`, `leave-editor`, `close-tab`, `next-tab`, `prev-tab`, `next-change`, `prev-change`, `commit`, `refresh`, `toggle-ignored`, `line-numbers`, `projects`, `git-log`, `terminal`, `file-history`, `grow-panel`, `shrink-panel`, `next-project`, `prev-project`, `reveal-file`, `collapse-all`, `cycle-theme`, `next-occurrence`, `prev-occurrence`, `settings`. Use `"none"` to unbind a key.

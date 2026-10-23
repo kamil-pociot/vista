@@ -1531,14 +1531,11 @@ impl App {
             // Terminal tabs belong to the workspace.
             // The Terminal tool window's shell (terminal tabs belong to the workspace).
             AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
-            // The workspace's sidebar takes these.
-            AppEvent::Sessions(_) => {}
             AppEvent::TermExited => {
                 if let Some(s) = self.shell.as_mut() {
                     s.mark_exited();
                 }
             }
-            AppEvent::TermNotify(n) => crate::terminal::notify(&n, &self.project_name, &self.config.terminal),
             AppEvent::Log { generation, result } => {
                 if generation == self.log.generation {
                     match result {
@@ -2444,7 +2441,6 @@ impl App {
             Action::ToggleProject => self.toggle_left(LeftPanel::Project),
             Action::ToggleCommit => self.toggle_left(LeftPanel::Commit),
             Action::CycleTheme => self.cycle_theme(),
-            Action::ToggleSidebar => self.ws_request = Some(crate::projects::WsRequest::ToggleSidebar),
             Action::OpenSettings => self.open_settings(),
             Action::ToggleIgnored => {
                 self.project.show_ignored = !self.project.show_ignored;
@@ -2754,7 +2750,6 @@ mod tests {
             ],
             active: 1,
             recent: vec![],
-            ..Default::default()
         };
         crate::testing::render(&mut app, 120, 30);
         let click = |app: &mut App, col: u16| {

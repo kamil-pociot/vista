@@ -10,7 +10,6 @@ pub mod help;
 pub mod log;
 pub mod project;
 pub mod projects;
-pub mod sidebar;
 pub mod term;
 pub mod viewer;
 
@@ -170,7 +169,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
     }
 }
 
-/// Draws project `app` in `area` (the window, or what the sidebar leaves).
+/// Draws project `app` in `area` (the window).
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     f.render_widget(Block::new().style(app.theme.base()), area);
     click::begin();

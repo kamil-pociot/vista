@@ -110,31 +110,6 @@ impl Default for EditorConfig {
     }
 }
 
-/// Terminal tabs (full-screen programs such as `claude agents`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct TerminalConfig {
-    /// Commands offered in the Projects popup (Ctrl-O); any other runs as
-    /// `>command`. They run through your login shell in the project folder.
-    pub commands: Vec<String>,
-    /// Played when a program asks for a notification: a macOS system sound
-    /// (`Glass`, `Ping`, …), a sound file, or `none`.
-    pub notify_sound: String,
-    /// Played instead when it says something finished or failed (Claude's
-    /// agent view); empty plays `notify_sound`.
-    pub notify_sound_done: String,
-}
-
-impl Default for TerminalConfig {
-    fn default() -> Self {
-        Self {
-            commands: vec!["claude agents".into()],
-            notify_sound: "Glass".into(),
-            notify_sound_done: String::new(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TreeConfig {
@@ -153,35 +128,11 @@ impl Default for TreeConfig {
     }
 }
 
-/// The sidebar (Alt-B): projects, terminal tabs and Claude sessions.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct SidebarConfig {
-    /// Shown when nothing was remembered yet (Alt-B toggles and remembers).
-    pub show: bool,
-    pub width: u16,
-    /// Lists Claude sessions as JSON; empty for none.
-    pub sessions: String,
-    /// Opens session `{id}` in a terminal tab.
-    pub attach: String,
-}
-
-impl Default for SidebarConfig {
-    fn default() -> Self {
-        Self {
-            show: false,
-            width: 30,
-            sessions: "claude agents --json".into(),
-            attach: "claude attach {id}".into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MouseConfig {
-    /// Copy a mouse selection when the button is released (as herdr and
-    /// most terminals do); off, it waits for Ctrl-C / Cmd-C / y.
+    /// Copy a mouse selection when the button is released (as most
+    /// terminals do); off, it waits for Ctrl-C / Cmd-C / y.
     pub copy_on_select: bool,
 }
 
@@ -199,9 +150,7 @@ pub struct Config {
     pub images: ImagesConfig,
     pub editor: EditorConfig,
     pub tree: TreeConfig,
-    pub terminal: TerminalConfig,
     pub mouse: MouseConfig,
-    pub sidebar: SidebarConfig,
     /// Key overrides: `"ctrl+p" = "goto-file"`.
     pub keys: BTreeMap<String, String>,
 }
@@ -213,9 +162,7 @@ impl Default for Config {
             images: ImagesConfig::default(),
             editor: EditorConfig::default(),
             tree: TreeConfig::default(),
-            terminal: TerminalConfig::default(),
             mouse: MouseConfig::default(),
-            sidebar: SidebarConfig::default(),
             keys: BTreeMap::new(),
         }
     }
@@ -289,19 +236,8 @@ nvim = "nvim"
 show_ignored = true                  # show git-ignored files (Alt-I toggles)
 folder_colours = true                # colour folders that contain changes
 
-[terminal]
-commands = ["claude agents"]         # offered in Ctrl-O for new terminal tabs
-notify_sound = "Glass"               # on notifications: a macOS sound, a file, or "none"
-notify_sound_done = ""               # when one finished or failed; "" plays notify_sound
-
 [mouse]
 copy_on_select = true                # copy a mouse selection on release
-
-[sidebar]                            # Alt-B
-show = false                         # before Alt-B was ever pressed
-width = 30
-sessions = "claude agents --json"    # lists Claude sessions; "" for none
-attach = "claude attach {id}"        # opens session {id} in a terminal tab
 
 [keys]
 # "ctrl+o" = "goto-file"             # bind a key to an action

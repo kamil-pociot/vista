@@ -373,14 +373,6 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Scrollbar on code, rendered Markdown and diffs, sized and placed by screen rows, so it stays right with wrapped lines.
 - [x] Tests: Markdown table units (wrap, rules, alignment, wide), scroll-limit and landing units, `e2e_r1_feedback` (7 PTY tests: diff sideways + wrap, viewer shift-wheel, tables both modes, scroll past end, double-click, cross-file changes in diff and viewer).
 
-### Terminal notifications ✅
-- [x] Desktop notifications from programs in terminal tabs and the Terminal tool window (`OSC 9`, `OSC 777;notify`, `OSC 99`) are passed on to the outer terminal (wrapped for tmux). Before this, the vt100 parser dropped them, so Claude Code's notifications never reached Ghostty.
-- [x] A tab whose program notified while off screen is marked `●` (terminal tab, or the project for its tool-window shell) until shown. vista uses the notification itself as the signal, where herdr guesses agent state from process names and output.
-- [x] Every notification plays `[terminal] notify_sound` (`Glass` by default, `none` to silence), like herdr's sounds: Ghostty shows nothing for the focused tab, which is vista's when a background agent needs input.
-- [x] Inside herdr, which drops these sequences and can't see agents running inside vista, notifications also go to `herdr notification show`.
-- [x] Shift-Enter reaches terminal programs as `ESC CR`, so it's a newline in Claude Code again. Programs inside vista can't use the kitty keyboard protocol, so a plain CR was all they got.
-- [x] Tests: OSC filtering units, `e2e_r1_terminal` (passed-on bytes via `expect_output`, both marks, Shift-Enter bytes read by a real program).
-
 ### Clickable labels ✅
 - [x] Every label that names a window, option or key can be clicked and does what its key does: top and bottom bars, icon rail, key hints, Find and Go to File popups (scopes, toggles, fields, tabs, footers), Projects popup footer, Git window hints, Commit window (Amend, Commit, Commit & Push), confirm dialog, diff header and hints, find-in-file bar. Popups cover what's under them.
 - [x] Tests: `ui::click` units (placement for every alignment, popups), `e2e_r1_clicks` (4 PTY tests).
@@ -395,14 +387,12 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] `Cmd-C` / `Cmd-A` work like `Ctrl-C` / `Ctrl-A` when the terminal passes Cmd on. Ghostty only does that with `keybind = performable:super+c=copy_to_clipboard:mixed`: its default Cmd-C binding always takes the key.
 - [x] Tests: `e2e_r1_selection` (copy on release, Cmd-C as the kitty keyboard protocol sends it).
 
-### Sidebar ✅
-- [x] `Alt-B` (remembered): herdr-style sidebar with the open projects on top and terminal tabs plus Claude Code sessions below. Sessions come from `claude agents --json` every 2 s while shown, marked by state (needs input, working, done, failed, stopped); a click opens one in a terminal tab (`claude attach <id>`), or shows its tab if open. The top bar drops its tabs meanwhile.
-- [x] `[sidebar] show / width / sessions / attach` in `config.toml`.
-- [x] Session folders on the row under their names; projects show their branch and ahead/behind counts; the right border drags to resize (width remembered).
-- [x] Open Settings (`Ctrl-,`, `⚙` in the top bar): `config.toml` for editing, written with every default first (a test keeps that template equal to the defaults).
-- [x] `[terminal] notify_sound_done` for "finished" / "failed" notifications, like herdr's two sounds.
-- [x] Background sessions send no notifications to vista: with the sidebar shown, a session going from working to waiting / idle (from the `status` in `claude agents --json`) plays the needs-input / done sound.
-- [x] Tests: `sessions` and `ui::sidebar` units, `e2e_r1_sidebar` (fake session list and attach command).
+### Open Settings ✅
+- [x] `Ctrl-,` or `⚙` in the top bar opens `config.toml` for editing, written with every default first (a test keeps that template equal to the defaults).
+- [x] Shift-Enter reaches terminal programs as `ESC CR` (programs inside vista can't use the kitty keyboard protocol).
+
+### Back to the editor ✅
+Agents now run in herdr beside vista, so vista's agent features were removed: terminal tabs (`claude agents`, `>command` in `Ctrl-O`, `[terminal] commands`), the `Alt-B` sidebar with Claude sessions and their states, passing desktop notifications on (and the herdr handoff), notification sounds (`notify_sound`, `notify_sound_done`) and the `●` attention marks on tabs. The Terminal tool window (`Alt-T`) stays. Doc number 18 (the sidebar) is retired, not reused.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

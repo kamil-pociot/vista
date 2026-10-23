@@ -25,8 +25,6 @@ ratatui.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 unicode-width = "0.2"
-serde.workspace = true
-serde_json.workspace = true
 ratatui-image = { version = "11.1", default-features = false, features = ["crossterm", "image-defaults"] }
 image = "0.25"
 

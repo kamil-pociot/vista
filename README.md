@@ -32,7 +32,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 | Commit | `Space` tick · `Tab` message · `Ctrl-K` commit · `m` amend · `P` commit & push · `r` rollback · `a` add to VCS · `g` group by folder · `Enter` or double-click diff |
 | Diff | `]`/`[` changes (past the last one: press again for the next file; it stops, without wrapping, at the end of the last changed file) · `Space` tick/untick the change for the commit (partial commits) · `J`/`K` next/previous file · `←`/`→`, shift+wheel or trackpad scroll sideways · `w` wrap · `u` unified · `i` ignore whitespace · `z` collapse unchanged · `Enter` open · `e` edit side by side (Neovim diff mode: HEAD read-only left, working file right, re-diffed as you type; opens where the diff was, with line numbers; the sides stay aligned row by row — wrapped lines included — with blank rows on the shorter side and ╱ rows for missing lines, and scroll together; `:q` returns to the diff; it follows the diff's wrap and collapse settings, and `:set wrap` / `zi` there carry back) |
 
-`Shift-L` shows/hides line numbers (code, and source lines of each block in rendered Markdown). Every tool-window name, hint, toggle and button can be clicked and does what its key does ([docs](docs/17-clickable-labels.md)). Drag a file tab, a project tab or a terminal tab left or right to move it; project order is remembered. Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge, and show a scrollbar measured in screen rows (wrapped lines count once per row). Markdown files (and their diffs) open wrapped; code opens scrolling sideways.
+`Shift-L` shows/hides line numbers (code, and source lines of each block in rendered Markdown). Every tool-window name, hint, toggle and button can be clicked and does what its key does ([docs](docs/17-clickable-labels.md)). Drag a file tab or a project tab left or right to move it; project order is remembered. Every shortcut can be changed in the config. No action needs an F-key: `F7`, `F1`, `F5` and `Alt-F1` still work, alongside `]`, `?`, `Ctrl-R` and `Ctrl-L`. Views scroll a little past the end of a file, so the last line can sit about 30% above the bottom edge, and show a scrollbar measured in screen rows (wrapped lines count once per row). Markdown files (and their diffs) open wrapped; code opens scrolling sideways.
 
 ## Configuration
 
@@ -76,21 +76,6 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 ### Settings
 
 `Ctrl-,` or the `⚙` at the right of the top bar opens `~/.config/vista/config.toml` for editing (written with every default the first time). Changes apply when vista starts again.
-
-### Sidebar
-
-`Alt-B` shows a herdr-style sidebar (drag its right border to resize): the open projects with their branch and ahead/behind counts on top, then your terminal tabs and every Claude Code session (`claude agents --json`) with its state — `●` needs input, `◐` working, `✓` done, `✗` failed. Click a project to show it, a session to open it in a terminal tab (`claude attach`). It replaces the top bar's tabs while shown and is remembered ([docs](docs/18-sidebar.md)).
-
-### Terminal tabs
-
-Programs such as `claude agents` run in terminal tabs (`▶ claude agents`) next to the project tabs, full screen. Open one from `Ctrl-O`: the commands in `[terminal] commands` are listed (`claude agents` by default), or type `>` and any command (`>` alone opens your shell). It runs through your login shell (your `PATH`) in the active project's folder. Every key goes to the program except `Ctrl-\` (back to the project); click a tab in the top bar to switch, its `×` to close it. When the program ends, `Enter` closes the tab. Quitting vista with terminal tabs still running asks first. Desktop notifications from programs in vista's terminals reach the terminal vista runs in, so Claude Code's "waiting for input" still pops up from Ghostty. Inside herdr they are handed to `herdr notification show`. A tab that sends one while you're looking elsewhere is marked `●` until you open it. Every notification also plays `[terminal] notify_sound` (`Glass`; `none` for silence), so an agent that needs you is heard even while Ghostty's tab is in front.
-
-```toml
-[terminal]
-commands = ["claude agents", "htop"]
-notify_sound = "Glass"     # a macOS system sound, a file, or "none"
-notify_sound_done = ""     # for "finished" / "failed"; "" plays notify_sound
-```
 
 ### Remembered settings
 

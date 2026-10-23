@@ -2,7 +2,7 @@
 
 ## Screen layout
 
-- **Top bar:** project tabs and terminal tabs, the branch with ahead/behind.
+- **Top bar:** project tabs, the branch with ahead/behind.
 - **Left panel:** `1: Project` (tree) or `2: Commit`; resizable.
 - **Editor area:** file tabs with the viewer, diff or Neovim.
 - **Bottom tool window** (one at a time): `3: Find`, `9: Git`, `T: Terminal`.
@@ -31,4 +31,4 @@ On macOS, set Ghostty's `macos-option-as-alt = true` so `Alt-…` shortcuts reac
 ## Code and tests
 
 - `vista-tui/src/app.rs` (focus, routing), `workspace.rs` (top bar), `viewer.rs` (`move_tab`), `projects.rs` (`drag_moves`), `keymap.rs`, `ui/chrome.rs`.
-- E2e: `e2e_r1_tabs.rs` (`×`, dragging file, project and terminal tabs), `e2e_r1_resize.rs`, `e2e_m0_shell.rs` (help, focus, quit).
+- E2e: `e2e_r1_tabs.rs` (`×`, dragging file and project tabs), `e2e_r1_resize.rs`, `e2e_m0_shell.rs` (help, focus, quit).

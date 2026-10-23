@@ -1,9 +1,6 @@
-//! Terminal tabs: a program (`claude agents`, a shell, …) running in a
-//! pseudo-terminal, shown full screen. Output goes through a vt100 parser
-//! (on a reader thread); keys, pastes and mouse events are encoded the way a
-//! terminal would send them. Desktop notifications the program asks for
-//! (Claude Code's "waiting for input", …) are passed on to the terminal vista
-//! runs in.
+//! A program (the Terminal tool window's shell) running in a pseudo-terminal.
+//! Output goes through a vt100 parser (on a reader thread); keys, pastes and
+//! mouse events are encoded the way a terminal would send them.
 
 use std::io::{Read, Write};
 use std::num::NonZeroU16;
@@ -21,75 +18,13 @@ pub struct TermTab {
     pub id: ProjectId,
     /// The command, as shown on the tab.
     pub title: String,
-    parser: Arc<Mutex<vt100::Parser<Notifications>>>,
+    parser: Arc<Mutex<vt100::Parser>>,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     /// Set once the program ended (its exit status, for the tab).
     pub exited: Option<String>,
-    /// The program asked for a notification (Claude Code waiting for input)
-    /// while its tab wasn't on screen; the tab is marked until shown.
-    pub waiting: bool,
-    /// The Claude session it's attached to (opened from the sidebar).
-    pub session: Option<String>,
     size: (u16, u16),
-}
-
-/// Desktop notifications seen in the output since the reader last looked.
-/// The vt100 parser drops OSCs it doesn't know, which would swallow them.
-#[derive(Default)]
-pub struct Notifications(Vec<Notification>);
-
-/// A desktop notification a program asked for.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notification {
-    /// The escape sequence, to write to the terminal vista runs in.
-    pub seq: Vec<u8>,
-    /// May be empty (`OSC 9` has none).
-    pub title: String,
-    pub body: String,
-    /// Kitty sends a notification in parts; only the last one shows it.
-    pub partial: bool,
-}
-
-impl vt100::Callbacks for Notifications {
-    fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
-        if let Some(seq) = notification(params) {
-            self.0.push(seq);
-        }
-    }
-}
-
-/// The escape sequence to pass on for an OSC that asks for a desktop
-/// notification: `9;<text>` (iTerm2, Ghostty), `777;notify;<title>;<body>`
-/// (rxvt, Ghostty) or kitty's `99`. ConEmu's numeric `9;<n>;…` (progress
-/// bars and the like) stays inside: it describes this tab, not vista's window.
-fn notification(params: &[&[u8]]) -> Option<Notification> {
-    // The text itself may hold `;`, which split it into params.
-    let text = |ps: &[&[u8]]| String::from_utf8_lossy(&ps.join(&b';')).into_owned();
-    let (title, body, partial) = match params {
-        [b"9", rest @ ..] if !rest.is_empty() && !rest[0].is_empty() && !rest[0].iter().all(u8::is_ascii_digit) => {
-            (String::new(), text(rest), false)
-        }
-        [b"777", b"notify", title, body @ ..] => (text(&[title]), text(body), false),
-        [b"777", b"notify"] => (String::new(), String::new(), false),
-        // `99 ; key=value:… ; payload`: `d=0` means more parts follow.
-        [b"99", meta, payload @ ..] => {
-            let partial = meta.split(|&b| b == b':').any(|kv| kv == b"d=0");
-            (String::new(), text(payload), partial)
-        }
-        _ => return None,
-    };
-    let mut seq = b"\x1b]".to_vec();
-    seq.extend_from_slice(&params.join(&b';'));
-    // BEL, as Claude Code ends it (every terminal that knows these takes it).
-    seq.push(0x07);
-    Some(Notification {
-        seq,
-        title,
-        body,
-        partial,
-    })
 }
 
 fn nz(n: u16) -> NonZeroU16 {
@@ -128,12 +63,7 @@ impl TermTab {
             .spawn_command(cmd)
             .with_context(|| format!("cannot run {command}"))?;
         drop(pair.slave);
-        let parser = Arc::new(Mutex::new(vt100::Parser::new_with_callbacks(
-            nz(rows),
-            nz(cols),
-            2000,
-            Notifications::default(),
-        )));
+        let parser = Arc::new(Mutex::new(vt100::Parser::new(nz(rows), nz(cols), 2000)));
         let mut reader = pair.master.try_clone_reader().context("pty reader")?;
         let writer = pair.master.take_writer().context("pty writer")?;
         let p = parser.clone();
@@ -147,14 +77,7 @@ impl TermTab {
                     match reader.read(&mut buf) {
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
-                            let notes = {
-                                let mut p = p.lock().expect("terminal parser");
-                                p.process(&buf[..n]);
-                                std::mem::take(&mut p.callbacks_mut().0)
-                            };
-                            for n in notes {
-                                let _ = tx.send(AppEvent::TermNotify(n));
-                            }
+                            p.lock().expect("terminal parser").process(&buf[..n]);
                             if !pending.swap(true, Ordering::SeqCst) {
                                 let _ = tx.send(AppEvent::TermOutput(pending.clone()));
                             }
@@ -180,13 +103,11 @@ impl TermTab {
             writer,
             child,
             exited: None,
-            waiting: false,
-            session: None,
             size: (cols, rows),
         })
     }
 
-    pub fn screen(&self) -> MutexGuard<'_, vt100::Parser<Notifications>> {
+    pub fn screen(&self) -> MutexGuard<'_, vt100::Parser> {
         self.parser.lock().expect("terminal parser")
     }
 
@@ -458,44 +379,6 @@ mod tests {
             mouse_bytes(&wheel, 0, 0, M::Press, E::Default).unwrap(),
             [0x1b, b'[', b'M', 97, 33, 33]
         );
-    }
-
-    #[test]
-    fn notifications_are_passed_on_and_other_oscs_are_not() {
-        let osc = |s: &str| notification(&s.split(';').map(str::as_bytes).collect::<Vec<_>>());
-        let seq = |s: &str| osc(s).unwrap().seq;
-        let parts = |s: &str| osc(s).map(|n| (n.title, n.body, n.partial));
-        let part = |t: &str, b: &str, p| Some((t.to_string(), b.to_string(), p));
-        assert_eq!(seq("9;Claude needs you"), b"\x1b]9;Claude needs you\x07");
-        assert_eq!(parts("9;Claude needs you"), part("", "Claude needs you", false));
-        assert_eq!(seq("9;a;b"), b"\x1b]9;a;b\x07");
-        assert_eq!(parts("9;a;b"), part("", "a;b", false));
-        assert_eq!(
-            seq("777;notify;Claude Code;waiting"),
-            b"\x1b]777;notify;Claude Code;waiting\x07"
-        );
-        assert_eq!(
-            parts("777;notify;Claude Code;waiting"),
-            part("Claude Code", "waiting", false)
-        );
-        assert_eq!(seq("99;i=1:d=0;hi"), b"\x1b]99;i=1:d=0;hi\x07");
-        assert_eq!(parts("99;i=1:d=0;hi"), part("", "hi", true));
-        assert_eq!(parts("99;i=1:p=body;there"), part("", "there", false));
-        // Progress bars (ConEmu's 9;4), other 777s, hyperlinks, colours: no.
-        assert_eq!(osc("9;4;1;50"), None);
-        assert_eq!(osc("9;"), None);
-        assert_eq!(osc("777;preexec"), None);
-        assert_eq!(osc("8;;https://example.com"), None);
-        assert_eq!(osc("10;?"), None);
-    }
-
-    #[test]
-    fn a_notification_in_the_output_is_kept_for_the_reader() {
-        let mut p = vt100::Parser::new_with_callbacks(nz(5), nz(20), 0, Notifications::default());
-        p.process(b"before\x1b]9;Claude is waiting\x07after\x1b]2;title\x07");
-        let seqs: Vec<_> = p.callbacks().0.iter().map(|n| n.seq.clone()).collect();
-        assert_eq!(seqs, vec![b"\x1b]9;Claude is waiting\x07".to_vec()]);
-        assert!(p.screen().contents().contains("beforeafter"));
     }
 
     #[test]

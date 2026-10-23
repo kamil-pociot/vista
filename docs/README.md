@@ -14,13 +14,12 @@ vista is a lean, keyboard-driven terminal replacement for the parts of IntelliJ 
 | 08 | [Editing with Neovim](08-editing-with-neovim.md) | Embedded Neovim, theme sync, side-by-side diff editing with aligned sides |
 | 09 | [Git history](09-git-history.md) | Git log tool window (`Alt-9`), commit files, read-only diffs, file history |
 | 10 | [Projects](10-projects.md) | Several projects as tabs, the Projects popup, folder suggestions, remembered projects |
-| 11 | [Terminals](11-terminals.md) | Full-screen terminal tabs (`claude agents`, any command) and the Terminal tool window (`Alt-T`) |
+| 11 | [Terminal tool window](11-terminals.md) | A shell under the editor (`Alt-T`), in the project's folder |
 | 12 | [Tabs, tool windows and layout](12-tabs-and-layout.md) | File tabs, closing and dragging tabs, tool windows, focus, mouse, no F-keys |
 | 13 | [Looks](13-looks.md) | Theme files: palette tokens and chrome options; darcula, quiet, paper |
 | 14 | [Configuration and remembered settings](14-configuration-and-settings.md) | `config.toml`, `state.toml`, key bindings, environment variables, `--probe` |
 | 15 | [Keyboard reference](15-keyboard-reference.md) | Every default shortcut in one place |
 | 16 | [Testing](16-testing.md) | Unit, snapshot, property, integration and PTY end-to-end tests |
 | 17 | [Clickable labels and buttons](17-clickable-labels.md) | Tool-window names, hints, toggles and buttons do what their keys do |
-| 18 | [Sidebar: projects and Claude sessions](18-sidebar.md) | Herdr-style sidebar (`Alt-B`): projects, terminal tabs and Claude sessions with their state; click to attach |
 
 See also: [`../README.md`](../README.md) (install and quick reference), [`../ROADMAP.md`](../ROADMAP.md) (research, decisions, milestones), [`../AGENTS.md`](../AGENTS.md) (working on the code).

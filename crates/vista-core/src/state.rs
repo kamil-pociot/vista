@@ -39,12 +39,6 @@ pub struct LayoutState {
     /// Width of the tree / Commit panel in columns (dragged or Ctrl-Shift-←/→).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub left_width: Option<u16>,
-    /// The sidebar with projects and Claude sessions (Alt-B).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sidebar: Option<bool>,
-    /// Its width in columns (dragged).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sidebar_width: Option<u16>,
 }
 
 /// Projects open at exit (restored on start) and opened before.

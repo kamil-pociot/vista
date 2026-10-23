@@ -25,8 +25,6 @@ Several projects can be open at once, shown as tabs at the left of the top bar.
 | `Ctrl-W` (popup) | close the selected project |
 | click / `×` / drag | switch / close / reorder |
 
-The sidebar (`Alt-B`) lists the open projects on the left instead of as tabs: see [18 · Sidebar](18-sidebar.md).
-
 ## Code and tests
 
 - `vista-tui/src/workspace.rs` (one `App` per project, events tagged with a project id), `projects.rs` (tab row, popup, folder matching, `~` handling), `ui/projects.rs`, `vista-core/src/state.rs` (`ProjectsState`).

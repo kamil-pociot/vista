@@ -148,7 +148,7 @@ fn the_gear_opens_the_settings_file() {
     vista.click(col, row);
     vista.expect_text("Settings apply when vista starts again");
     let written = std::fs::read_to_string(&config).unwrap();
-    assert!(written.contains("[sidebar]") && written.contains("notify_sound = \"Glass\""));
+    assert!(written.contains("[mouse]") && written.contains("copy_on_select = true"));
     if vista_nvim::available("nvim") {
         vista.expect_text("vista settings. Changes apply when vista starts again.");
     }
