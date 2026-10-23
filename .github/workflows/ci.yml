@@ -37,9 +37,19 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests (unit, snapshots, integration, e2e)
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --no-fail-fast 2>&1 | tee test.log
         env:
           INSTA_UPDATE: "no"
+      # Failing tests and their panics as annotations, readable without the log.
+      - name: Report failing tests
+        if: failure()
+        shell: bash
+        run: |
+          grep -E '^test .* FAILED$' test.log | sed -E 's/^test (.*) \.\.\. FAILED$/::error title=Test failed::\1/' | head -20
+          grep -E -A3 "^thread '.*' .*panicked at" test.log | grep -v -E '^(--|note: .*|)$' | head -40 | sed -E 's/^/::warning title=Panic::/'
       - name: Upload e2e traces
         if: failure()
         uses: actions/upload-artifact@v4
