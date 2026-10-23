@@ -305,6 +305,12 @@ fn right_of_top_bar(f: &mut Frame, area: Rect, app: &App) {
         }
         items.push((Span::raw(" "), None));
     }
+    items.push((Span::raw("  "), None));
+    items.push((
+        Span::styled("⚙", t.fg("ui.dim")),
+        Some(click::Click::Action(Action::OpenSettings)),
+    ));
+    items.push((Span::raw(" "), None));
     click::line(f, area, items, Alignment::Right, ratatui::style::Style::default());
 }
 

@@ -398,6 +398,9 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 ### Sidebar ✅
 - [x] `Alt-B` (remembered): herdr-style sidebar with the open projects on top and terminal tabs plus Claude Code sessions below. Sessions come from `claude agents --json` every 2 s while shown, marked by state (needs input, working, done, failed, stopped); a click opens one in a terminal tab (`claude attach <id>`), or shows its tab if open. The top bar drops its tabs meanwhile.
 - [x] `[sidebar] show / width / sessions / attach` in `config.toml`.
+- [x] Session folders on the row under their names; projects show their branch and ahead/behind counts; the right border drags to resize (width remembered).
+- [x] Open Settings (`Ctrl-,`, `⚙` in the top bar): `config.toml` for editing, written with every default first (a test keeps that template equal to the defaults).
+- [x] `[terminal] notify_sound_done` for "finished" / "failed" notifications, like herdr's two sounds.
 - [x] Tests: `sessions` and `ui::sidebar` units, `e2e_r1_sidebar` (fake session list and attach command).
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*

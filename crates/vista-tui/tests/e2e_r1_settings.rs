@@ -134,3 +134,22 @@ fn view_settings_survive_a_restart() {
             .is_some_and(|cell| cell.bgcolor() == vista_e2e::vt100::Color::Rgb(want.0, want.1, want.2))
     });
 }
+
+/// ⚙ in the top bar (or Ctrl-,) opens config.toml, written out with every
+/// default when there was none.
+#[test]
+fn the_gear_opens_the_settings_file() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
+    vista.expect_text("1: Project");
+    let config = vista.config_dir().join("config.toml");
+    assert!(!config.exists());
+    let (row, col) = vista.expect_text("⚙").position();
+    vista.click(col, row);
+    vista.expect_text("Settings apply when vista starts again");
+    let written = std::fs::read_to_string(&config).unwrap();
+    assert!(written.contains("[sidebar]") && written.contains("notify_sound = \"Glass\""));
+    if vista_nvim::available("nvim") {
+        vista.expect_text("vista settings. Changes apply when vista starts again.");
+    }
+}

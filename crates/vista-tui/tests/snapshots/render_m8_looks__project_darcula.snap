@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "project_with_code(&repo, look)"
 ---
-  <root>   +                                      Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+  <root>   +                                  Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main   ⚙
  1: Project                 ⌖ │ status.rs ×
  ▾ <root>           │  1   use std::path::{Path, PathBuf};                                         ┃
    ▾ crates                   │  2                                                                           ┃
@@ -33,7 +33,7 @@ expression: "project_with_code(&repo, look)"
                               │ 27 ▌     pub fn is_dirty(&self) -> bool {
  1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help     4 changed · 2 unversioned   1:1   Rust
 --- styles ---
-  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..60 fg=ui.text bg=ui.panel] [60..66 fg=ui.dim bg=ui.panel] [66..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..103 fg=ui.text bg=ui.panel] [103..105 fg=ui.dim bg=ui.panel] [105..110 fg=ui.text bg=ui.panel]
+  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..56 fg=ui.text bg=ui.panel] [56..62 fg=ui.dim bg=ui.panel] [62..76 fg=ui.text bg=ui.panel] [76..82 fg=ui.dim bg=ui.panel] [82..99 fg=ui.text bg=ui.panel] [99..101 fg=ui.dim bg=ui.panel] [101..108 fg=ui.text bg=ui.panel] [108..109 fg=ui.dim bg=ui.panel] [109..110 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.header bg=ui.panel +bold] [11..27 fg=ui.text bg=ui.panel] [27..30 fg=ui.border.focused bg=ui.panel] [30..31 fg=ui.border bg=ui.bg] [31..42 fg=git.modified bg=ui.bg +underline] [42..44 fg=ui.dim bg=ui.bg] [44..110 fg=ui.text bg=ui.panel]
   2: [0..3 fg=ui.dim bg=ui.panel.alt] [3..19 fg=git.modified bg=ui.panel.alt +bold] [19..30 fg=ui.text bg=ui.panel.alt] [30..31 fg=ui.border bg=ui.bg] [31..35 fg=ui.text.strong bg=ui.cursorline] [35..36 fg=ui.dim bg=ui.cursorline] [36..37 fg=ui.text bg=ui.cursorline] [37..40 fg=syntax.keyword bg=ui.cursorline] [40..109 fg=ui.text bg=ui.cursorline] [109..110 fg=ui.dim bg=ui.bg]
   3: [0..5 fg=ui.dim bg=ui.panel.alt] [5..11 fg=git.modified bg=ui.panel.alt] [11..30 fg=ui.text bg=ui.panel.alt] [30..31 fg=ui.border bg=ui.bg] [31..36 fg=ui.dim bg=ui.bg] [109..110 fg=ui.dim bg=ui.bg]

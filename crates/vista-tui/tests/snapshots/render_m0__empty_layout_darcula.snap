@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m0.rs
 expression: "snapshot(&buf, &app.theme)"
 ---
-  sample-project   +                                     Ctrl-P Go to File   Ctrl-F Find in Files
+  sample-project   +                                 Ctrl-P Go to File   Ctrl-F Find in Files     ⚙
  1: Project               ⌖ │
  ▾ sample-project           │
                             │
@@ -27,7 +27,7 @@ expression: "snapshot(&buf, &app.theme)"
                             │
  1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help                  Darcula Classic
 --- styles ---
-  0: [0..1 fg=ui.text bg=ui.panel] [1..17 fg=ui.text.strong bg=ui.selection.inactive +bold] [17..18 fg=ui.text bg=ui.panel] [18..21 fg=ui.border.focused bg=ui.panel] [21..57 fg=ui.text bg=ui.panel] [57..63 fg=ui.dim bg=ui.panel] [63..77 fg=ui.text bg=ui.panel] [77..83 fg=ui.dim bg=ui.panel] [83..100 fg=ui.text bg=ui.panel]
+  0: [0..1 fg=ui.text bg=ui.panel] [1..17 fg=ui.text.strong bg=ui.selection.inactive +bold] [17..18 fg=ui.text bg=ui.panel] [18..21 fg=ui.border.focused bg=ui.panel] [21..53 fg=ui.text bg=ui.panel] [53..59 fg=ui.dim bg=ui.panel] [59..73 fg=ui.text bg=ui.panel] [73..79 fg=ui.dim bg=ui.panel] [79..98 fg=ui.text bg=ui.panel] [98..99 fg=ui.dim bg=ui.panel] [99..100 fg=ui.text bg=ui.panel]
   1: [0..11 fg=ui.text.strong bg=ui.selection.inactive +bold] [11..25 fg=ui.text bg=ui.selection.inactive] [25..28 fg=ui.dim bg=ui.selection.inactive] [28..29 fg=ui.border bg=ui.bg] [29..100 fg=ui.text bg=ui.panel]
   2: [0..3 fg=ui.dim bg=ui.selection] [3..17 fg=ui.text bg=ui.selection +bold] [17..28 fg=ui.text bg=ui.selection] [28..29 fg=ui.border bg=ui.bg]
   3: [0..28 fg=ui.text bg=ui.panel.alt] [28..29 fg=ui.border bg=ui.bg]

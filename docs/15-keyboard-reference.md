@@ -27,6 +27,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Ctrl-T` | next look |
 | `Ctrl-\` | leave the editor or a terminal |
 | `Alt-B` | sidebar: projects and Claude sessions |
+| `Ctrl-,` (`⚙` in the top bar) | open settings (`config.toml`) |
 | `?` (`F1`) | help |
 | `q`, `Ctrl-Q` | quit |
 

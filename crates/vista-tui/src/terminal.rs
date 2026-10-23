@@ -47,9 +47,10 @@ pub fn set_title(title: &str) {
 /// Passes on a desktop notification a terminal tab's program (in tab or
 /// project `from`) asked for: its escape sequence to the terminal vista runs
 /// in and, inside herdr (which doesn't pass those on), to `herdr notification`.
-/// `sound` (`[terminal] notify_sound`) plays too: Ghostty shows nothing for
+/// A sound (`[terminal] notify_sound`) plays too: Ghostty shows nothing for
 /// the tab you're looking at, which is vista's when an agent elsewhere asks.
-pub fn notify(n: &crate::term_tab::Notification, from: &str, sound: &str) {
+pub fn notify(n: &crate::term_tab::Notification, from: &str, sounds: &vista_core::config::TerminalConfig) {
+    let sound = sound_for(n, sounds);
     tracing::debug!("notification from {from}: {:?} {:?}", n.title, n.body);
     pass_through(&n.seq);
     if let Some((bin, args)) = herdr_command(n, from, |k| std::env::var(k).ok()) {
@@ -64,6 +65,18 @@ pub fn notify(n: &crate::term_tab::Notification, from: &str, sound: &str) {
         if !run_detached(player, vec![file.display().to_string()]) {
             pass_through(b"\x07");
         }
+    }
+}
+
+/// `notify_sound_done` when the notification says something finished or
+/// failed (Claude's agent view: "<session> finished"), else `notify_sound`.
+fn sound_for<'a>(n: &crate::term_tab::Notification, sounds: &'a vista_core::config::TerminalConfig) -> &'a str {
+    let text = n.body.trim_end().trim_end_matches('.');
+    let done = text.ends_with(" finished") || text.ends_with(" failed");
+    if done && !sounds.notify_sound_done.trim().is_empty() {
+        &sounds.notify_sound_done
+    } else {
+        &sounds.notify_sound
     }
 }
 
@@ -250,6 +263,27 @@ mod tests {
             body: body.into(),
             partial,
         }
+    }
+
+    #[test]
+    fn finished_and_failed_take_the_done_sound_when_there_is_one() {
+        let mut cfg = vista_core::config::TerminalConfig {
+            notify_sound: "Glass".into(),
+            notify_sound_done: "Hero".into(),
+            ..Default::default()
+        };
+        assert_eq!(sound_for(&note("", "tree-search finished", false), &cfg), "Hero");
+        assert_eq!(sound_for(&note("", "tree-search failed.", false), &cfg), "Hero");
+        assert_eq!(
+            sound_for(&note("", "tree-search needs your input", false), &cfg),
+            "Glass"
+        );
+        assert_eq!(
+            sound_for(&note("", "Claude is waiting for your input", false), &cfg),
+            "Glass"
+        );
+        cfg.notify_sound_done.clear();
+        assert_eq!(sound_for(&note("", "tree-search finished", false), &cfg), "Glass");
     }
 
     #[test]

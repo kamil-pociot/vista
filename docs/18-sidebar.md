@@ -7,16 +7,20 @@
 ```
  Projects                  +
  ▸ file-browser
+   ⎇ main ↑2
  ● lms-context
-                            
+   ⎇ feature/search ↓1
+
  Claude
  ▶ claude agents
- ● product-owner   lms-cont…
- ◐ tree-search     file-bro…
+ ● product-owner
+   lms-context
+ ◐ tree-search
+   file-browser
 ```
 
-- **Projects.** Every open project; the one on screen is highlighted, `●` marks one whose Terminal tool window asked for attention ([11 · Terminals](11-terminals.md)). `+` opens the Projects popup ([10 · Projects](10-projects.md)).
-- **Claude.** First the terminal tabs you opened (`claude agents`, shells), then every session `claude agents --json` lists, background and interactive, from any folder, with its folder on the right. The mark is the session's state:
+- **Projects.** Every open project; the one on screen is highlighted, `●` marks one whose Terminal tool window asked for attention ([11 · Terminals](11-terminals.md)). Under each, its branch and how many commits it is ahead of (`↑`) and behind (`↓`) its upstream, once the project has loaded its status. `+` opens the Projects popup ([10 · Projects](10-projects.md)).
+- **Claude.** First the terminal tabs you opened (`claude agents`, shells), then every session `claude agents --json` lists, background and interactive, from any folder, with its folder on the row under its name. The mark is the session's state:
 
 | Mark | State |
 |---|---|
@@ -33,6 +37,7 @@ The list is refreshed every two seconds while the sidebar is shown (a run costs 
 | Do | Result |
 |---|---|
 | `Alt-B` | show / hide the sidebar (remembered in `state.toml`) |
+| drag its right border | resize it (the width is remembered) |
 | click a project | show it |
 | click a terminal tab | show it |
 | click a session | open it full screen in a terminal tab running `claude attach <id>`, named after the session; a second click shows the same tab |
@@ -45,7 +50,7 @@ A session's tab is an ordinary terminal tab ([11 · Terminals](11-terminals.md))
 ```toml
 [sidebar]
 show = false                         # before Alt-B was ever pressed
-width = 30
+width = 30                           # until its border is dragged
 sessions = "claude agents --json"    # lists sessions as JSON; "" for none
 attach = "claude attach {id}"        # opens session {id} in a terminal tab
 ```
@@ -57,5 +62,5 @@ The commands run through your login shell, so your `PATH` applies.
 - `vista-tui/src/sessions.rs`: parsing `claude agents --json` (id, name, folder, state) and the poller thread, which runs only while the sidebar is shown.
 - `vista-tui/src/ui/sidebar.rs`: drawing the rows and where each landed for clicks.
 - `vista-tui/src/workspace.rs`: the toggle, splitting the window, clicks, opening a session's tab (`TermTab::session` remembers which session a tab shows).
-- Unit: parsing every state, rows and marks where their clicks land.
-- E2e: `e2e_r1_sidebar.rs` (sessions with their marks from a fake list, a click attaching through a fake `attach`, the same tab on a second click, hiding, remembered across restarts).
+- Unit: parsing every state, rows and marks where their clicks land, branch and folder rows.
+- E2e: `e2e_r1_sidebar.rs` (sessions with their marks and folders from a fake list, the project's branch, a click attaching through a fake `attach`, the same tab on a second click, hiding, remembered across restarts, resizing by dragging and keeping the width).

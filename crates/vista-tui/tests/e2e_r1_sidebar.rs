@@ -39,10 +39,15 @@ fn sessions_show_their_state_and_open_on_click() {
     vista.press("alt+b");
     vista.expect_text_in(" Projects", 0..30);
     vista.expect_text_in(&format!("▸ {name}"), 0..30);
+    // The project's branch under it.
+    vista.expect_text_in("⎇ main", 0..30);
     // Sessions with their state: product-owner waits for input.
     vista.expect_text_in("● product-owner", 0..30).to_have_fg("ui.warning");
     vista.expect_text_in("◐ tree-search", 0..30).to_have_fg("ui.accent");
-    vista.expect_text_in("lms-con", 0..30);
+    // Its folder on the row below.
+    let (row, _) = vista.expect_text_in("● product-owner", 0..30).position();
+    let (folder_row, _) = vista.expect_text_in("lms-context", 0..30).position();
+    assert_eq!(folder_row, row + 1);
 
     // A click attaches to it in a terminal tab, full height beside the sidebar.
     click_row(&mut vista, "product-owner");
@@ -82,4 +87,31 @@ fn the_sidebar_is_remembered() {
     let mut vista = Vista::launch(BIN, &repo).config(&cfg).size(150, 36).start();
     vista.expect_text_in(" Claude", 0..30);
     vista.expect_text_in("● product-owner", 0..30);
+}
+
+#[test]
+fn dragging_the_border_resizes_it_and_the_width_is_kept() {
+    let repo = Fixture::git().file("a.txt", "one\n").commit("init").build();
+    let cfg = config(&repo);
+    let mut vista = Vista::launch(BIN, &repo).config(&cfg).size(150, 36).start();
+    vista.expect_text("1: Project");
+    vista.press("alt+b");
+    vista.expect_text_in(" Claude", 0..30);
+    let border = |vista: &Vista, col: u16| {
+        vista
+            .screen_text()
+            .lines()
+            .nth(3)
+            .and_then(|l| l.chars().nth(col as usize))
+            == Some('│')
+    };
+    assert!(border(&vista, 29), "{}", vista.screen_text());
+    vista.drag((29, 3), (41, 3));
+    vista.wait_until("the border moved to column 41", |s| {
+        s.contents().lines().nth(3).and_then(|l| l.chars().nth(41)) == Some('│')
+    });
+    vista.press("ctrl+q");
+    vista.expect_exit();
+    let state = std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap();
+    assert!(state.contains("sidebar_width = 42"), "{state}");
 }

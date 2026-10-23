@@ -29,6 +29,8 @@ pub struct Item<'a> {
     pub active: bool,
     /// Asked for attention (a notification) while off screen.
     pub waiting: bool,
+    /// A project's git branch, shown under its name.
+    pub branch: Option<&'a vista_git::BranchInfo>,
 }
 
 pub struct View<'a> {
@@ -136,12 +138,25 @@ pub fn draw(f: &mut Frame, area: Rect, view: &View, t: &Theme) -> Vec<(Rect, Sid
         } else {
             ("▸", "ui.dim")
         };
-        row(
-            f,
-            entry(mark, p.name, "", p.active),
-            Some(SidebarHit::Project(i)),
-            selected(p.active),
-        );
+        let hit = Some(SidebarHit::Project(i));
+        row(f, entry(mark, p.name, "", p.active), hit, selected(p.active));
+        // Its branch below, with the commits it is ahead of / behind upstream.
+        if let Some(b) = p.branch {
+            let counts: String = [(b.ahead, '↑'), (b.behind, '↓')]
+                .iter()
+                .filter(|(n, _)| *n > 0)
+                .map(|(n, arrow)| format!(" {arrow}{n}"))
+                .collect();
+            let name = fit(&b.label(), w.saturating_sub(6 + counts.width()));
+            let mut spans = vec![Span::styled(format!("   ⎇ {name}"), t.fg("ui.dim"))];
+            if b.ahead > 0 {
+                spans.push(Span::styled(format!(" ↑{}", b.ahead), t.fg("git.added")));
+            }
+            if b.behind > 0 {
+                spans.push(Span::styled(format!(" ↓{}", b.behind), t.fg("git.modified")));
+            }
+            row(f, Line::from(spans), hit, selected(p.active));
+        }
     }
     row(f, Line::raw(""), None, Style::default());
     row(f, Line::styled(" Claude", header), None, Style::default());
@@ -158,6 +173,7 @@ pub fn draw(f: &mut Frame, area: Rect, view: &View, t: &Theme) -> Vec<(Rect, Sid
             selected(tab.active),
         );
     }
+    // A session takes two rows: its name, then its folder.
     for (i, s) in view.sessions.iter().enumerate() {
         let folder = s
             .cwd
@@ -165,12 +181,10 @@ pub fn draw(f: &mut Frame, area: Rect, view: &View, t: &Theme) -> Vec<(Rect, Sid
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let active = view.shown_session == Some(s.id.as_str());
-        row(
-            f,
-            entry(s.state.mark(), &s.name, &folder, active),
-            Some(SidebarHit::Session(i)),
-            selected(active),
-        );
+        let hit = Some(SidebarHit::Session(i));
+        row(f, entry(s.state.mark(), &s.name, "", active), hit, selected(active));
+        let folder = Line::styled(format!("   {}", fit(&folder, w.saturating_sub(4))), t.fg("ui.dim"));
+        row(f, folder, hit, selected(active));
     }
     if let Some(note) = view.note {
         row(
@@ -195,6 +209,12 @@ mod tests {
     #[test]
     fn rows_show_projects_tabs_and_sessions_where_their_hits_are() {
         let theme = Theme::default_theme();
+        let branch = vista_git::BranchInfo {
+            head: Some("main".into()),
+            ahead: 2,
+            behind: 1,
+            ..Default::default()
+        };
         let sessions = vec![
             Session {
                 id: "a1".into(),
@@ -215,11 +235,13 @@ mod tests {
                     name: "file-browser",
                     active: true,
                     waiting: false,
+                    branch: Some(&branch),
                 },
                 Item {
                     name: "lms-context",
                     active: false,
                     waiting: true,
+                    branch: None,
                 },
             ],
             terminals: vec![(
@@ -228,27 +250,34 @@ mod tests {
                     name: "claude agents",
                     active: false,
                     waiting: false,
+                    branch: None,
                 },
             )],
             sessions: &sessions,
             shown_session: None,
             note: None,
         };
-        let mut term = Terminal::new(TestBackend::new(30, 12)).unwrap();
+        let mut term = Terminal::new(TestBackend::new(30, 16)).unwrap();
         let mut hits = Vec::new();
-        term.draw(|f| hits = draw(f, Rect::new(0, 0, 30, 12), &view, &theme))
+        term.draw(|f| hits = draw(f, Rect::new(0, 0, 30, 16), &view, &theme))
             .unwrap();
         let buf = term.backend().buffer().clone();
         let line = |y: u16| (0..30).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
         let at = |h: SidebarHit| hits.iter().find(|(_, x)| *x == h).map(|(r, _)| r.y).unwrap();
         assert!(line(at(SidebarHit::NewProject)).starts_with(" Projects"));
-        assert!(line(at(SidebarHit::Project(0))).contains("▸ file-browser"));
+        let p0 = at(SidebarHit::Project(0));
+        assert!(line(p0).contains("▸ file-browser"));
+        assert!(line(p0 + 1).starts_with("   ⎇ main ↑2 ↓1"), "{}", line(p0 + 1));
         assert!(line(at(SidebarHit::Project(1))).contains("● lms-context"));
         assert!(line(at(SidebarHit::Terminal(0))).contains("▶ claude agents"));
-        let s0 = line(at(SidebarHit::Session(0)));
-        assert!(s0.contains("● product-owner") && s0.contains("lms-con"), "{s0}");
+        // A session's folder is on the row under its name.
+        let s0 = at(SidebarHit::Session(0));
+        assert!(line(s0).contains("● product-owner"), "{}", line(s0));
+        assert!(line(s0 + 1).starts_with("   lms-context"), "{}", line(s0 + 1));
         let s1 = line(at(SidebarHit::Session(1)));
         assert!(s1.contains("◐ a-very-long") && s1.contains('…'), "{s1}");
+        let both = hits.iter().filter(|(_, h)| *h == SidebarHit::Session(0)).count();
+        assert_eq!(both, 2, "both rows open the session");
         assert!(line(at(SidebarHit::Session(1))).ends_with('│'));
         // Marks take the state's colour.
         let y = at(SidebarHit::Session(0));

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use ratatui::crossterm::event::{MouseButton, MouseEventKind};
 use ratatui_image::picker::Picker;
 use vista_core::{Config, Paths, UiState};
 
@@ -15,6 +16,11 @@ use crate::event::{self, AppEvent, EventRx, EventTx, INPUT, ProjectId};
 use crate::projects::{ProjectsBar, TabTarget, WsRequest, project_name};
 use crate::style::ThemeStyle;
 use crate::term_tab::TermTab;
+
+/// The sidebar is at least this wide when dragged…
+const MIN_SIDEBAR: u16 = 16;
+/// …and leaves this much for the project or terminal beside it.
+const MIN_BESIDE_SIDEBAR: u16 = 40;
 
 /// At most this many closed projects are remembered as recent.
 const MAX_RECENT: usize = 20;
@@ -70,6 +76,10 @@ pub struct Workspace {
     /// The sidebar's rows in the last frame, for clicks.
     sidebar_hits: Vec<(ratatui::layout::Rect, crate::ui::sidebar::SidebarHit)>,
     sidebar_area: Option<ratatui::layout::Rect>,
+    /// The sidebar's border is being dragged.
+    sidebar_drag: bool,
+    /// The window's width in the last frame (the sidebar leaves room for the rest).
+    window_width: u16,
     /// Where the terminal tab on screen was drawn.
     term_body: ratatui::layout::Rect,
 }
@@ -125,6 +135,8 @@ impl Workspace {
             sessions_wanted,
             sidebar_hits: Vec::new(),
             sidebar_area: None,
+            sidebar_drag: false,
+            window_width: 0,
             term_body: ratatui::layout::Rect::default(),
         }
     }
@@ -305,10 +317,17 @@ impl Workspace {
         if id == INPUT
             && let AppEvent::Term(ratatui::crossterm::event::Event::Mouse(m)) = &ev
             && let Some(area) = self.sidebar_area
-            && area.contains(ratatui::layout::Position::new(m.column, m.row))
         {
-            self.sidebar_mouse(m);
-            return;
+            // Its right border resizes it; a drag goes on outside it.
+            let on_border = m.column + 1 == area.x + area.width && m.row >= area.y;
+            if self.sidebar_drag || (on_border && matches!(m.kind, MouseEventKind::Down(MouseButton::Left))) {
+                self.sidebar_resize(m);
+                return;
+            }
+            if area.contains(ratatui::layout::Position::new(m.column, m.row)) {
+                self.sidebar_mouse(m);
+                return;
+            }
         }
         if let Some(ti) = self.terminals.iter().position(|t| t.id == id) {
             match ev {
@@ -316,7 +335,7 @@ impl Workspace {
                 AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
                 AppEvent::TermExited => self.terminals[ti].mark_exited(),
                 AppEvent::TermNotify(n) => {
-                    crate::terminal::notify(&n, &self.terminals[ti].title, &self.config.terminal.notify_sound);
+                    crate::terminal::notify(&n, &self.terminals[ti].title, &self.config.terminal);
                     if self.terminal != Some(ti) {
                         self.terminals[ti].waiting = true;
                         self.refresh_bars();
@@ -596,10 +615,11 @@ impl Workspace {
     pub fn draw(&mut self, f: &mut ratatui::Frame) {
         self.unmark_shown();
         let mut area = f.area();
+        self.window_width = area.width;
         self.sidebar_area = None;
         self.sidebar_hits.clear();
-        let width = self.config.sidebar.width.max(12);
-        if self.sidebar && area.width >= width + 40 {
+        let width = self.sidebar_width();
+        if self.sidebar && area.width >= width + MIN_BESIDE_SIDEBAR {
             let side = ratatui::layout::Rect { width, ..area };
             self.draw_sidebar(f, side);
             self.sidebar_area = Some(side);
@@ -643,6 +663,9 @@ impl Workspace {
                 name: &names[i],
                 active: on_project && i == self.active,
                 waiting: p.waiting,
+                // Known once the project has loaded its status.
+                branch: Some(&p.app.status.branch)
+                    .filter(|b| p.app.git.is_some() && (b.head.is_some() || b.oid.is_some())),
             })
             .collect();
         let terminals = (self.terminals.iter().enumerate())
@@ -654,6 +677,7 @@ impl Workspace {
                         name: &t.title,
                         active: self.terminal == Some(i),
                         waiting: t.waiting,
+                        branch: None,
                     },
                 )
             })
@@ -671,6 +695,33 @@ impl Workspace {
         };
         let theme = self.projects[self.active].app.theme.clone();
         self.sidebar_hits = crate::ui::sidebar::draw(f, area, &view, &theme);
+    }
+
+    /// The sidebar's width: dragged (remembered), else configured.
+    fn sidebar_width(&self) -> u16 {
+        let w = self.ui.borrow().layout.sidebar_width;
+        w.unwrap_or(self.config.sidebar.width).max(MIN_SIDEBAR)
+    }
+
+    /// Dragging the sidebar's right border; the width is saved on release.
+    fn sidebar_resize(&mut self, m: &ratatui::crossterm::event::MouseEvent) {
+        let Some(area) = self.sidebar_area else { return };
+        let max = self.window_width.saturating_sub(MIN_BESIDE_SIDEBAR).max(MIN_SIDEBAR);
+        let width = (m.column.saturating_sub(area.x) + 1).clamp(MIN_SIDEBAR, max);
+        match m.kind {
+            MouseEventKind::Down(MouseButton::Left) => self.sidebar_drag = true,
+            MouseEventKind::Drag(MouseButton::Left) => self.ui.borrow_mut().layout.sidebar_width = Some(width),
+            MouseEventKind::Up(_) => {
+                self.sidebar_drag = false;
+                self.ui.borrow_mut().layout.sidebar_width = Some(width);
+                let result = self.ui.borrow().save(&self.ui_path);
+                if let Err(e) = result {
+                    self.active_app()
+                        .notify(format!("cannot save settings: {e}"), MsgKind::Error);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// A click in the sidebar opens what's on that row.

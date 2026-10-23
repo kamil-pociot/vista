@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "commit_with_diff(&repo, look)"
 ---
-  <root>   +                                                          Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+  <root>   +                                                      Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main   ⚙
  2: Commit                          │ Δ diff.rs ×
  ␣ tick  r rollback  a add  g group │ diff.rs  crates/fb-git/src                     1 of 1 in commit (␣)   [ ◂ change 1 of 1 ▸ ]
  ▾ [x] Changes  4 files             │ HEAD · c22c251 (read-only)                     Working tree
@@ -33,7 +33,7 @@ expression: "commit_with_diff(&repo, look)"
   Commit ^K    Commit & Push (P)    │ u unified  i whitespace  side-by-side · whitespace: compare · lines: scroll · collapse: off
  1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help                         4 changed · 2 unversioned   1:1   Diff
 --- styles ---
-  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..80 fg=ui.text bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..123 fg=ui.text bg=ui.panel] [123..125 fg=ui.dim bg=ui.panel] [125..130 fg=ui.text bg=ui.panel]
+  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..76 fg=ui.text bg=ui.panel] [76..82 fg=ui.dim bg=ui.panel] [82..96 fg=ui.text bg=ui.panel] [96..102 fg=ui.dim bg=ui.panel] [102..119 fg=ui.text bg=ui.panel] [119..121 fg=ui.dim bg=ui.panel] [121..128 fg=ui.text bg=ui.panel] [128..129 fg=ui.dim bg=ui.panel] [129..130 fg=ui.text bg=ui.panel]
   1: [0..10 fg=ui.header bg=ui.panel +bold] [10..36 fg=ui.text bg=ui.panel] [36..37 fg=ui.border bg=ui.bg] [37..48 fg=git.modified bg=ui.bg +underline] [48..50 fg=ui.dim bg=ui.bg] [50..130 fg=ui.text bg=ui.panel]
   2: [0..36 fg=ui.dim bg=ui.panel.alt] [36..37 fg=ui.border bg=ui.bg] [37..45 fg=ui.text.strong bg=ui.panel +bold] [45..64 fg=ui.dim bg=ui.panel] [64..130 fg=ui.text bg=ui.panel]
   3: [0..3 fg=ui.dim bg=ui.selection.inactive] [3..7 fg=ui.text bg=ui.selection.inactive] [7..14 fg=ui.header bg=ui.selection.inactive +bold] [14..23 fg=ui.dim bg=ui.selection.inactive] [23..36 fg=ui.text bg=ui.selection.inactive] [36..37 fg=ui.border bg=ui.bg] [37..82 fg=ui.header bg=ui.panel.alt] [82..84 fg=ui.text bg=ui.panel.alt] [84..129 fg=ui.header bg=ui.panel.alt] [129..130 fg=ui.text bg=ui.panel.alt]

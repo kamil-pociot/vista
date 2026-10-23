@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "project_with_code(&repo, look)"
 ---
-  <root>   +                                      Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+  <root>   +                                  Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main   ⚙
  ◫   ╭ 1: Project ──────────── ⌖ ╮ ╭────────────────────────────────────────────────────────────────────────╮
      │ ▾ <root>        │ │ status.rs ×                                                            │
  ⎇   │   ▾ crates                │ │  1   use std::path::{Path, PathBuf};                                  ┃│
@@ -33,7 +33,7 @@ expression: "project_with_code(&repo, look)"
      ╰───────────────────────────╯ ╰────────────────────────────────────────────────────────────────────────╯
  VIEW                                                                  4 changed · 2 unversioned   1:1   Rust
 --- styles ---
-  0: [0..1 fg=ui.header bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.header bg=ui.panel] [20..23 fg=ui.accent bg=ui.panel] [23..60 fg=ui.header bg=ui.panel] [60..66 fg=ui.dim bg=ui.panel] [66..80 fg=ui.header bg=ui.panel] [80..86 fg=ui.dim bg=ui.panel] [86..103 fg=ui.header bg=ui.panel] [103..105 fg=ui.dim bg=ui.panel] [105..110 fg=ui.header bg=ui.panel]
+  0: [0..1 fg=ui.header bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.header bg=ui.panel] [20..23 fg=ui.accent bg=ui.panel] [23..56 fg=ui.header bg=ui.panel] [56..62 fg=ui.dim bg=ui.panel] [62..76 fg=ui.header bg=ui.panel] [76..82 fg=ui.dim bg=ui.panel] [82..99 fg=ui.header bg=ui.panel] [99..101 fg=ui.dim bg=ui.panel] [101..108 fg=ui.header bg=ui.panel] [108..109 fg=ui.dim bg=ui.panel] [109..110 fg=ui.header bg=ui.panel]
   1: [0..4 fg=ui.accent bg=ui.selection.inactive] [4..5 fg=ui.header bg=ui.bg] [5..6 fg=ui.border bg=ui.panel.alt] [6..18 fg=ui.header bg=ui.panel.alt +bold] [18..30 fg=ui.border bg=ui.panel.alt] [30..33 fg=ui.accent bg=ui.panel.alt] [33..34 fg=ui.border bg=ui.panel.alt] [34..35 fg=ui.border bg=ui.bg] [35..109 fg=ui.border.focused bg=ui.bg] [109..110 fg=ui.header bg=ui.bg]
   2: [0..5 fg=ui.header bg=ui.bg] [5..6 fg=ui.border bg=ui.panel.alt] [6..9 fg=ui.dim bg=ui.panel.alt] [9..25 fg=ui.accent bg=ui.panel.alt +bold] [25..33 fg=ui.header bg=ui.panel.alt] [33..34 fg=ui.border bg=ui.panel.alt] [34..35 fg=ui.border bg=ui.bg] [35..36 fg=ui.border.focused bg=ui.bg] [36..47 fg=ui.accent bg=ui.selection.inactive] [47..49 fg=ui.dim bg=ui.selection.inactive] [49..108 fg=ui.header bg=ui.bg] [108..109 fg=ui.border.focused bg=ui.bg] [109..110 fg=ui.header bg=ui.bg]
   3: [0..4 fg=ui.dim bg=ui.bg] [4..5 fg=ui.header bg=ui.bg] [5..6 fg=ui.border bg=ui.panel.alt] [6..11 fg=ui.dim bg=ui.panel.alt] [11..17 fg=ui.accent bg=ui.panel.alt] [17..33 fg=ui.header bg=ui.panel.alt] [33..34 fg=ui.border bg=ui.panel.alt] [34..35 fg=ui.border bg=ui.bg] [35..36 fg=ui.border.focused bg=ui.bg] [36..40 fg=ui.text.strong bg=ui.cursorline] [40..41 fg=ui.linenr bg=ui.cursorline] [41..42 fg=ui.header bg=ui.cursorline] [42..45 fg=syntax.keyword bg=ui.cursorline] [45..107 fg=ui.header bg=ui.cursorline] [107..108 fg=ui.dim bg=ui.bg] [108..109 fg=ui.border.focused bg=ui.bg] [109..110 fg=ui.header bg=ui.bg]

@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m0.rs
 expression: "vista_tui::testing::text(&buf)"
 ---
-  sample-project   +   ┌ Keyboard shortcuts ────────────────────────────────┐Ctrl-F Find in Files
+  sample-project   +   ┌ Keyboard shortcuts ────────────────────────────────┐-F Find in Files     ⚙
  1: Project            │            q, Ctrl-Q  Quit                         │
  ▾ sample-project      │                ?, F1  Show this help               │
                        │                  Tab  Focus next panel             │

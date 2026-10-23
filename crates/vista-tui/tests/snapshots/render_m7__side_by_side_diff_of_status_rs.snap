@@ -2,7 +2,7 @@
 source: crates/vista-tui/tests/render_m7.rs
 expression: snap
 ---
-  <root>   +                                                                              Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main
+  <root>   +                                                                          Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main   ⚙
  Δ status.rs ×
  status.rs  crates/fb-git/src                                                                            5 of 5 in commit (␣)   [ ◂ change 1 of 5 ▸ ]
  HEAD · c22c251 (read-only)                                                 Working tree
@@ -43,7 +43,7 @@ expression: snap
  u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit             side-by-side · whitespace: compare · lines: scroll · collapse: off
  1: Project   2: Commit   3: Find   T: Terminal   9: Git   ?: Help                                             4 changed · 2 unversioned   3:1   Diff
 --- styles ---
-  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..100 fg=ui.text bg=ui.panel] [100..106 fg=ui.dim bg=ui.panel] [106..120 fg=ui.text bg=ui.panel] [120..126 fg=ui.dim bg=ui.panel] [126..143 fg=ui.text bg=ui.panel] [143..145 fg=ui.dim bg=ui.panel] [145..150 fg=ui.text bg=ui.panel]
+  0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..96 fg=ui.text bg=ui.panel] [96..102 fg=ui.dim bg=ui.panel] [102..116 fg=ui.text bg=ui.panel] [116..122 fg=ui.dim bg=ui.panel] [122..139 fg=ui.text bg=ui.panel] [139..141 fg=ui.dim bg=ui.panel] [141..148 fg=ui.text bg=ui.panel] [148..149 fg=ui.dim bg=ui.panel] [149..150 fg=ui.text bg=ui.panel]
   1: [0..13 fg=git.modified bg=ui.bg +underline] [13..15 fg=ui.dim bg=ui.bg] [15..150 fg=ui.text bg=ui.panel]
   2: [0..10 fg=ui.text.strong bg=ui.panel +bold] [10..29 fg=ui.dim bg=ui.panel] [29..150 fg=ui.text bg=ui.panel]
   3: [0..73 fg=ui.header bg=ui.panel.alt] [73..75 fg=ui.text bg=ui.panel.alt] [75..149 fg=ui.header bg=ui.panel.alt] [149..150 fg=ui.text bg=ui.panel.alt]

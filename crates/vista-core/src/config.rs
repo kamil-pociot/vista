@@ -120,6 +120,9 @@ pub struct TerminalConfig {
     /// Played when a program asks for a notification: a macOS system sound
     /// (`Glass`, `Ping`, …), a sound file, or `none`.
     pub notify_sound: String,
+    /// Played instead when it says something finished or failed (Claude's
+    /// agent view); empty plays `notify_sound`.
+    pub notify_sound_done: String,
 }
 
 impl Default for TerminalConfig {
@@ -127,6 +130,7 @@ impl Default for TerminalConfig {
         Self {
             commands: vec!["claude agents".into()],
             notify_sound: "Glass".into(),
+            notify_sound_done: String::new(),
         }
     }
 }
@@ -266,9 +270,54 @@ impl Config {
     }
 }
 
+/// A `config.toml` with every setting at its default, explained; written
+/// when Open Settings finds no file yet.
+pub const TEMPLATE: &str = r#"# vista settings. Changes apply when vista starts again.
+# Every value below is the default; delete a line to keep the default.
+
+theme = "darcula"                    # darcula, quiet, paper, or a file in themes/
+
+[images]
+protocol = "auto"                    # auto, kitty, halfblocks, off
+
+[editor]
+config = "user"                      # user: your init.lua; minimal: nvim --clean
+theme_sync = true                    # paint Neovim with the active look
+nvim = "nvim"
+
+[tree]
+show_ignored = true                  # show git-ignored files (Alt-I toggles)
+folder_colours = true                # colour folders that contain changes
+
+[terminal]
+commands = ["claude agents"]         # offered in Ctrl-O for new terminal tabs
+notify_sound = "Glass"               # on notifications: a macOS sound, a file, or "none"
+notify_sound_done = ""               # when one finished or failed; "" plays notify_sound
+
+[mouse]
+copy_on_select = true                # copy a mouse selection on release
+
+[sidebar]                            # Alt-B
+show = false                         # before Alt-B was ever pressed
+width = 30
+sessions = "claude agents --json"    # lists Claude sessions; "" for none
+attach = "claude attach {id}"        # opens session {id} in a terminal tab
+
+[keys]
+# "ctrl+o" = "goto-file"             # bind a key to an action
+# "q" = "none"                       # unbind a key
+"#;
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
+
+    #[test]
+    fn the_settings_template_is_the_defaults() {
+        let parsed: Config = toml::from_str(TEMPLATE).unwrap();
+        assert_eq!(parsed, Config::default());
+    }
 
     #[test]
     fn missing_file_gives_defaults() {

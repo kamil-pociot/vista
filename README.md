@@ -73,9 +73,13 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 
 `Alt-9` opens the Git window at the bottom (like IntelliJ's Log): commits newest first (hash, branch/tag names, subject, author, date) and, on the right, the files the selected commit changed (`A`/`M`/`D`/`R`, with the old name for renames). `Tab`/`←→` switch lists, `Enter` (or double-click) on a file opens its change as a **read-only diff** of the commit against its parent (`Δ name @abc1234`): same viewer, no checkboxes, `]`/`[` and `J`/`K` step through that commit's files, `e` opens the current file. `Alt-H` shows the history of the open file (following renames); `a` there goes back to all commits, `r` reloads, `Esc` hides the window.
 
+### Settings
+
+`Ctrl-,` or the `⚙` at the right of the top bar opens `~/.config/vista/config.toml` for editing (written with every default the first time). Changes apply when vista starts again.
+
 ### Sidebar
 
-`Alt-B` shows a herdr-style sidebar: the open projects on top, then your terminal tabs and every Claude Code session (`claude agents --json`) with its state — `●` needs input, `◐` working, `✓` done, `✗` failed. Click a project to show it, a session to open it in a terminal tab (`claude attach`). It replaces the top bar's tabs while shown and is remembered ([docs](docs/18-sidebar.md)).
+`Alt-B` shows a herdr-style sidebar (drag its right border to resize): the open projects with their branch and ahead/behind counts on top, then your terminal tabs and every Claude Code session (`claude agents --json`) with its state — `●` needs input, `◐` working, `✓` done, `✗` failed. Click a project to show it, a session to open it in a terminal tab (`claude attach`). It replaces the top bar's tabs while shown and is remembered ([docs](docs/18-sidebar.md)).
 
 ### Terminal tabs
 
@@ -85,6 +89,7 @@ Programs such as `claude agents` run in terminal tabs (`▶ claude agents`) next
 [terminal]
 commands = ["claude agents", "htop"]
 notify_sound = "Glass"     # a macOS system sound, a file, or "none"
+notify_sound_done = ""     # for "finished" / "failed"; "" plays notify_sound
 ```
 
 ### Remembered settings

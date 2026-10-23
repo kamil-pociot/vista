@@ -1538,9 +1538,7 @@ impl App {
                     s.mark_exited();
                 }
             }
-            AppEvent::TermNotify(n) => {
-                crate::terminal::notify(&n, &self.project_name, &self.config.terminal.notify_sound)
-            }
+            AppEvent::TermNotify(n) => crate::terminal::notify(&n, &self.project_name, &self.config.terminal),
             AppEvent::Log { generation, result } => {
                 if generation == self.log.generation {
                     match result {
@@ -2322,6 +2320,24 @@ impl App {
         }
     }
 
+    /// Opens `config.toml` for editing, written out with every default first
+    /// when there is none.
+    fn open_settings(&mut self) {
+        let path = self.paths.config_file();
+        if !path.exists() {
+            let written = path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&path, vista_core::config::TEMPLATE));
+            if let Err(e) = written {
+                self.notify(format!("cannot create {}: {e}", path.display()), MsgKind::Error);
+                return;
+            }
+        }
+        self.open_at(&path, None, true);
+        self.notify("Settings apply when vista starts again", MsgKind::Info);
+    }
+
     /// A click on a label or button: does what its key does.
     pub fn click(&mut self, c: crate::ui::click::Click) {
         use crate::ui::click::Click;
@@ -2429,6 +2445,7 @@ impl App {
             Action::ToggleCommit => self.toggle_left(LeftPanel::Commit),
             Action::CycleTheme => self.cycle_theme(),
             Action::ToggleSidebar => self.ws_request = Some(crate::projects::WsRequest::ToggleSidebar),
+            Action::OpenSettings => self.open_settings(),
             Action::ToggleIgnored => {
                 self.project.show_ignored = !self.project.show_ignored;
                 let shown = self.project.show_ignored;

@@ -6,7 +6,7 @@ Everything on screen that names a window, an option or a key can be clicked. A c
 
 | Where | Labels | Same as |
 |---|---|---|
-| Top bar | `Ctrl-P Go to File`, `Ctrl-F Find in Files`, `⎇ branch` | `Ctrl-P`, `Ctrl-F`, `Alt-9` (Git window) |
+| Top bar | `Ctrl-P Go to File`, `Ctrl-F Find in Files`, `⎇ branch`, `⚙` | `Ctrl-P`, `Ctrl-F`, `Alt-9` (Git window), `Ctrl-,` (settings) |
 | Bottom bar | `1: Project`, `2: Commit`, `3: Find`, `T: Terminal`, `9: Git`, `?: Help` | their tool-window keys |
 | Icon rail (looks with `tool_windows = "icon-rail"`) | `◫` `⎇` `⌕` `?` | Project, Commit, Find in Files, Help |
 | Key-hint line (looks with `keyhints = true`) | each hint | its key |
