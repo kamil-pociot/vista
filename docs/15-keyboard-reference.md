@@ -34,7 +34,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | Area | Keys |
 |---|---|
 | Project tree | arrows, `Enter` open, `Alt-Enter` edit, `Alt-I` ignored, `-` collapse all; typing starts a speed search (`↑↓` matches, `Enter` open, `Esc` end) |
-| Viewer | `w` wrap, `←`/`→` sideways, `/` `n` `N` find, `Ctrl-G` line, `m` raw/rendered, `d` diff, `e` edit; select with drag, double-click, `Shift-↑/↓`, `Ctrl-A`; `Ctrl-C`/`y` copy, `Esc` clear |
+| Viewer | `w` wrap, `←`/`→` sideways, `/` `n` `N` find, `Ctrl-G` line, `m` raw/rendered, `d` diff, `e` edit; select with drag, double-click, `Shift-↑/↓`, `Ctrl-A`; `Ctrl-C`/`Cmd-C`/`y` copy (a mouse selection is copied on release), `Esc` clear |
 | Go to File | `Enter` view, `Alt-Enter` edit, `Tab` tabs, `Alt-I` ignored |
 | Find in Files | `Alt-C` case, `Alt-W` words, `Alt-X` regex, `Alt-S` scope, `Tab` mask, `Alt-↑↓` history, `Enter` open, `Alt-Enter` edit, `Alt-O` Find window |
 | Commit | `Space` tick, `Tab` message, `Ctrl-K` commit, `m` amend, `P` commit & push, `r` rollback, `a` add, `g` group, `Enter` diff |

@@ -147,6 +147,20 @@ impl Default for TreeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+pub struct MouseConfig {
+    /// Copy a mouse selection when the button is released (as herdr and
+    /// most terminals do); off, it waits for Ctrl-C / Cmd-C / y.
+    pub copy_on_select: bool,
+}
+
+impl Default for MouseConfig {
+    fn default() -> Self {
+        Self { copy_on_select: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Id of the look (built-in or a file in `<config>/themes/`).
     pub theme: String,
@@ -154,6 +168,7 @@ pub struct Config {
     pub editor: EditorConfig,
     pub tree: TreeConfig,
     pub terminal: TerminalConfig,
+    pub mouse: MouseConfig,
     /// Key overrides: `"ctrl+p" = "goto-file"`.
     pub keys: BTreeMap<String, String>,
 }
@@ -166,6 +181,7 @@ impl Default for Config {
             editor: EditorConfig::default(),
             tree: TreeConfig::default(),
             terminal: TerminalConfig::default(),
+            mouse: MouseConfig::default(),
             keys: BTreeMap::new(),
         }
     }

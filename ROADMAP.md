@@ -389,6 +389,11 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Letters now search in the tree, so `Alt-Enter` (edit), `Alt-I` (ignored files) and `Alt-L` (line numbers) were added; `Ctrl-Q` quits. `?`, `[`, `]` and `-` don't start a search.
 - [x] Tests: `vista_search::speed` units, tree units, `e2e_m1_tree::typing_in_the_tree_searches_it`.
 
+### Copy on select ✅
+- [x] A mouse selection in the viewer (drag or double-click) is copied when the button is released, as in herdr; `[mouse] copy_on_select = false` turns it off.
+- [x] `Cmd-C` / `Cmd-A` work like `Ctrl-C` / `Ctrl-A` when the terminal passes Cmd on. Ghostty only does that with `keybind = performable:super+c=copy_to_clipboard:mixed`: its default Cmd-C binding always takes the key.
+- [x] Tests: `e2e_r1_selection` (copy on release, Cmd-C as the kitty keyboard protocol sends it).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

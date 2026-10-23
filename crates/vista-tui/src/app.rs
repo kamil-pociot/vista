@@ -1849,18 +1849,7 @@ impl App {
                     return;
                 }
                 ViewerOutcome::Copy(text) => {
-                    match crate::selection::copy(&text) {
-                        Ok(how) => {
-                            let lines = text.lines().count().max(1);
-                            let what = if lines == 1 {
-                                format!("{} characters", text.chars().count())
-                            } else {
-                                format!("{lines} lines")
-                            };
-                            self.notify(format!("Copied {what} (via {how})"), MsgKind::Info);
-                        }
-                        Err(e) => self.notify(format!("cannot copy: {e}"), MsgKind::Error),
-                    }
+                    self.copy_text(&text);
                     return;
                 }
                 ViewerOutcome::ShowDiff => {
@@ -1900,6 +1889,28 @@ impl App {
         }
         if let Some(action) = self.keymap.action_for(&key) {
             self.handle_action(action);
+        }
+    }
+
+    fn copy_text(&mut self, text: &str) {
+        match crate::selection::copy(text) {
+            Ok(how) => {
+                let lines = text.lines().count().max(1);
+                let what = if lines == 1 {
+                    format!("{} characters", text.chars().count())
+                } else {
+                    format!("{lines} lines")
+                };
+                self.notify(format!("Copied {what} (via {how})"), MsgKind::Info);
+            }
+            Err(e) => self.notify(format!("cannot copy: {e}"), MsgKind::Error),
+        }
+    }
+
+    /// Copies the viewer's selection, if there is one.
+    fn copy_selection(&mut self) {
+        if let Some(text) = self.viewer.active_tab().and_then(|t| t.selected_text()) {
+            self.copy_text(&text);
         }
     }
 
@@ -1969,6 +1980,8 @@ impl App {
                         && tab.selection.is_some_and(|s| s.is_empty())
                     {
                         tab.selection = None;
+                    } else if self.config.mouse.copy_on_select {
+                        self.copy_selection();
                     }
                     return;
                 }
@@ -2245,6 +2258,9 @@ impl App {
                     }
                     if double {
                         tab.select_word(p);
+                        if self.config.mouse.copy_on_select {
+                            self.copy_selection();
+                        }
                     } else {
                         tab.selection = Some(crate::selection::Selection::at(p));
                         self.selecting = true;

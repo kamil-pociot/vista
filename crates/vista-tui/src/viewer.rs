@@ -702,12 +702,13 @@ impl Tab {
     }
 
     /// Selection keys: Shift-↑↓ (lines), Ctrl-A, Ctrl-C / y (copy), Esc.
+    /// Cmd-A / Cmd-C too, when the terminal passes Cmd on (kitty keyboard).
     fn selection_key(&mut self, key: &KeyEvent) -> Option<ViewerOutcome> {
         use crate::selection::Selection;
         if !self.selectable() {
             return None;
         }
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let ctrl = key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
             KeyCode::Up | KeyCode::Down if shift && !ctrl && self.has_cursor() => {

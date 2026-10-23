@@ -18,9 +18,10 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 
 ## Text selection
 
-- Drag with the mouse to select; double-click selects a word.
-- `Shift-↑`/`Shift-↓` extend the selection by lines, `Ctrl-A` selects everything.
-- `Ctrl-C` or `y` copies, `Esc` clears.
+- Drag with the mouse to select; double-click selects a word. Releasing the button copies the selection, as herdr and most terminals do. `[mouse] copy_on_select = false` turns that off, and the selection then waits for a key.
+- `Shift-↑`/`Shift-↓` extend the selection by lines, `Ctrl-A` (`Cmd-A`) selects everything.
+- `Ctrl-C`, `Cmd-C` or `y` copies, `Esc` clears.
+- Cmd-C reaches vista only when the terminal passes it on. Ghostty copies its own selection on Cmd-C and swallows the key even when it has none. To pass it on when Ghostty has no selection of its own, add `keybind = performable:super+c=copy_to_clipboard:mixed` to Ghostty's config (`~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`).
 - Copying uses `pbcopy`, `wl-copy` or `xclip` when available, otherwise the terminal's OSC 52 clipboard sequence.
 - Selection works on code, rendered Markdown and wrapped lines: each frame records which file line and column every screen row shows.
 
@@ -40,10 +41,10 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 | `m` | Markdown raw ⇄ rendered |
 | `Ctrl-L` | reveal in tree |
 | drag, double-click, `Shift-↑/↓`, `Ctrl-A` | select |
-| `Ctrl-C`, `y` / `Esc` | copy / clear selection |
+| `Ctrl-C`, `Cmd-C`, `y` / `Esc` | copy / clear selection (a mouse selection is copied on release) |
 
 ## Code and tests
 
 - `vista-render` (highlighting, file types), `vista-diff` (gutter markers), `vista-tui/src/viewer.rs`, `selection.rs`, `ui/viewer.rs`.
 - Snapshots: highlighted Rust/TS/JSON, gutter markers (`render_m2.rs`).
-- E2e: `e2e_m2_viewer.rs` (code, Markdown, images, binary, huge file), `e2e_r1_feedback.rs` (sideways scroll, scroll past end, cross-file changes), `e2e_r1_settings.rs` (line numbers), `e2e_r1_selection.rs` (drag, double-click, keyboard selection, copy).
+- E2e: `e2e_m2_viewer.rs` (code, Markdown, images, binary, huge file), `e2e_r1_feedback.rs` (sideways scroll, scroll past end, cross-file changes), `e2e_r1_settings.rs` (line numbers), `e2e_r1_selection.rs` (drag, double-click, keyboard selection, copy, copy on release, Cmd-C with copy on release off).

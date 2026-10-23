@@ -25,7 +25,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 |---|---|
 | Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-2` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
 | Project tree | drag the divider (or `Ctrl-Shift-←`/`→`) to resize; the width is remembered · `⌖` in the header (or `Ctrl-L`) shows the opened file in the tree · arrows, `Enter` or double-click open, `Alt-Enter` edit in Neovim, `Alt-I` show/hide ignored, `-` collapse all, `Ctrl-R` refresh · type to speed-search (IntelliJ): `↑`/`↓` step through matches, `Enter` opens, `Esc` ends |
-| Viewer | select text: drag with the mouse, double-click a word, `Shift-↑/↓` lines, `Ctrl-A` all; `Ctrl-C` or `y` copies, `Esc` clears · `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
+| Viewer | select text: drag with the mouse, double-click a word, `Shift-↑/↓` lines, `Ctrl-A` all; releasing the mouse copies (`[mouse] copy_on_select`), or `Ctrl-C` / `Cmd-C` / `y`, `Esc` clears · `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
 | Editor (Neovim) | everything goes to Neovim; `Ctrl-\` back to the tree; `:w` saves and refreshes git colours; long lines wrap if the viewer wrapped them, and `:set wrap` / `:set nowrap` carry back to the viewer |
 | Go to File | type a few letters (`FoBaCo`, `stat`, `name:42`), `Enter` view, `Alt-Enter` edit, `Tab` scopes, `Alt-I` include ignored |
 | Find in Files | `Alt-C` case · `Alt-W` words · `Alt-X` regex · `Alt-S` scope · `Tab` file mask (`*.md, !archive/**`) · `Alt-↑↓` history · `Enter` open · `Alt-O` to the Find window · `Ctrl-Alt-↓/↑` next/previous result |
@@ -52,6 +52,9 @@ nvim = "nvim"
 [tree]
 show_ignored = true
 folder_colours = true
+
+[mouse]
+copy_on_select = true        # copy a mouse selection on release (false: Ctrl-C / Cmd-C / y)
 
 [keys]
 "ctrl+o" = "goto-file"       # bind

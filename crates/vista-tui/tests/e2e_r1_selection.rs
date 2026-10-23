@@ -83,3 +83,39 @@ fn select_in_rendered_markdown() {
     vista.press("y");
     assert_eq!(clipboard(&clip, "paragraph"), "paragraph");
 }
+
+#[test]
+fn a_mouse_selection_is_copied_on_release() {
+    let repo = Fixture::git().file("main.rs", CODE).commit("init").build();
+    let clip: PathBuf = repo.home().join("clipboard.txt");
+    let mut vista = launch(&repo, "main.rs", &clip);
+    let (row, col) = vista.expect_text("let answer = 42;").position();
+    vista.drag((col, row), (col + 15, row));
+    assert_eq!(clipboard(&clip, "let answer = 42"), "let answer = 42");
+    vista.expect_text("Copied 15 characters");
+    // A double-clicked word too (in the code, not the `main.rs` tab).
+    let (row, col) = vista.expect_text("fn main()").position();
+    vista.double_click(col + 4, row);
+    assert_eq!(clipboard(&clip, "main"), "main");
+}
+
+#[test]
+fn with_copy_on_select_off_cmd_c_copies() {
+    let repo = Fixture::git().file("main.rs", CODE).commit("init").build();
+    let clip: PathBuf = repo.home().join("clipboard.txt");
+    let mut vista = Vista::launch(BIN, &repo)
+        .env("VISTA_CLIPBOARD_FILE", &clip.display().to_string())
+        .config("[mouse]\ncopy_on_select = false\n")
+        .size(120, 30)
+        .open("main.rs")
+        .start();
+    let (row, col) = vista.expect_text("let answer = 42;").position();
+    vista.drag((col, row), (col + 15, row));
+    vista.expect_text("answer").to_have_bg("ui.selection");
+    vista.settle(Duration::from_millis(300));
+    assert!(!clip.exists(), "nothing copied on release");
+    // Cmd-C as Ghostty sends it with the kitty keyboard protocol.
+    vista.send_raw(b"\x1b[99;9u");
+    assert_eq!(clipboard(&clip, "let answer = 42"), "let answer = 42");
+    vista.expect_text("Copied 15 characters");
+}

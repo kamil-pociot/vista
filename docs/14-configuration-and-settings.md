@@ -32,6 +32,9 @@ folder_colours = true
 [terminal]
 commands = ["claude agents"]
 
+[mouse]
+copy_on_select = true        # copy a mouse selection on release; false: Ctrl-C / Cmd-C / y
+
 [keys]
 "ctrl+o" = "goto-file"       # bind a key to an action
 "q" = "none"                 # unbind
