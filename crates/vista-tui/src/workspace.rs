@@ -262,8 +262,8 @@ impl Workspace {
                 // Drawn after this; the reader may wake us again.
                 AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
                 AppEvent::TermExited => self.terminals[ti].mark_exited(),
-                AppEvent::TermNotify(seq) => {
-                    crate::terminal::pass_through(&seq);
+                AppEvent::TermNotify(n) => {
+                    crate::terminal::notify(&n, &self.terminals[ti].title);
                     if self.terminal != Some(ti) {
                         self.terminals[ti].waiting = true;
                         self.refresh_bars();

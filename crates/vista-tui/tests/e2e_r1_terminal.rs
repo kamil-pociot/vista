@@ -262,3 +262,54 @@ fn shift_enter_reaches_the_program_as_esc_cr() {
         words.windows(2).any(|w| w == ["1b", "0d"])
     });
 }
+
+/// Inside herdr, which doesn't pass notifications on, vista hands them to
+/// `herdr notification show` as well.
+#[test]
+fn inside_herdr_a_notification_goes_to_herdr() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = repo();
+    let bin = tempfile::tempdir().unwrap();
+    let herdr = bin.path().join("herdr");
+    let out = bin.path().join("args");
+    std::fs::write(
+        &herdr,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}.tmp' && mv '{0}.tmp' '{0}'\n",
+            out.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&herdr, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .env("HERDR_ENV", "1")
+        .env("HERDR_PANE_ID", "w1:p1")
+        .env("HERDR_BIN_PATH", &herdr.to_string_lossy())
+        .size(140, 30)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("ctrl+o");
+    vista.type_text(">printf '\\033]777;notify;Claude Code;needs input\\007'; cat");
+    vista.press("enter");
+    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x1b\\");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    while !out.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let args = std::fs::read_to_string(&out).expect("herdr was run");
+    let title = "Claude Code · printf '\\033]777;notify;Claude Code;needs input\\007'; cat";
+    assert_eq!(
+        args.lines().collect::<Vec<_>>(),
+        [
+            "notification",
+            "show",
+            title,
+            "--body",
+            "needs input",
+            "--sound",
+            "request"
+        ]
+    );
+}

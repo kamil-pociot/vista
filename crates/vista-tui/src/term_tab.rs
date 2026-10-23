@@ -36,7 +36,19 @@ pub struct TermTab {
 /// Desktop notifications seen in the output since the reader last looked.
 /// The vt100 parser drops OSCs it doesn't know, which would swallow them.
 #[derive(Default)]
-pub struct Notifications(Vec<Vec<u8>>);
+pub struct Notifications(Vec<Notification>);
+
+/// A desktop notification a program asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notification {
+    /// The escape sequence, to write to the terminal vista runs in.
+    pub seq: Vec<u8>,
+    /// May be empty (`OSC 9` has none).
+    pub title: String,
+    pub body: String,
+    /// Kitty sends a notification in parts; only the last one shows it.
+    pub partial: bool,
+}
 
 impl vt100::Callbacks for Notifications {
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
@@ -50,19 +62,31 @@ impl vt100::Callbacks for Notifications {
 /// notification: `9;<text>` (iTerm2, Ghostty), `777;notify;<title>;<body>`
 /// (rxvt, Ghostty) or kitty's `99`. ConEmu's numeric `9;<n>;…` (progress
 /// bars and the like) stays inside: it describes this tab, not vista's window.
-fn notification(params: &[&[u8]]) -> Option<Vec<u8>> {
-    let wanted = match params {
-        [b"9", text, ..] => !text.is_empty() && !text.iter().all(u8::is_ascii_digit),
-        [b"777", b"notify", ..] | [b"99", ..] => true,
-        _ => false,
+fn notification(params: &[&[u8]]) -> Option<Notification> {
+    // The text itself may hold `;`, which split it into params.
+    let text = |ps: &[&[u8]]| String::from_utf8_lossy(&ps.join(&b';')).into_owned();
+    let (title, body, partial) = match params {
+        [b"9", rest @ ..] if !rest.is_empty() && !rest[0].is_empty() && !rest[0].iter().all(u8::is_ascii_digit) => {
+            (String::new(), text(rest), false)
+        }
+        [b"777", b"notify", title, body @ ..] => (text(&[title]), text(body), false),
+        [b"777", b"notify"] => (String::new(), String::new(), false),
+        // `99 ; key=value:… ; payload`: `d=0` means more parts follow.
+        [b"99", meta, payload @ ..] => {
+            let partial = meta.split(|&b| b == b':').any(|kv| kv == b"d=0");
+            (String::new(), text(payload), partial)
+        }
+        _ => return None,
     };
-    if !wanted {
-        return None;
-    }
     let mut seq = b"\x1b]".to_vec();
     seq.extend_from_slice(&params.join(&b';'));
     seq.extend_from_slice(b"\x1b\\");
-    Some(seq)
+    Some(Notification {
+        seq,
+        title,
+        body,
+        partial,
+    })
 }
 
 fn nz(n: u16) -> NonZeroU16 {
@@ -125,8 +149,8 @@ impl TermTab {
                                 p.process(&buf[..n]);
                                 std::mem::take(&mut p.callbacks_mut().0)
                             };
-                            for seq in notes {
-                                let _ = tx.send(AppEvent::TermNotify(seq));
+                            for n in notes {
+                                let _ = tx.send(AppEvent::TermNotify(n));
                             }
                             if !pending.swap(true, Ordering::SeqCst) {
                                 let _ = tx.send(AppEvent::TermOutput(pending.clone()));
@@ -435,13 +459,24 @@ mod tests {
     #[test]
     fn notifications_are_passed_on_and_other_oscs_are_not() {
         let osc = |s: &str| notification(&s.split(';').map(str::as_bytes).collect::<Vec<_>>());
-        assert_eq!(osc("9;Claude needs you").unwrap(), b"\x1b]9;Claude needs you\x1b\\");
-        assert_eq!(osc("9;a;b").unwrap(), b"\x1b]9;a;b\x1b\\");
+        let seq = |s: &str| osc(s).unwrap().seq;
+        let parts = |s: &str| osc(s).map(|n| (n.title, n.body, n.partial));
+        let part = |t: &str, b: &str, p| Some((t.to_string(), b.to_string(), p));
+        assert_eq!(seq("9;Claude needs you"), b"\x1b]9;Claude needs you\x1b\\");
+        assert_eq!(parts("9;Claude needs you"), part("", "Claude needs you", false));
+        assert_eq!(seq("9;a;b"), b"\x1b]9;a;b\x1b\\");
+        assert_eq!(parts("9;a;b"), part("", "a;b", false));
         assert_eq!(
-            osc("777;notify;Claude Code;waiting").unwrap(),
+            seq("777;notify;Claude Code;waiting"),
             b"\x1b]777;notify;Claude Code;waiting\x1b\\"
         );
-        assert_eq!(osc("99;i=1:d=0;hi").unwrap(), b"\x1b]99;i=1:d=0;hi\x1b\\");
+        assert_eq!(
+            parts("777;notify;Claude Code;waiting"),
+            part("Claude Code", "waiting", false)
+        );
+        assert_eq!(seq("99;i=1:d=0;hi"), b"\x1b]99;i=1:d=0;hi\x1b\\");
+        assert_eq!(parts("99;i=1:d=0;hi"), part("", "hi", true));
+        assert_eq!(parts("99;i=1:p=body;there"), part("", "there", false));
         // Progress bars (ConEmu's 9;4), other 777s, hyperlinks, colours: no.
         assert_eq!(osc("9;4;1;50"), None);
         assert_eq!(osc("9;"), None);
@@ -454,7 +489,8 @@ mod tests {
     fn a_notification_in_the_output_is_kept_for_the_reader() {
         let mut p = vt100::Parser::new_with_callbacks(nz(5), nz(20), 0, Notifications::default());
         p.process(b"before\x1b]9;Claude is waiting\x07after\x1b]2;title\x07");
-        assert_eq!(p.callbacks().0, vec![b"\x1b]9;Claude is waiting\x1b\\".to_vec()]);
+        let seqs: Vec<_> = p.callbacks().0.iter().map(|n| n.seq.clone()).collect();
+        assert_eq!(seqs, vec![b"\x1b]9;Claude is waiting\x1b\\".to_vec()]);
         assert!(p.screen().contents().contains("beforeafter"));
     }
 

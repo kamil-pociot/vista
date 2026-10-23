@@ -168,8 +168,10 @@ impl<'a> Launcher<'a> {
             ("VISTA_CACHE_DIR".into(), s(&home.join(".cache/vista"))),
             ("VISTA_LOG_FILE".into(), s(&log_file)),
             ("VISTA_LOG".into(), "debug".into()),
-            // Escape sequences vista passes on stay unwrapped when tests run in tmux.
+            // Escape sequences vista passes on stay unwrapped when tests run in
+            // tmux, and don't reach a herdr the tests run in.
             ("TMUX".into(), String::new()),
+            ("HERDR_ENV".into(), String::new()),
             ("VISTA_KEYBOARD".into(), "legacy".into()),
             ("VISTA_IMAGE_PROTOCOL".into(), "halfblocks".into()),
             ("VISTA_THEME".into(), self.theme.clone()),
