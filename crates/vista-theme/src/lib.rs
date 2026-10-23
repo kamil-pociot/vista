@@ -214,6 +214,9 @@ impl RawChrome {
 struct RawTheme {
     name: Option<String>,
     inherits: Option<String>,
+    /// The terminal background the look is made for, where tokens are
+    /// `"terminal"` (drawn in the terminal's own background).
+    terminal_bg: Option<String>,
     #[serde(default)]
     palette: BTreeMap<String, String>,
     #[serde(default)]
@@ -227,6 +230,10 @@ pub struct Theme {
     pub name: String,
     pub chrome: Chrome,
     palette: BTreeMap<String, Rgb>,
+    /// Tokens set to `"terminal"`: as a background they are the terminal's
+    /// own (so vista blends in with what's around it, as herdr does); their
+    /// colour is `terminal_bg`, for contrast, blends and foregrounds.
+    terminal: BTreeSet<String>,
 }
 
 impl Rgb {
@@ -265,6 +272,11 @@ impl Theme {
                 MISSING_COLOUR
             }
         }
+    }
+
+    /// Whether `token` is drawn in the terminal's own background.
+    pub fn is_terminal(&self, token: &str) -> bool {
+        self.terminal.contains(token)
     }
 
     pub fn try_color(&self, token: &str) -> Option<Rgb> {
@@ -395,14 +407,26 @@ impl ThemeLoader {
     /// Loads a look by id, resolving `inherits` and validating the result.
     pub fn load(&self, id: &str) -> Result<Theme, ThemeError> {
         let mut chain = Vec::new();
-        let (name, palette, chrome) = self.resolve(id, &mut chain)?;
+        let (name, palette, chrome, terminal_bg) = self.resolve(id, &mut chain)?;
+        let bad = |token: &str, value: &str| ThemeError::BadColour {
+            id: id.to_string(),
+            token: token.to_string(),
+            value: value.to_string(),
+        };
+        let terminal_bg = match &terminal_bg {
+            Some(v) => Some(Rgb::parse(v).ok_or_else(|| bad("terminal_bg", v))?),
+            None => None,
+        };
         let mut colours = BTreeMap::new();
+        let mut terminal = BTreeSet::new();
         for (token, value) in palette {
-            let rgb = Rgb::parse(&value).ok_or_else(|| ThemeError::BadColour {
-                id: id.to_string(),
-                token: token.clone(),
-                value: value.clone(),
-            })?;
+            let rgb = if value == "terminal" {
+                // The terminal's own background needs the colour it's assumed to be.
+                terminal.insert(token.clone());
+                terminal_bg.ok_or_else(|| bad(&token, "terminal (without terminal_bg)"))?
+            } else {
+                Rgb::parse(&value).ok_or_else(|| bad(&token, &value))?
+            };
             colours.insert(token, rgb);
         }
         let missing: Vec<String> = TOKENS
@@ -421,6 +445,7 @@ impl ThemeLoader {
             name: name.unwrap_or_else(|| id.to_string()),
             chrome: chrome.finish(id)?,
             palette: colours,
+            terminal,
         })
     }
 
@@ -429,7 +454,7 @@ impl ThemeLoader {
         &self,
         id: &str,
         chain: &mut Vec<String>,
-    ) -> Result<(Option<String>, BTreeMap<String, String>, RawChrome), ThemeError> {
+    ) -> Result<(Option<String>, BTreeMap<String, String>, RawChrome, Option<String>), ThemeError> {
         if chain.iter().any(|c| c == id) {
             chain.push(id.to_string());
             return Err(ThemeError::Cycle(chain.clone()));
@@ -447,12 +472,17 @@ impl ThemeLoader {
                 });
             }
         }
-        let (parent_name, mut palette, parent_chrome) = match &raw.inherits {
+        let (parent_name, mut palette, parent_chrome, parent_bg) = match &raw.inherits {
             Some(parent) => self.resolve(parent, chain)?,
-            None => (None, BTreeMap::new(), RawChrome::default()),
+            None => (None, BTreeMap::new(), RawChrome::default(), None),
         };
         palette.extend(raw.palette);
-        Ok((raw.name.or(parent_name), palette, parent_chrome.overlay(raw.chrome)))
+        Ok((
+            raw.name.or(parent_name),
+            palette,
+            parent_chrome.overlay(raw.chrome),
+            raw.terminal_bg.or(parent_bg),
+        ))
     }
 }
 
@@ -609,6 +639,36 @@ mod tests {
         assert!(matches!(loader.load("a"), Err(ThemeError::Cycle(_))));
         assert!(matches!(loader.load("chromeless"), Err(ThemeError::Parse { .. })));
         assert!(matches!(loader.load("nope"), Err(ThemeError::NotFound(_))));
+    }
+
+    #[test]
+    fn terminal_tokens_take_the_terminals_background() {
+        let dir = user_dir(&[
+            (
+                "blend.toml",
+                "inherits = \"darcula\"\nterminal_bg = \"#1F1F28\"\n[palette]\n\"ui.bg\" = \"terminal\"\n",
+            ),
+            (
+                "child.toml",
+                "inherits = \"blend\"\n[palette]\n\"ui.panel.alt\" = \"terminal\"\n",
+            ),
+            (
+                "unset.toml",
+                "inherits = \"darcula\"\n[palette]\n\"ui.bg\" = \"terminal\"\n",
+            ),
+        ]);
+        let loader = ThemeLoader::new(Some(dir.path().to_path_buf()));
+        let t = loader.load("blend").unwrap();
+        assert!(t.is_terminal("ui.bg"));
+        assert!(!t.is_terminal("ui.panel"));
+        // Its colour is the assumed background (contrast, blends, foregrounds).
+        assert_eq!(t.color("ui.bg"), Rgb(0x1F, 0x1F, 0x28));
+        // terminal_bg is inherited.
+        let c = loader.load("child").unwrap();
+        assert!(c.is_terminal("ui.bg") && c.is_terminal("ui.panel.alt"));
+        assert_eq!(c.color("ui.panel.alt"), Rgb(0x1F, 0x1F, 0x28));
+        // Without terminal_bg there is nothing to check contrast against.
+        assert!(matches!(loader.load("unset"), Err(ThemeError::BadColour { .. })));
     }
 
     #[test]

@@ -7,6 +7,7 @@ A look (theme) is one TOML file. Adding a design means writing a file, not code.
 - `[palette]`: semantic colour tokens such as `git.modified`, `syntax.keyword`, `diff.inserted`, `diff.word.inserted`, `ui.selection`.
 - `[chrome]`: layout options: borders, panel headers, tab style, tool-window bar, git indicators, key hints, spacing.
 - `inherits = "darcula"` starts from another look and overrides only what you list.
+- A colour can be `"terminal"`: drawn in the terminal's own background (as herdr draws its panes), so vista blends in with whatever is around it. Such a look also says `terminal_bg = "#…"`, the background it's made for: that colour is used for the contrast test, for blends (diff shades, the cursor line) and wherever the token is a foreground. In Neovim the background becomes `NONE`.
 
 ```toml
 # ~/.config/vista/themes/mine.toml
@@ -23,7 +24,7 @@ borders = "rounded"
 - **darcula**: IntelliJ classic, the default (design A).
 - **quiet**: borderless and modal.
 - **paper**: light, rounded.
-- **herdr's themes**, with the same names, so vista can follow herdr: `catppuccin`, `catppuccin-latte`, `tokyo-night`, `tokyo-night-day`, `dracula`, `nord`, `gruvbox`, `gruvbox-light`, `one-dark`, `one-light`, `solarized`, `solarized-light`, `kanagawa`, `kanagawa-lotus`, `rose-pine`, `rose-pine-dawn`, `vesper`. Each is built from the theme's published palette, with darcula's layout. A few secondary colours (comments, dim text) are lifted a little where the original falls short of the contrast rules below. herdr's `terminal` theme uses the terminal's own colours, which vista can't, so it has no look.
+- **herdr's themes**, with the same names, so vista can follow herdr: `catppuccin`, `catppuccin-latte`, `tokyo-night`, `tokyo-night-day`, `dracula`, `nord`, `gruvbox`, `gruvbox-light`, `one-dark`, `one-light`, `solarized`, `solarized-light`, `kanagawa`, `kanagawa-lotus`, `rose-pine`, `rose-pine-dawn`, `vesper`. Their chrome colours are the ones herdr draws, measured from herdr itself: the editor and the tree on the terminal's background (`"terminal"`), herdr's surface colour for the top and bottom bars and popups, its accent, text, secondary text (80% text, 20% dim), dim labels and selected row. Syntax, git and diff colours come from each theme's published palette (Kanagawa's status colours are herdr's). A few dim colours are lifted where herdr's fall short of the contrast rules below; the focused selection is a shade stronger than herdr's row so lists stay readable. herdr's `terminal` theme uses the terminal's own colours, which vista can't, so it has no look.
 
 ## Following herdr
 

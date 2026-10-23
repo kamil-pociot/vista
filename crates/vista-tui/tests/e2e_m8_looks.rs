@@ -48,7 +48,7 @@ fn ctrl_t_cycles_looks() {
     vista.expect_text("Look: Quiet Modal");
     // Then herdr's themes, and round to the start.
     vista.press("ctrl+t");
-    vista.expect_text("Look: Catppuccin Mocha");
+    vista.expect_text("Look: Catppuccin");
     for name in ["Catppuccin Latte", "Tokyo Night"] {
         vista.press("ctrl+t");
         vista.expect_text(&format!("Look: {name}"));
@@ -75,16 +75,24 @@ fn the_look_follows_herdrs_theme() {
         .config("theme = \"herdr\"\n")
         .start();
     vista.expect_text("Nord");
+    // As in herdr: the editor on the terminal's own background (no colour of
+    // its own), the top bar in herdr's surface colour.
     let nord = vista_theme::ThemeLoader::new(None).load("nord").unwrap();
-    let bg = nord.color("ui.bg");
-    assert_eq!(vista.bg_at(60, 10), Some(bg), "Nord's background");
+    vista.wait_until("the editor on the terminal's background", |s| {
+        s.cell(10, 60).is_some_and(|c| c.bgcolor() == vt100::Color::Default)
+    });
+    assert_eq!(
+        vista.bg_at(60, 0),
+        Some(nord.color("ui.panel")),
+        "herdr's surface on the top bar"
+    );
     // Changed in herdr: vista follows.
     set("name = \"dracula\"");
     vista.expect_text("Look: Dracula (following herdr)");
     // auto_switch on a Linux / dark machine: the dark name.
     set("name = \"nord\"\nauto_switch = true\ndark_name = \"kanagawa\"\nlight_name = \"kanagawa-lotus\"");
     if !cfg!(target_os = "macos") {
-        vista.expect_text("Look: Kanagawa Wave (following herdr)");
+        vista.expect_text("Look: Kanagawa (following herdr)");
     } else {
         vista.expect_text("(following herdr)");
     }

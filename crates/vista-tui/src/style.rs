@@ -19,7 +19,7 @@ pub fn rgb_u32(v: u32) -> Color {
 /// are the look's text and background.
 pub fn term_cell(theme: &Theme, cell: &vt100::Cell) -> Style {
     let conv = |c: vt100::Color, default: &str| match c {
-        vt100::Color::Default => color(theme.color(default)),
+        vt100::Color::Default => theme.bg_color(default),
         vt100::Color::Idx(i) => Color::Indexed(i),
         vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
     };
@@ -53,6 +53,8 @@ pub fn rgb_of(color: Color) -> Option<Rgb> {
 /// Token-based style helpers on [`Theme`].
 pub trait ThemeStyle {
     fn c(&self, token: &str) -> Color;
+    /// A token as a background: the terminal's own for `"terminal"` tokens.
+    fn bg_color(&self, token: &str) -> Color;
     /// Foreground only.
     fn fg(&self, token: &str) -> Style;
     /// Background only.
@@ -66,14 +68,21 @@ impl ThemeStyle for Theme {
     fn c(&self, token: &str) -> Color {
         color(self.color(token))
     }
+    fn bg_color(&self, token: &str) -> Color {
+        if self.is_terminal(token) {
+            Color::Reset
+        } else {
+            self.c(token)
+        }
+    }
     fn fg(&self, token: &str) -> Style {
         Style::new().fg(self.c(token))
     }
     fn bg(&self, token: &str) -> Style {
-        Style::new().bg(self.c(token))
+        Style::new().bg(self.bg_color(token))
     }
     fn fg_bg(&self, fg: &str, bg: &str) -> Style {
-        Style::new().fg(self.c(fg)).bg(self.c(bg))
+        Style::new().fg(self.c(fg)).bg(self.bg_color(bg))
     }
     fn base(&self) -> Style {
         self.fg_bg("ui.text", "ui.bg")

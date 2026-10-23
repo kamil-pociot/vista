@@ -17,17 +17,19 @@ fn hex(rgb: Rgb) -> u32 {
 /// matches the active look.
 pub fn highlight_groups(t: &Theme) -> Vec<(&'static str, HlSpec)> {
     let c = |tok: &str| Some(hex(t.color(tok)));
+    // The terminal's own background shows through (NONE) for "terminal" tokens.
+    let b = |tok: &str| (!t.is_terminal(tok)).then(|| hex(t.color(tok)));
     let fg = |tok: &str| HlSpec {
         fg: c(tok),
         ..HlSpec::default()
     };
-    let fg_bg = |f: &str, b: &str| HlSpec {
+    let fg_bg = |f: &str, bt: &str| HlSpec {
         fg: c(f),
-        bg: c(b),
+        bg: b(bt),
         ..HlSpec::default()
     };
-    let bg = |b: &str| HlSpec {
-        bg: c(b),
+    let bg = |bt: &str| HlSpec {
+        bg: b(bt),
         ..HlSpec::default()
     };
     vec![

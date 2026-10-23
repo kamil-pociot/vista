@@ -395,7 +395,8 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 Agents now run in herdr beside vista, so vista's agent features were removed: terminal tabs (`claude agents`, `>command` in `Ctrl-O`, `[terminal] commands`), the `Alt-B` sidebar with Claude sessions and their states, passing desktop notifications on (and the herdr handoff), notification sounds (`notify_sound`, `notify_sound_done`) and the `●` attention marks on tabs. The Terminal tool window (`Alt-T`) stays. Doc number 18 (the sidebar) is retired, not reused.
 
 ### herdr's themes ✅
-- [x] herdr's 17 themes as built-in looks under the same names (Catppuccin Mocha/Latte, Tokyo Night/Day, Dracula, Nord, Gruvbox Dark/Light, One Dark/Light, Solarized Dark/Light, Kanagawa Wave/Lotus, Rosé Pine/Dawn, Vesper), from their published palettes, passing the contrast test.
+- [x] herdr's 17 themes as built-in looks under herdr's names (Catppuccin, Catppuccin Latte, Tokyo Night/Day, Dracula, Nord, Gruvbox/Light, One Dark/Light, Solarized/Light, Kanagawa/Lotus, Rosé Pine/Dawn, Vesper). Chrome colours measured from herdr (editor and tree on the terminal's background, herdr's surface, accent, text, dim and selected row); syntax and git from the published palettes; all pass the contrast test.
+- [x] Look colours can be `"terminal"` (the terminal's own background), with `terminal_bg` as the colour assumed for contrast and blends.
 - [x] `theme = "herdr"` follows herdr's `[theme]` live (and `auto_switch` with the macOS appearance).
 - [x] Tests: `vista_core::herdr` units, the built-in contrast test over every look, `e2e_m8_looks::the_look_follows_herdrs_theme`.
 
