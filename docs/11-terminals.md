@@ -9,6 +9,7 @@ For long-running programs such as `claude agents`:
 - Open one from `Ctrl-O`: the commands in `[terminal] commands` are listed (`claude agents` by default), or type `>` and any command. `>` alone opens your shell.
 - It runs through your login shell (so your `PATH` applies) in the active project's folder, and shows as a tab `▶ claude agents` next to the project tabs, full screen.
 - Every key goes to the program except `Ctrl-\` (back to the project). Mouse events are passed on to programs that ask for them.
+- `Shift-Enter` reaches the program as `ESC CR` (what `Alt-Enter` sends), so it adds a newline in Claude Code's prompt. Programs in vista's terminals can't use the kitty keyboard protocol, which is how Ghostty normally tells Shift-Enter from Enter. This needs a terminal around vista that reports Shift-Enter, such as Ghostty, kitty or iTerm2 with the kitty protocol on.
 - Click a tab to switch, its `×` to close it, drag it to reorder.
 - When the program ends, `Enter` closes the tab. Quitting vista with terminal tabs still running asks first.
 
@@ -37,5 +38,5 @@ Programs ask the terminal for desktop notifications with escape sequences. Claud
 ## Code and tests
 
 - `vista-tui/src/term_tab.rs` (PTY, reader thread, key and mouse encoding, picking notifications out of the output), `ui/term.rs`, `workspace.rs` (terminal tabs, marking tabs), `app.rs` (bottom terminal), `terminal.rs` (`pass_through`), `ui/projects.rs` (the `●` mark).
-- Unit: xterm key encoding, mouse reporting only when the program asks, a real program round trip, which OSCs count as notifications.
-- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding, a notification reaching the outer terminal and marking a terminal tab or a project tab), `e2e_r1_tabs.rs` (dragging terminal tabs). The harness's `expect_output` waits for raw bytes vista writes, such as the passed-on notification.
+- Unit: xterm key encoding (Shift-Enter as `ESC CR`), mouse reporting only when the program asks, a real program round trip, which OSCs count as notifications.
+- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding, a notification reaching the outer terminal and marking a terminal tab or a project tab, Shift-Enter arriving as `ESC CR`), `e2e_r1_tabs.rs` (dragging terminal tabs). The harness's `expect_output` waits for raw bytes vista writes, such as the passed-on notification.

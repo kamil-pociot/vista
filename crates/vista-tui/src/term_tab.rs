@@ -317,7 +317,10 @@ pub fn key_bytes(key: &KeyEvent, app_cursor: bool) -> Option<Vec<u8>> {
         _ => return None,
     };
     // Alt prefixes ESC to plain keys (the CSI forms carry it already).
-    if alt
+    // Shift-Enter too: the inner terminal has no kitty keyboard protocol to
+    // tell it from Enter, and ESC CR is what Claude Code (and zsh) take as a
+    // newline without one.
+    if (alt || (shift && key.code == KeyCode::Enter))
         && matches!(
             key.code,
             KeyCode::Char(_) | KeyCode::Enter | KeyCode::Backspace | KeyCode::Esc | KeyCode::Tab
@@ -383,6 +386,12 @@ mod tests {
         assert_eq!(b(KeyCode::Char('c'), KeyModifiers::CONTROL, false), [0x03]);
         assert_eq!(b(KeyCode::Char('x'), KeyModifiers::ALT, false), b"\x1bx");
         assert_eq!(b(KeyCode::Enter, none, false), b"\r");
+        assert_eq!(
+            b(KeyCode::Enter, KeyModifiers::SHIFT, false),
+            b"\x1b\r",
+            "newline in Claude Code"
+        );
+        assert_eq!(b(KeyCode::Enter, KeyModifiers::ALT, false), b"\x1b\r");
         assert_eq!(b(KeyCode::Backspace, none, false), [0x7f]);
         assert_eq!(b(KeyCode::Esc, none, false), [0x1b]);
         assert_eq!(b(KeyCode::Up, none, false), b"\x1b[A");

@@ -238,3 +238,27 @@ fn a_notification_from_the_tool_window_marks_the_project_tab() {
     vista.expect_text("1: Project");
     vista.expect_no_text(&format!("● {name}"));
 }
+
+/// Shift-Enter is a newline in Claude Code: it reaches the program as
+/// ESC CR, not as a plain Enter.
+#[test]
+fn shift_enter_reaches_the_program_as_esc_cr() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo)
+        .config(CONFIG)
+        .env("SHELL", "/bin/sh")
+        .size(140, 30)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("ctrl+o");
+    vista.type_text(">stty raw -echo; echo ready-$((1+1)); dd bs=1 count=2 2>/dev/null | od -An -tx1");
+    vista.press("enter");
+    vista.expect_text("ready-2");
+    // Shift-Enter as a kitty-keyboard terminal (Ghostty) reports it.
+    vista.send_raw(b"\x1b[13;2u");
+    vista.wait_until("the program read ESC CR", |s| {
+        let contents = s.contents();
+        let words: Vec<&str> = contents.split_whitespace().collect();
+        words.windows(2).any(|w| w == ["1b", "0d"])
+    });
+}

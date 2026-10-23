@@ -42,7 +42,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | Git window | `Tab`/`←→` lists, `Enter` diff, `a` all commits, `r` reload, `Esc` hide |
 | Projects popup | type to match, `Tab` complete folder, `Enter` open, `Ctrl-W` close project, `>` command |
 | Editor | everything goes to Neovim; `Ctrl-\` leaves |
-| Terminals | everything goes to the program; `Ctrl-\` leaves; the bottom terminal also passes tool-window keys to vista |
+| Terminals | everything goes to the program; `Ctrl-\` leaves; the bottom terminal also passes tool-window keys to vista; `Shift-Enter` is sent as `Alt-Enter` (a newline in Claude Code) |
 
 ## Action names
 
