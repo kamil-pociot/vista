@@ -95,7 +95,8 @@ fn edit_from_the_tree() {
     let mut vista = Vista::launch(BIN, &repo).config(MINIMAL).start();
     vista.expect_text("Cargo.toml");
     vista.click_text("Cargo.toml");
-    vista.press("e");
+    // In the tree letters search: Alt-Enter edits.
+    vista.press("alt+enter");
     expect_editor(&mut vista);
     vista.expect_text("[workspace]");
     vista.expect_text(" Cargo.toml ");
@@ -116,9 +117,9 @@ fn quitting_with_unsaved_changes_asks_first() {
     vista.press("esc");
     vista.expect_text("● README.md");
     vista.press("ctrl+\\");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_text("unsaved changes");
-    vista.press("q");
+    vista.press("ctrl+q");
     assert_eq!(vista.expect_exit(), 0);
     assert!(
         !repo.read("README.md").contains("draft"),

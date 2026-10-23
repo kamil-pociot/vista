@@ -384,6 +384,11 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 - [x] Every label that names a window, option or key can be clicked and does what its key does: top and bottom bars, icon rail, key hints, Find and Go to File popups (scopes, toggles, fields, tabs, footers), Projects popup footer, Git window hints, Commit window (Amend, Commit, Commit & Push), confirm dialog, diff header and hints, find-in-file bar. Popups cover what's under them.
 - [x] Tests: `ui::click` units (placement for every alignment, popups), `e2e_r1_clicks` (4 PTY tests).
 
+### Tree speed search ✅
+- [x] IntelliJ's speed search in the Project tree: typing selects matching rows (substring or word starts, matched letters highlighted), `↑`/`↓` step through matches, `Enter` opens, `Esc` ends; a `⌕` bar shows the query and the match count.
+- [x] Letters now search in the tree, so `Alt-Enter` (edit), `Alt-I` (ignored files) and `Alt-L` (line numbers) were added; `Ctrl-Q` quits. `?`, `[`, `]` and `-` don't start a search.
+- [x] Tests: `vista_search::speed` units, tree units, `e2e_m1_tree::typing_in_the_tree_searches_it`.
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

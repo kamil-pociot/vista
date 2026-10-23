@@ -16,7 +16,7 @@ fn launches_into_design_a_layout_and_quits_cleanly() {
     // The top bar sits on the panel background.
     vista.expect_text("Go to File").to_have_bg("ui.panel");
 
-    vista.press("q");
+    vista.press("ctrl+q");
     assert_eq!(vista.expect_exit(), 0);
     let raw = vista.raw_output();
     let s = String::from_utf8_lossy(&raw);
@@ -60,9 +60,9 @@ fn help_overlay_opens_and_any_key_closes_it() {
     // `q` after closing help quits; while help is open it would only close help.
     vista.press("f1");
     vista.expect_text("Keyboard shortcuts");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_no_text("Keyboard shortcuts");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
 }
 
@@ -131,6 +131,8 @@ fn config_key_overrides_apply() {
     vista.expect_text("Keyboard shortcuts");
     vista.press("esc");
     vista.expect_no_text("Keyboard shortcuts");
+    // Off the tree (where letters start a speed search), q is unbound.
+    vista.press("tab");
     vista.press("q");
     vista.settle(std::time::Duration::from_millis(300));
     vista.expect_text("No file open");

@@ -28,6 +28,8 @@ pub struct ProjectView {
     pub show_ignored: bool,
     /// Rows visible in the last draw.
     pub view_height: usize,
+    /// Speed search (IntelliJ): typing selects the rows whose names match.
+    pub search: Option<String>,
     last_click: Option<(usize, Instant)>,
 }
 
@@ -40,6 +42,7 @@ impl ProjectView {
             scroll: 0,
             show_ignored,
             view_height: 20,
+            search: None,
             last_click: None,
         };
         v.rebuild(&StatusSnapshot::default());
@@ -121,7 +124,83 @@ impl ProjectView {
         }
     }
 
+    /// Where row `i`'s name matches the speed search (char positions).
+    pub fn search_match(&self, i: usize) -> Option<Vec<usize>> {
+        vista_search::speed_match(&self.rows.get(i)?.name, self.search.as_deref()?)
+    }
+
+    /// The next matching row after (or before) the selection, wrapping round;
+    /// `here` counts the selected row itself.
+    fn next_match(&self, forward: bool, here: bool) -> Option<usize> {
+        let n = self.rows.len();
+        let start = usize::from(!here);
+        (start..start + n)
+            .map(|k| {
+                if forward {
+                    (self.selected + k) % n
+                } else {
+                    (self.selected + n * 2 - k) % n
+                }
+            })
+            .find(|&i| self.search_match(i).is_some())
+    }
+
+    fn select_match(&mut self, forward: bool, here: bool) {
+        if let Some(i) = self.next_match(forward, here) {
+            self.move_to(i as isize);
+        }
+    }
+
+    /// Keys for the speed search; `None` when the key isn't one (any key but
+    /// typing, ↑↓, Backspace, Enter and Esc also ends a search).
+    fn search_key(&mut self, key: &KeyEvent, status: &StatusSnapshot) -> Option<Outcome> {
+        let typing = !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER);
+        let Some(query) = self.search.as_mut() else {
+            // What file names start with starts one; `?`, `[`, `]`, `-` keep
+            // their keys.
+            return match key.code {
+                KeyCode::Char(c) if typing && (c.is_alphanumeric() || c == '.' || c == '_') => {
+                    self.search = Some(c.to_string());
+                    self.select_match(true, true);
+                    Some(Outcome::Handled)
+                }
+                _ => None,
+            };
+        };
+        match key.code {
+            KeyCode::Char(c) if typing => {
+                query.push(c);
+                self.select_match(true, true);
+            }
+            KeyCode::Backspace => {
+                query.pop();
+                if query.is_empty() {
+                    self.search = None;
+                } else {
+                    self.select_match(true, true);
+                }
+            }
+            KeyCode::Down => self.select_match(true, false),
+            KeyCode::Up => self.select_match(false, false),
+            KeyCode::Esc => self.search = None,
+            KeyCode::Enter => {
+                self.search = None;
+                return Some(self.activate(status));
+            }
+            _ => {
+                self.search = None;
+                return None;
+            }
+        }
+        Some(Outcome::Handled)
+    }
+
     pub fn handle_key(&mut self, key: &KeyEvent, status: &StatusSnapshot) -> Outcome {
+        if let Some(outcome) = self.search_key(key, status) {
+            return outcome;
+        }
         if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) {
             return Outcome::Unhandled;
         }
@@ -167,8 +246,10 @@ impl ProjectView {
     /// A left click on visible row `view_row` at column `col` (both relative
     /// to the tree's content area).
     pub fn click(&mut self, view_row: usize, col: usize, status: &StatusSnapshot) -> Outcome {
+        self.search = None;
         let i = self.scroll + view_row;
-        if i >= self.rows.len() {
+        // Below the rows: the speed search bar, or nothing.
+        if i >= self.rows.len() || view_row >= self.view_height {
             return Outcome::Handled;
         }
         let now = Instant::now();
@@ -254,7 +335,67 @@ mod tests {
         assert_eq!(v.handle_key(&key(KeyCode::End), &st), Outcome::Handled);
         assert_eq!(v.selected_row().unwrap().name, "README.md");
         assert!(matches!(v.handle_key(&key(KeyCode::Enter), &st), Outcome::Open(p) if p.ends_with("README.md")));
-        assert_eq!(v.handle_key(&key(KeyCode::Char('x')), &st), Outcome::Unhandled);
+        // Not a tree key (letters start a speed search; `?` is Help).
+        assert_eq!(v.handle_key(&key(KeyCode::Char('?')), &st), Outcome::Unhandled);
+    }
+
+    fn typed(v: &mut ProjectView, text: &str, st: &StatusSnapshot) {
+        for c in text.chars() {
+            assert_eq!(v.handle_key(&key(KeyCode::Char(c)), st), Outcome::Handled);
+        }
+    }
+
+    #[test]
+    fn typing_selects_matching_rows_and_arrows_step_through_them() {
+        // The root row is the folder's name: a fixed one, not the temp dir's.
+        let t = tempfile::tempdir().unwrap();
+        let r = t.path().canonicalize().unwrap().join("w");
+        std::fs::create_dir_all(r.join("src/ui")).unwrap();
+        std::fs::write(r.join("src/main.rs"), "").unwrap();
+        std::fs::write(r.join("README.md"), "").unwrap();
+        let mut v = ProjectView::new(&r, true);
+        let st = StatusSnapshot::default();
+        v.handle_key(&key(KeyCode::Down), &st);
+        v.handle_key(&key(KeyCode::Right), &st);
+        assert_eq!(&names(&v)[1..], &["src", "ui", "main.rs", "README.md"]);
+        // `m` matches main.rs and README.md (at a word start: `md`); the first after the selection wins.
+        typed(&mut v, "m", &st);
+        assert_eq!(v.search.as_deref(), Some("m"));
+        assert_eq!(v.selected_row().unwrap().name, "main.rs");
+        assert_eq!(v.search_match(v.selected).unwrap(), vec![0]);
+        v.handle_key(&key(KeyCode::Down), &st);
+        assert_eq!(v.selected_row().unwrap().name, "README.md");
+        // Wraps round, both ways.
+        v.handle_key(&key(KeyCode::Down), &st);
+        assert_eq!(v.selected_row().unwrap().name, "main.rs");
+        v.handle_key(&key(KeyCode::Up), &st);
+        assert_eq!(v.selected_row().unwrap().name, "README.md");
+        // Narrowing keeps a row that still matches, else moves on.
+        typed(&mut v, "a", &st);
+        assert_eq!(v.selected_row().unwrap().name, "main.rs");
+        assert_eq!(v.search_match(v.selected).unwrap(), vec![0, 1]);
+        // No match: the selection stays.
+        typed(&mut v, "zz", &st);
+        assert_eq!(v.selected_row().unwrap().name, "main.rs");
+        assert_eq!(v.search_match(v.selected), None);
+        // Backspace to empty ends it; Esc ends it too.
+        for _ in 0..4 {
+            v.handle_key(&key(KeyCode::Backspace), &st);
+        }
+        assert_eq!(v.search, None);
+        typed(&mut v, "ui", &st);
+        assert_eq!(v.selected_row().unwrap().name, "ui");
+        v.handle_key(&key(KeyCode::Esc), &st);
+        assert_eq!(v.search, None);
+        // Enter acts on the row and ends the search.
+        typed(&mut v, "read", &st);
+        assert!(matches!(v.handle_key(&key(KeyCode::Enter), &st), Outcome::Open(p) if p.ends_with("README.md")));
+        assert_eq!(v.search, None);
+        // Another key ends it and does its usual thing.
+        typed(&mut v, "src", &st);
+        assert_eq!(v.handle_key(&key(KeyCode::Left), &st), Outcome::Handled);
+        assert_eq!(v.search, None);
+        assert_eq!(&names(&v)[1..], &["src", "README.md"]);
     }
 
     #[test]

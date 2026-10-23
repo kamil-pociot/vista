@@ -6,7 +6,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 
 - **Syntax highlighting** with syntect and bat's grammars, mapped to the look's `syntax.*` tokens. Highlighting runs off the UI thread for the whole file (plain text above 2 MB).
 - **Gutter change markers** against `HEAD`: added, modified and deleted lines.
-- **Line numbers**, toggled with `Shift-L` (remembered).
+- **Line numbers**, toggled with `Shift-L` or `Alt-L` (remembered).
 - **Long lines:** `w` toggles between wrapping and scrolling sideways (`←`/`→`, shift+wheel, trackpad). Markdown opens wrapped, code opens scrolling; each choice is remembered separately.
 - **Scrolling by screen rows.** The wheel and keys move by displayed rows, so wrapped files scroll the same as unwrapped ones. Views scroll a little past the end, so the last line can sit about 30% above the bottom edge.
 - **Scrollbar** sized and placed by screen rows, correct with wrapped lines.
@@ -31,7 +31,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 | `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`, `g`/`G` (`Home`/`End`) | move / page / start / end |
 | `w` | wrap ⇄ scroll sideways |
 | `←`/`→` | scroll sideways (when not wrapping) |
-| `Shift-L` | line numbers |
+| `Shift-L` (`Alt-L`) | line numbers |
 | `/`, `n`/`N` | find in file |
 | `Ctrl-G` | go to line |
 | `]`/`[` | next / previous change |

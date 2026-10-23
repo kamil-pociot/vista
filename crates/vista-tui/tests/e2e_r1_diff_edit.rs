@@ -111,7 +111,7 @@ fn editing_a_plain_file_closes_the_diff_editor() {
     vista.press("alt+1");
     let (row, col) = vista.expect_text_in("other.txt", 0..44).position();
     vista.click(col, row);
-    vista.press("e");
+    vista.press("alt+enter");
     vista.expect_text("plain file");
     vista.expect_no_text("HEAD ");
     vista.expect_no_text("TWO");

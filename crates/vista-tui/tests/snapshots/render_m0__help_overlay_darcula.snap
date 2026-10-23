@@ -13,7 +13,7 @@ expression: "vista_tui::testing::text(&buf)"
                        │ Ctrl-P, Ctrl-Shift-N  Go to File                   │
                        │ Ctrl-F, Ctrl-Shift-F  Find in Files                │
                        │               Ctrl-E  Recent files                 │
-                       │                    e  Edit file in Neovim          │
+                       │         e, Alt-Enter  Edit file in Neovim          │
                        │               Ctrl-\  Leave the editor             │
                        │               Ctrl-W  Close tab                    │
                        │                Alt-→  Next tab                     │
@@ -22,8 +22,8 @@ expression: "vista_tui::testing::text(&buf)"
                        │          [, Shift-F7  Previous change              │
                        │               Ctrl-K  Commit                       │
                        │           F5, Ctrl-R  Refresh                      │
-                       │                    i  Show/hide ignored files      │
-                       │              Shift-L  Show/hide line numbers       │
+                       │             i, Alt-I  Show/hide ignored files      │
+                       │       Alt-L, Shift-L  Show/hide line numbers       │
                        │               Ctrl-O  Projects: switch, open, add  │
                        │                Alt-9  Git log tool window          │
                        │                Alt-T  Terminal tool window         │

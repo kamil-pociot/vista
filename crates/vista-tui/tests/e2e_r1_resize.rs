@@ -66,7 +66,7 @@ fn drag_the_divider_or_use_keys_and_the_width_is_kept() {
             .nth(5)
             .is_some_and(|l| l.chars().nth(16) == Some('│'))
     });
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
 
     // Remembered: the narrowest width (16) after a restart.

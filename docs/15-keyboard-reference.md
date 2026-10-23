@@ -22,7 +22,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Ctrl-Alt-↓` / `↑` | next / previous Find result |
 | `Ctrl-L` (`Alt-F1`) | reveal the open file in the tree |
 | `Ctrl-Shift-→` / `←` | widen / narrow the left panel |
-| `Shift-L` | line numbers |
+| `Shift-L` (`Alt-L`) | line numbers |
 | `Ctrl-R` (`F5`) | refresh |
 | `Ctrl-T` | next look |
 | `Ctrl-\` | leave the editor or a terminal |
@@ -33,7 +33,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 
 | Area | Keys |
 |---|---|
-| Project tree | arrows / `hjkl`, `Enter` open, `e` edit, `i` ignored, `-` collapse all |
+| Project tree | arrows, `Enter` open, `Alt-Enter` edit, `Alt-I` ignored, `-` collapse all; typing starts a speed search (`↑↓` matches, `Enter` open, `Esc` end) |
 | Viewer | `w` wrap, `←`/`→` sideways, `/` `n` `N` find, `Ctrl-G` line, `m` raw/rendered, `d` diff, `e` edit; select with drag, double-click, `Shift-↑/↓`, `Ctrl-A`; `Ctrl-C`/`y` copy, `Esc` clear |
 | Go to File | `Enter` view, `Alt-Enter` edit, `Tab` tabs, `Alt-I` ignored |
 | Find in Files | `Alt-C` case, `Alt-W` words, `Alt-X` regex, `Alt-S` scope, `Tab` mask, `Alt-↑↓` history, `Enter` open, `Alt-Enter` edit, `Alt-O` Find window |

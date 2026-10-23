@@ -131,7 +131,7 @@ fn dragging_a_project_tab_reorders_projects_and_is_remembered() {
     });
     // The dragged project is shown, and the order is saved.
     vista.expect_text_in("a.txt", 0..40);
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
     let state = std::fs::read_to_string(a.home().join(".config/vista/state.toml")).unwrap();
     let (pa, pb) = (state.find(&an).unwrap(), state.find(&bn).unwrap());

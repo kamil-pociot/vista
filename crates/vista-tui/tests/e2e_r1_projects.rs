@@ -95,7 +95,7 @@ fn open_projects_come_back_after_a_restart() {
     vista.expect_text_in("alpha.txt", 0..40);
     add(&mut vista, &b);
     vista.expect_text_in("beta.txt", 0..40);
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
 
     // Same home (settings), started on alpha again: beta is back as a tab.

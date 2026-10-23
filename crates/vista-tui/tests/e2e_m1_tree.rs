@@ -129,11 +129,11 @@ fn ignored_files_can_be_hidden() {
     let repo = Fixture::rust_project().build();
     let mut vista = Vista::launch(BIN, &repo).start();
     vista.expect_text("build.log");
-    vista.press("i");
+    vista.press("alt+i");
     vista.expect_text("Ignored files hidden");
     vista.expect_no_text("build.log");
     vista.expect_no_text("▸ target");
-    vista.press("i");
+    vista.press("alt+i");
     vista.expect_text("build.log");
     vista.expect_text("▸ target");
 }
@@ -168,4 +168,48 @@ fn refresh_action_rescans() {
     vista.expect_no_text("LATE.txt");
     vista.press("f5");
     vista.expect_text("LATE.txt").to_have_fg("git.unversioned");
+}
+
+/// IntelliJ's speed search: typing in the tree selects matching rows (their
+/// matched letters highlighted), ↑↓ step through them, Enter opens.
+#[test]
+fn typing_in_the_tree_searches_it() {
+    let repo = Fixture::rust_project().build();
+    let mut vista = Vista::launch(BIN, &repo).size(140, 36).start();
+    vista.expect_text("ROADMAP.md");
+    vista.type_text("md");
+    vista.expect_text("⌕ md▏");
+    vista.expect_text("2 matches");
+    // README.md first (the first match after the selection), its `md` marked.
+    let (row, col) = vista.expect_text_in("README.md", 0..40).position();
+    vista.expect_text_in("README.md", 0..40).to_have_bg("ui.selection");
+    let theme_match = vista.theme().color("ui.match");
+    assert_eq!(
+        vista.bg_at(col + 7, row),
+        Some(theme_match),
+        "the matched letters stand out"
+    );
+    vista.expect_text_in("ROADMAP.md", 0..40).to_have_bg("ui.panel.alt");
+    vista.press("down");
+    vista.expect_text_in("ROADMAP.md", 0..40).to_have_bg("ui.selection");
+    // Wraps round to the first match.
+    vista.press("down");
+    vista.expect_text_in("README.md", 0..40).to_have_bg("ui.selection");
+    // No match: the query turns red, the selection stays.
+    vista.type_text("zz");
+    vista.expect_text("no matches");
+    vista.expect_text("mdzz").to_have_fg("ui.error");
+    vista.press("backspace");
+    vista.press("backspace");
+    vista.expect_text("2 matches");
+    // Enter opens it and ends the search.
+    vista.press("enter");
+    vista.expect_text("A sample project.");
+    vista.expect_no_text("⌕ md");
+    // Esc ends a search without opening anything.
+    vista.press("alt+1");
+    vista.type_text("carg");
+    vista.expect_text("⌕ carg▏");
+    vista.press("esc");
+    vista.expect_no_text("⌕ carg");
 }

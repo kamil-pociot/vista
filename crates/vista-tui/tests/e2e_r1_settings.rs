@@ -59,7 +59,7 @@ fn view_settings_survive_a_restart() {
     vista.expect_text_in("build", 0..40);
     let (row, col) = vista.expect_text_in("README.md", 0..40).position();
     vista.click(col, row);
-    vista.press("i");
+    vista.press("alt+i");
     vista.expect_text("Ignored files hidden");
     // Commit: group by folder; diff: unified, collapsed, ignoring whitespace.
     vista.press("alt+2");
@@ -84,7 +84,7 @@ fn view_settings_survive_a_restart() {
     // Look.
     vista.press("ctrl+t");
     vista.expect_text("Look: Paper Light");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
 
     let state = std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap();

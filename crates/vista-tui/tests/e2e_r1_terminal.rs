@@ -77,9 +77,9 @@ fn quitting_with_a_running_terminal_asks_first() {
     vista.expect_text("▶ cat × ");
     vista.press("ctrl+\\");
     vista.expect_text("1: Project");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_text("1 terminal tab(s) still running");
-    vista.press("q");
+    vista.press("ctrl+q");
     vista.expect_exit();
 }
 

@@ -308,6 +308,8 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("ctrl+shift+f", Action::FindInFiles),
     ("ctrl+e", Action::RecentFiles),
     ("e", Action::Edit),
+    // Letters start a speed search in the tree; these work there too.
+    ("alt+enter", Action::Edit),
     ("ctrl+\\", Action::LeaveEditor),
     ("ctrl+w", Action::CloseTab),
     ("alt+right", Action::NextTab),
@@ -321,7 +323,9 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("ctrl+r", Action::Refresh),
     ("f5", Action::Refresh),
     ("i", Action::ToggleIgnored),
+    ("alt+i", Action::ToggleIgnored),
     ("L", Action::ToggleLineNumbers),
+    ("alt+l", Action::ToggleLineNumbers),
     ("ctrl+o", Action::Projects),
     ("alt+9", Action::ToggleLog),
     ("alt+t", Action::ToggleTerminal),
