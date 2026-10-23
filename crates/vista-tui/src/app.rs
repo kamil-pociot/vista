@@ -51,7 +51,10 @@ pub enum ReviewShown {
 /// Resolves `rev` and lists what changed since it (runs git: call it off
 /// the UI thread, or before the UI starts).
 pub fn review_base(git: &vista_git::Git, rev: &str) -> Result<ReviewBase, String> {
-    let base = vista_git::review::resolve(git, rev).map_err(|e| e.to_string())?;
+    let base = vista_git::review::resolve(git, rev).map_err(|e| match e {
+        vista_git::GitError::Failed { stderr, .. } => stderr,
+        e => e.to_string(),
+    })?;
     if vista_git::review::is_head(git, &base) {
         return Ok(ReviewBase::Head);
     }
@@ -1199,6 +1202,24 @@ impl App {
         }
     }
 
+    /// Closes popups, prompts and help: a request from outside (the
+    /// control socket) shows what it asked for.
+    pub fn dismiss_popups(&mut self) {
+        self.show_help = false;
+        self.prompt = None;
+        self.projects_popup = None;
+        self.goto = None;
+        self.find = None;
+        self.prefs = None;
+        self.change_hop = None;
+    }
+
+    /// The Commit window, focused.
+    pub fn show_commit_window(&mut self) {
+        self.left = Some(LeftPanel::Commit);
+        self.focus = Focus::Left;
+    }
+
     /// Refreshes the review's list in the background (files changed).
     fn request_review(&mut self) {
         let (Some(git), Some(v)) = (self.git.clone(), self.review.as_mut()) else {
@@ -1709,6 +1730,10 @@ impl App {
                 if let Some(s) = self.shell.as_mut() {
                     s.mark_exited();
                 }
+            }
+            // The workspace answers these; a project on its own (tests) can't.
+            AppEvent::Control(call) => {
+                let _ = call.reply.send(crate::control::error("not in a workspace"));
             }
             AppEvent::Review { generation, result } => {
                 if let Some(v) = self.review.as_mut()

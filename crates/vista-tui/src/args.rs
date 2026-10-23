@@ -12,6 +12,11 @@ pub enum Command {
         image: bool,
     },
     ListThemes,
+    /// `--remote <pid> <json>`: send a control-socket request to that vista.
+    Remote {
+        pid: u32,
+        request: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +46,8 @@ OPTIONS:
                       What's being reviewed, shown in the Review panel
     --theme <ID>      Use a look (darcula, quiet, paper, or a file in ~/.config/vista/themes)
     --list-themes     List available looks
+    --remote <PID> <JSON>
+                      Send a request to the vista with that pid (its control socket) and print the answer
     --probe           Report terminal capabilities (images, keyboard protocol)
     --probe-image     Like --probe, and draw a test image
     -h, --help        Show this help
@@ -66,6 +73,12 @@ impl Args {
                 "--probe-image" => out.command = Command::Probe { image: true },
                 "--list-themes" => out.command = Command::ListThemes,
                 "--only" => out.only = true,
+                "--remote" => {
+                    let pid = it.next().ok_or("--remote needs a pid and a request")?;
+                    let pid = pid.parse().map_err(|_| format!("--remote: `{pid}` is not a pid"))?;
+                    let request = it.next().ok_or("--remote needs a request (JSON)")?;
+                    out.command = Command::Remote { pid, request };
+                }
                 "--review" => out.review = Some(it.next().ok_or("--review needs a revision")?),
                 "--review-label" => out.review_label = Some(it.next().ok_or("--review-label needs a value")?),
                 "--theme" => out.theme = Some(it.next().ok_or("--theme needs a value")?),
@@ -119,6 +132,19 @@ mod tests {
         assert_eq!(a.path, Some(PathBuf::from("repo")));
         assert!(parse(&["--review"]).is_err());
         assert!(parse(&["--review-label"]).is_err());
+    }
+
+    #[test]
+    fn parses_remote() {
+        assert_eq!(
+            parse(&["--remote", "123", r#"{"cmd":"status"}"#]).unwrap().command,
+            Command::Remote {
+                pid: 123,
+                request: r#"{"cmd":"status"}"#.into()
+            }
+        );
+        assert!(parse(&["--remote", "x", "{}"]).is_err());
+        assert!(parse(&["--remote", "123"]).is_err());
     }
 
     #[test]

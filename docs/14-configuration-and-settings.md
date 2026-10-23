@@ -9,6 +9,8 @@ vista --only [PATH]   just this project: don't reopen last time's, or remember w
 vista --review <REV> [--review-label TEXT]
                       the Review panel: what changed since REV (docs/20-review.md)
 vista --theme quiet   pick a look
+vista --remote <PID> <JSON>
+                      send a request to a running vista's control socket (docs/21-control-socket.md)
 vista --probe         report TERM, TERM_PROGRAM, COLORTERM, TMUX and kitty graphics/keyboard support
 vista --probe-image   draw a test gradient with the image protocol
 ```
@@ -59,6 +61,8 @@ Settings changed in the app are saved to `state.toml` next to `config.toml` and 
 Until a setting is changed, its default comes from `config.toml` (or vista's built-in). Delete `state.toml` to reset.
 
 **Several vistas at once** (one per repository, as herdr's vista plugin runs them) share `state.toml` safely. Every save takes an exclusive lock on `state.toml.lock`, reads the file as it is now, applies just the change being made, writes a temp file of its own (`state.toml.<pid>.tmp`) and renames it into place. One vista's change is never undone by another saving, and each takes the merged result, so it also sees what the others saved. Settings another vista changes don't reach a running one until it next saves something. Recent files (per project) and the Find in Files history live in vista's cache folder, not in `state.toml`.
+
+Each vista also listens on a control socket, `<runtime dir>/<pid>.sock`; `VISTA_RUNTIME_DIR` chooses the folder (else `$XDG_RUNTIME_DIR/vista`, `$TMPDIR/vista-<uid>`). See [21 · Control socket](21-control-socket.md).
 
 ## Code and tests
 

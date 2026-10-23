@@ -38,6 +38,15 @@ fn real_main() -> Result<()> {
             }
             return Ok(());
         }
+        Command::Remote { pid, request } => {
+            return match vista_tui::control::remote(pid, &request) {
+                Ok(response) => {
+                    println!("{response}");
+                    Ok(())
+                }
+                Err(e) => Err(anyhow::anyhow!(e)),
+            };
+        }
         Command::Run => {}
     }
     let started = std::time::Instant::now();
@@ -76,6 +85,7 @@ fn real_main() -> Result<()> {
             None => app.notify("review: not a git repository", vista_tui::app::MsgKind::Error),
         }
     }
+    ws.start_control();
     tracing::info!("app ready in {:?}", started.elapsed());
     run::run(ws)
 }

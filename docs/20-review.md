@@ -6,7 +6,7 @@ The **Review** panel lists every file that differs between a base revision and t
 
 - `vista --review <rev> [PATH]` (with or without `--only`). `<rev>` is anything git understands (`main`, a hash, `HEAD~3`); vista resolves it once (`git rev-parse --verify <rev>^{commit}`) and keeps the hash, so the base doesn't move while work goes on.
 - `--review-label <text>` adds a line naming what's under review (herdr-vista passes the agent's branch or session).
-- From another program through the control socket (the `review` command).
+- From another program through the [control socket](21-control-socket.md) (the `review` command).
 
 When the base is `HEAD` there's nothing committed to review: vista shows the [Commit window](06-commit-window.md) instead. A revision git doesn't know opens vista as usual with a message saying why (`` `nope` is not a commit here ``).
 
@@ -46,4 +46,4 @@ The list comes from `git diff --name-status -z -M <base>` (the working tree agai
 - Integration: `vista-git/tests/review.rs` (a branch's work since `main`).
 - E2e: `e2e_r1_review.rs`: `--review main` on a branch with a committed change and rename plus uncommitted and untracked files (header, colours, label, the diff, `J` / `K`, on-disk edits and new commits updating the diff and list); `Esc`, `Alt-R`, `Alt-2` and double-click; `--review HEAD` opening the Commit window; a bad revision's message.
 
-See also: [06 · Commit window](06-commit-window.md), [07 · Diff viewer](07-diff-viewer.md), [09 · Git history](09-git-history.md).
+See also: [06 · Commit window](06-commit-window.md), [07 · Diff viewer](07-diff-viewer.md), [09 · Git history](09-git-history.md), [21 · Control socket](21-control-socket.md).

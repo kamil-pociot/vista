@@ -30,7 +30,7 @@ vista.expect_text("two").to_have_bg("diff.inserted");
 - Locators auto-wait up to 8 s; colours are checked by theme token.
 - Input: `press`, `type_text`, `click`, `double_click`, `drag`, scrolling (vertical, sideways, shift+wheel), `resize`.
 - A failing test writes an HTML trace of every step to `target/e2e-traces/<test>.html`.
-- Test hooks: `VISTA_CLIPBOARD_FILE` (copies go to a file), `VISTA_NO_WATCH`, `VISTA_CONFIG_DIR`, a fixed `SHELL` for terminals.
+- Test hooks: `VISTA_CLIPBOARD_FILE` (copies go to a file), `VISTA_NO_WATCH`, `VISTA_CONFIG_DIR`, `VISTA_RUNTIME_DIR` (control sockets; the harness puts them in the test's home), a fixed `SHELL` for terminals.
 - Neovim tests are skipped when `nvim` isn't installed.
 
 ## Running

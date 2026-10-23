@@ -31,3 +31,5 @@ Several projects can be open at once, shown as tabs at the left of the top bar.
 - Unit: folder matching and completion, tab layout and hit testing, drag direction.
 - Unit: `--only` parsing.
 - E2e: `e2e_r1_projects.rs` (add, switch, close, folder suggestions, completion, reopen on restart, `--only` leaving the remembered projects alone), `e2e_r1_tabs.rs` (dragging project tabs).
+
+See also: [21 · Control socket](21-control-socket.md) (other programs open and show projects in a running vista).

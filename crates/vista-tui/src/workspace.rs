@@ -48,6 +48,8 @@ pub struct Workspace {
     /// Remember which projects are open (`projects.open` / `active`); off
     /// for `--only`, where each vista keeps to its own project.
     pub persist_open: bool,
+    /// The control socket (removed when the workspace goes).
+    pub control: Option<crate::control::Server>,
     /// The project tab being dragged to a new place.
     dragging: Option<TabTarget>,
     /// The mouse column during that drag (its direction decides moves).
@@ -90,6 +92,7 @@ impl Workspace {
             confirm: None,
             should_quit: false,
             persist_open: true,
+            control: None,
             dragging: None,
             drag_col: 0,
             top_hits: Vec::new(),
@@ -101,6 +104,11 @@ impl Workspace {
     /// For the terminal-input thread: events go to the active project.
     pub fn input_tx(&self) -> EventTx {
         self.tx.for_project(INPUT)
+    }
+
+    /// Listens on the control socket (`<runtime dir>/<pid>.sock`).
+    pub fn start_control(&mut self) {
+        self.control = crate::control::Server::start(self.tx.for_project(INPUT));
     }
 
     pub fn active_app(&mut self) -> &mut App {
@@ -255,6 +263,11 @@ impl Workspace {
     /// Delivers one event: terminal input to the active project, the rest
     /// to the project that asked for it. Then acts on what it requested.
     pub fn handle(&mut self, id: ProjectId, ev: AppEvent) {
+        if let AppEvent::Control(call) = ev {
+            let response = self.control(call.request);
+            let _ = call.reply.send(response);
+            return;
+        }
         if id == INPUT
             && let AppEvent::Term(ratatui::crossterm::event::Event::Mouse(m)) = &ev
             && self.drag_tab(m)
@@ -374,6 +387,78 @@ impl Workspace {
             },
             WsRequest::Close(i) => self.close(i),
         }
+    }
+
+    /// Applies a control-socket request; the response says what happened.
+    fn control(&mut self, request: crate::control::Prepared) -> serde_json::Value {
+        use crate::control::{Prepared, error, ok};
+        match request {
+            Prepared::Status => {
+                let projects: Vec<_> = self
+                    .projects
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| serde_json::json!({ "root": p.app.root, "active": i == self.active }))
+                    .collect();
+                serde_json::json!({
+                    "ok": true,
+                    "protocol": crate::control::PROTOCOL,
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "pid": std::process::id(),
+                    "only": !self.persist_open,
+                    "projects": projects,
+                    "herdr_pane": std::env::var("HERDR_PANE_ID").ok().filter(|v| !v.is_empty()),
+                })
+            }
+            Prepared::OpenProject(root) => match self.show_project(&root) {
+                Ok(_) => ok(),
+                Err(e) => error(e),
+            },
+            Prepared::Commit(root) => match self.show_project(&root) {
+                Ok(app) => {
+                    app.show_commit_window();
+                    ok()
+                }
+                Err(e) => error(e),
+            },
+            Prepared::Review { root, base, label } => match self.show_project(&root) {
+                Ok(app) => match app.apply_review(base, label) {
+                    crate::app::ReviewShown::Review { files, commits } => {
+                        serde_json::json!({ "ok": true, "files": files, "commits": commits })
+                    }
+                    crate::app::ReviewShown::CommitWindow => serde_json::json!({ "ok": true, "commit_window": true }),
+                },
+                Err(e) => error(e),
+            },
+            Prepared::OpenFile { path, line, root } => {
+                // The open project that has it (the innermost), else its own.
+                let owner = self
+                    .projects
+                    .iter()
+                    .filter(|p| path.starts_with(&p.app.root))
+                    .max_by_key(|p| p.app.root.components().count())
+                    .map(|p| p.app.root.clone())
+                    .unwrap_or(root);
+                match self.show_project(&owner) {
+                    Ok(app) => {
+                        app.open_at(&path, line, false);
+                        app.focus = crate::app::Focus::Main;
+                        ok()
+                    }
+                    Err(e) => error(e),
+                }
+            }
+        }
+    }
+
+    /// Opens (or finds) the project at `root`, shows it, with popups closed.
+    fn show_project(&mut self, root: &Path) -> Result<&mut App, String> {
+        let i = self.open(root).map_err(|e| format!("{e:#}"))?;
+        self.confirm = None;
+        self.activate(i);
+        let app = self.active_app();
+        app.dismiss_popups();
+        Ok(app)
     }
 
     /// `theme = "herdr"`: when herdr's theme changes, so does the look (a

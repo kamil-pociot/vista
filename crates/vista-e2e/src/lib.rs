@@ -167,6 +167,8 @@ impl<'a> Launcher<'a> {
             ("VISTA_CONFIG_DIR".into(), s(&config_dir)),
             ("VISTA_CACHE_DIR".into(), s(&home.join(".cache/vista"))),
             ("VISTA_LOG_FILE".into(), s(&log_file)),
+            // Control sockets stay with the test.
+            ("VISTA_RUNTIME_DIR".into(), s(&home.join("run"))),
             ("VISTA_LOG".into(), "debug".into()),
             ("VISTA_KEYBOARD".into(), "legacy".into()),
             ("VISTA_IMAGE_PROTOCOL".into(), "halfblocks".into()),

@@ -21,7 +21,7 @@ brew install neovim                        # optional: editing inside vista
 
 Or from a checkout: `cargo install --path crates/vista-tui`.
 
-`vista --only [PATH]` opens just that project, without reopening last time's or remembering which are open (handy with one vista per repository). `vista --review <rev> [PATH]` opens the Review panel on everything changed since `rev`.
+`vista --only [PATH]` opens just that project, without reopening last time's or remembering which are open (handy with one vista per repository). `vista --review <rev> [PATH]` opens the Review panel on everything changed since `rev`. A running vista takes requests on a control socket (`<runtime dir>/<pid>.sock`, or `vista --remote <pid> '<json>'`): show a project, a review or the Commit window ([docs](docs/21-control-socket.md)).
 
 Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise, or with an older one, `$EDITOR` is used). Release binaries for macOS (Apple Silicon and Intel) and Linux are built by `.github/workflows/release.yml` on `v*` tags; `Formula/vista.rb` installs them (see [Releasing](#releasing)).
 

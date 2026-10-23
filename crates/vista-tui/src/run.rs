@@ -36,6 +36,14 @@ pub fn run(mut ws: Workspace) -> Result<()> {
         let picker = ws.active_app().picker.clone();
         ws.set_picker(picker);
     }
+    // SIGTERM, or SIGHUP when the terminal (a herdr pane) closes: quit as
+    // with q, so state is saved and the control socket removed. A second
+    // signal while that's stuck ends vista at once.
+    let stop = Arc::new(AtomicBool::new(false));
+    for sig in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGHUP] {
+        let _ = signal_hook::flag::register_conditional_shutdown(sig, 1, stop.clone());
+        let _ = signal_hook::flag::register(sig, stop.clone());
+    }
     let paused = Arc::new(AtomicBool::new(false));
     spawn_input_thread(ws.input_tx(), paused.clone());
     // Show the first frame before starting watchers and background jobs.
@@ -45,6 +53,9 @@ pub fn run(mut ws: Workspace) -> Result<()> {
     let active = ws.active;
     ws.activate(active);
     loop {
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
         term.draw(|f| ws.draw(f))?;
         if ws.should_quit {
             break;

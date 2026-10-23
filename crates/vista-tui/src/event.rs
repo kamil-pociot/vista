@@ -62,6 +62,8 @@ pub enum AppEvent {
     TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
     /// A terminal tab's program ended.
     TermExited,
+    /// A control-socket request, for the workspace (it replies once applied).
+    Control(Box<crate::control::Call>),
     /// The Review panel's list, refreshed (`generation` drops stale ones).
     Review {
         generation: u64,
