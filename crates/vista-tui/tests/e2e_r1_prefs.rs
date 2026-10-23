@@ -41,9 +41,8 @@ fn settings_change_in_place_and_are_remembered() {
     vista.press("down");
     vista.expect_text("Line numbers in code").to_have_fg("ui.dim");
     vista.press("space");
-    vista.wait_until("line numbers off", |s| {
-        s.contents().contains("Line numbers") && s.contents().contains("Off")
-    });
+    // Its own row: other settings show Off from the start.
+    vista.wait_until("line numbers off", |s| shows(s, "Line numbers", "Off"));
     assert!(state(&repo).contains("line_numbers = false"), "{}", state(&repo));
     // A click on a row changes it.
     let (row, col) = vista.expect_text("Wrap code").position();

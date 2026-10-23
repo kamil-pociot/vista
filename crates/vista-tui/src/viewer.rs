@@ -485,7 +485,15 @@ pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
             let lines = plain_lines(&text);
             let (old_markers, old_rendered) = match &tab.content {
                 Content::Text { markers, .. } => (markers.clone(), None),
-                Content::Markdown { markers, rendered, .. } => (markers.clone(), rendered.clone()),
+                // The rendered rows stay while the source is the same (the
+                // watcher reports files that didn't change): a selection made
+                // in them still means the same text.
+                Content::Markdown {
+                    markers,
+                    rendered,
+                    source,
+                    ..
+                } => (markers.clone(), rendered.clone().filter(|_| *source == text)),
                 _ => (Markers::default(), None),
             };
             tab.content = if kind == FileKind::Markdown {
@@ -494,7 +502,7 @@ pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
                     lines,
                     markers: old_markers,
                     raw: keep_raw,
-                    rendered: old_rendered.filter(|_| false),
+                    rendered: old_rendered,
                 }
             } else {
                 Content::Text {
@@ -698,7 +706,8 @@ impl Tab {
 
     pub fn selected_text(&self) -> Option<String> {
         let sel = self.selection.filter(|s| !s.is_empty())?;
-        Some(sel.text(&self.selectable_text()))
+        // Nothing to copy (the text went away): the clipboard keeps what it had.
+        Some(sel.text(&self.selectable_text())).filter(|t| !t.is_empty())
     }
 
     /// Selection keys: Shift-↑↓ (lines), Ctrl-A, Ctrl-C / y (copy), Esc.
@@ -1157,6 +1166,45 @@ mod tests {
 
     fn key(c: KeyCode) -> KeyEvent {
         KeyEvent::from(c)
+    }
+
+    #[test]
+    fn a_reload_keeps_a_markdown_selection_while_the_source_is_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("README.md");
+        std::fs::write(&p, "# Title\n\nSome paragraph text here.\n").unwrap();
+        let (ctx, rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        finish(&mut v, &rx);
+        let t = v.active_tab_mut().unwrap();
+        // As drawn: rendered rows (heading, rule, gap, paragraph).
+        if let Content::Markdown { source, rendered, .. } = &mut t.content {
+            let hl = Highlighter::global();
+            *rendered = Some((80, false, vista_render::markdown::render(source, 80, hl, &|_| None)));
+        }
+        let row = t
+            .selectable_text()
+            .iter()
+            .position(|l| l.contains("paragraph"))
+            .unwrap();
+        let col = t.selectable_text()[row].find("paragraph").unwrap();
+        t.selection = Some(crate::selection::Selection {
+            anchor: (row, col),
+            head: (row, col + 9),
+        });
+        assert_eq!(t.selected_text().as_deref(), Some("paragraph"));
+        // The watcher reports the file, unchanged: still the same words.
+        v.reload_paths(std::slice::from_ref(&p), &ctx);
+        let t = v.active_tab_mut().unwrap();
+        assert_eq!(t.selected_text().as_deref(), Some("paragraph"));
+        // Changed: rendered again at the next draw; until then nothing to
+        // copy rather than an empty clipboard.
+        std::fs::write(&p, "# Title\n\nOther.\n").unwrap();
+        v.reload_paths(std::slice::from_ref(&p), &ctx);
+        let t = v.active_tab_mut().unwrap();
+        assert!(matches!(&t.content, Content::Markdown { rendered: None, .. }));
+        assert_eq!(t.selected_text(), None);
     }
 
     #[test]

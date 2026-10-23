@@ -23,6 +23,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 - `Ctrl-C`, `Cmd-C` or `y` copies, `Esc` clears.
 - Cmd-C reaches vista only when the terminal passes it on. Ghostty copies its own selection on Cmd-C and swallows the key even when it has none. To pass it on when Ghostty has no selection of its own, add `keybind = performable:super+c=copy_to_clipboard:mixed` to Ghostty's config (`~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`).
 - Copying uses `pbcopy`, `wl-copy` or `xclip` when available, otherwise the terminal's OSC 52 clipboard sequence.
+- A selection keeps meaning the same text when the file is reloaded unchanged (the watcher reports files that didn't change; rendered Markdown isn't redone). A copy that would be empty leaves the clipboard as it was.
 - Selection works on code, rendered Markdown and wrapped lines: each frame records which file line and column every screen row shows.
 
 ## Keys
