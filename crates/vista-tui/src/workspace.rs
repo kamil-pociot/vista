@@ -125,6 +125,13 @@ impl Workspace {
         }
         let id = self.next_id;
         self.next_id += 1;
+        // herdr's theme before the first project reads it: later checks
+        // compare with this, so a change right after start isn't taken as
+        // the starting point and missed.
+        let picked = self.ui.borrow().look.clone();
+        let herdr_before = (self.herdr_theme.is_none()
+            && picked.as_deref().unwrap_or(&self.config.theme) == crate::app::HERDR)
+            .then(vista_core::herdr::current_theme);
         let mut app = App::new(AppOptions {
             root,
             config: self.config.clone(),
@@ -137,6 +144,9 @@ impl Workspace {
         // then the project keeps its configured default.
         if self.picker.is_some() {
             app.picker = self.picker.clone();
+        }
+        if app.follows_herdr() && herdr_before.is_some() {
+            self.herdr_theme = herdr_before;
         }
         self.projects.push(Project { id, app });
         let i = self.projects.len() - 1;
@@ -472,7 +482,8 @@ impl Workspace {
         self.herdr_checked = Some(Instant::now());
         let now = vista_core::herdr::current_theme();
         let Some(before) = self.herdr_theme.replace(now.clone()) else {
-            // The first look: the one App started with.
+            // The first look: the one App started with (a project added
+            // later, when the first didn't follow herdr).
             return;
         };
         if before == now {
