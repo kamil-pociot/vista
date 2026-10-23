@@ -8,6 +8,7 @@ pub mod find;
 pub mod goto;
 pub mod help;
 pub mod log;
+pub mod prefs;
 pub mod project;
 pub mod projects;
 pub mod term;
@@ -218,6 +219,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         || app.find.is_some()
         || app.projects_popup.is_some()
         || app.confirm.is_some()
+        || app.prefs.is_some()
         || app.show_help;
     if app.recent_popup.is_some() {
         viewer::draw_recent(f, area, app);
@@ -236,6 +238,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     }
     if app.confirm.is_some() {
         commit::draw_confirm(f, area, app);
+    }
+    if app.prefs.is_some() {
+        prefs::draw(f, area, app);
     }
     if app.show_help {
         help::draw(f, area, app);

@@ -161,8 +161,9 @@ impl Workspace {
         let look = self.look.clone();
         let ui = self.ui.borrow().clone();
         let app = &mut self.projects[i].app;
+        // Another look, or Fill background changed, while it was off screen.
         if let Some(look) = look
-            && app.theme.id != look
+            && (app.theme.id != look || app.theme_filled != app.fill_background())
         {
             let _ = app.set_theme(&look);
         }
@@ -361,7 +362,7 @@ impl Workspace {
     /// `theme = "herdr"`: when herdr's theme changes, so does the look (a
     /// look picked with Ctrl-T meanwhile stays until then).
     pub fn follow_herdr(&mut self) {
-        if !self.projects.get(self.active).is_some_and(|p| p.app.follows_herdr)
+        if !self.projects.get(self.active).is_some_and(|p| p.app.follows_herdr())
             || self.herdr_checked.is_some_and(|t| t.elapsed() < HERDR_CHECK)
         {
             return;

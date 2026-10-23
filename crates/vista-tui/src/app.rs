@@ -152,8 +152,10 @@ pub struct App {
     pub config: Config,
     pub paths: Paths,
     pub theme: Theme,
-    /// `theme = "herdr"`: the look follows herdr's theme (see `Workspace::follow_herdr`).
-    pub follows_herdr: bool,
+    /// `--theme` / `VISTA_THEME` chose the look: it doesn't follow herdr.
+    theme_forced: bool,
+    /// The look's "terminal" colours are filled in (the Fill background preference).
+    pub theme_filled: bool,
     theme_loader: ThemeLoader,
     theme_stamp: Option<SystemTime>,
     pub keymap: Keymap,
@@ -171,6 +173,8 @@ pub struct App {
     pub areas: crate::ui::Areas,
     /// Clickable labels in the last frame (on top of `areas`).
     pub buttons: Vec<crate::ui::click::Button>,
+    /// The Preferences page, when open (Ctrl-,).
+    pub prefs: Option<crate::prefs::PrefsPage>,
     pub project: ProjectView,
     /// The repository, if the project is inside one.
     pub git: Option<Git>,
@@ -262,14 +266,15 @@ impl App {
                 (Rc::new(RefCell::new(ui)), warning)
             }
         };
-        // --theme / VISTA_THEME › the look picked last (Ctrl-T) › config;
-        // following herdr (`theme = "herdr"` in the config) beats Ctrl-T.
-        let following = opts.config.theme == HERDR;
-        let theme_id = opts
+        // --theme / VISTA_THEME › the look picked last (Ctrl-T, Preferences)
+        // › config. `herdr` follows herdr's theme.
+        let forced = opts
             .theme
             .clone()
-            .or_else(|| std::env::var("VISTA_THEME").ok().filter(|t| !t.is_empty()))
-            .or_else(|| (!following).then(|| ui.borrow().look.clone()).flatten())
+            .or_else(|| std::env::var("VISTA_THEME").ok().filter(|t| !t.is_empty()));
+        let theme_forced = forced.is_some();
+        let theme_id = forced
+            .or_else(|| ui.borrow().look.clone())
             .unwrap_or_else(|| opts.config.theme.clone());
         let follows_herdr = theme_id == HERDR;
         let theme_id = if follows_herdr {
@@ -278,7 +283,8 @@ impl App {
             theme_id
         };
         let mut startup_error = ui_warning;
-        let theme = match theme_loader.load(&theme_id) {
+        let filled = ui.borrow().looks.fill_background.unwrap_or(false);
+        let theme = match load_look(&theme_loader, &theme_id, filled) {
             Ok(t) => t,
             Err(e) if follows_herdr => {
                 tracing::warn!("herdr's theme: {e}");
@@ -317,7 +323,8 @@ impl App {
             theme,
             theme_loader,
             theme_stamp,
-            follows_herdr,
+            theme_forced,
+            theme_filled: filled,
             keymap,
             focus: Focus::Left,
             left: Some(LeftPanel::Project),
@@ -328,6 +335,7 @@ impl App {
             rx,
             areas: Default::default(),
             buttons: Vec::new(),
+            prefs: None,
             project,
             git,
             status: StatusSnapshot::default(),
@@ -1746,6 +1754,14 @@ impl App {
             self.show_help = false;
             return;
         }
+        if let Some(p) = self.prefs.as_mut() {
+            match p.handle_key(&key) {
+                crate::prefs::PrefsOutcome::Handled => {}
+                crate::prefs::PrefsOutcome::Close => self.prefs = None,
+                crate::prefs::PrefsOutcome::Change(pref, forward) => self.change_pref(pref, forward),
+            }
+            return;
+        }
         if let Some(c) = self.confirm.take() {
             use ratatui::crossterm::event::KeyCode;
             match key.code {
@@ -1998,7 +2014,7 @@ impl App {
                         && tab.selection.is_some_and(|s| s.is_empty())
                     {
                         tab.selection = None;
-                    } else if self.config.mouse.copy_on_select {
+                    } else if self.copy_on_select() {
                         self.copy_selection();
                     }
                     return;
@@ -2057,6 +2073,11 @@ impl App {
                 m.row == self.areas.top.y && self.project_hits.iter().any(|h| (h.x.0..h.x.1).contains(&m.column));
             if !on_project_tab && let Some(c) = crate::ui::click::at(&self.buttons, m.column, m.row) {
                 self.click(c);
+                return;
+            }
+            // A click beside the Preferences page closes it.
+            if self.prefs.is_some() {
+                self.prefs = None;
                 return;
             }
             if self.projects_popup.is_some() {
@@ -2276,7 +2297,7 @@ impl App {
                     }
                     if double {
                         tab.select_word(p);
-                        if self.config.mouse.copy_on_select {
+                        if self.copy_on_select() {
                             self.copy_selection();
                         }
                     } else {
@@ -2338,7 +2359,7 @@ impl App {
 
     /// Opens `config.toml` for editing, written out with every default first
     /// when there is none.
-    fn open_settings(&mut self) {
+    fn open_config_file(&mut self) {
         let path = self.paths.config_file();
         if !path.exists() {
             let written = path
@@ -2352,6 +2373,103 @@ impl App {
         }
         self.open_at(&path, None, true);
         self.notify("Settings apply when vista starts again", MsgKind::Info);
+    }
+
+    // ----- preferences ------------------------------------------------------
+
+    /// What a setting is now, as the Preferences page shows it.
+    pub fn pref_value(&self, p: crate::prefs::Pref) -> String {
+        use crate::prefs::Pref::*;
+        let ui = self.ui.borrow();
+        let on = |b: bool| if b { "On" } else { "Off" }.to_string();
+        match p {
+            Look if self.follows_herdr() => format!("Follow herdr ({})", self.theme.name),
+            Look => self.theme.name.clone(),
+            FillBackground => on(ui.looks.fill_background.unwrap_or(false)),
+            LineNumbers => on(ui.viewer.line_numbers.unwrap_or(true)),
+            WrapMarkdown => on(ui.viewer.wrap_markdown.unwrap_or(true)),
+            WrapCode => on(ui.viewer.wrap_code.unwrap_or(false)),
+            DiffUnified => on(ui.diff.unified.unwrap_or(false)),
+            DiffCollapse => on(ui.diff.collapse.unwrap_or(false)),
+            DiffWhitespace => on(ui.diff.ignore_whitespace.unwrap_or(false)),
+            ShowIgnored => on(self.project.show_ignored),
+            GroupByFolder => on(self.commit.by_dir),
+            FindCase => on(ui.find.case.unwrap_or(false)),
+            FindWords => on(ui.find.words.unwrap_or(false)),
+            FindRegex => on(ui.find.regex.unwrap_or(false)),
+            CopyOnSelect => on(ui.mouse.copy_on_select.unwrap_or(self.config.mouse.copy_on_select)),
+            EditConfig => String::new(),
+        }
+    }
+
+    /// Changes a setting from the Preferences page: on / off settings flip;
+    /// the look steps forward or back. It applies at once and is remembered.
+    pub fn change_pref(&mut self, p: crate::prefs::Pref, forward: bool) {
+        use crate::prefs::Pref::*;
+        let flip = |b: Option<bool>, default: bool| Some(!b.unwrap_or(default));
+        match p {
+            Look => self.step_look(forward),
+            FillBackground => {
+                self.remember(|s| s.looks.fill_background = flip(s.looks.fill_background, false));
+                let id = self.theme.id.clone();
+                if let Err(e) = self.set_theme(&id) {
+                    self.notify(e, MsgKind::Error);
+                }
+            }
+            LineNumbers => self.handle_action(Action::ToggleLineNumbers),
+            WrapMarkdown | WrapCode => {
+                let markdown = p == WrapMarkdown;
+                let on = !self.wrap_default(markdown);
+                self.set_wrap(markdown, on);
+            }
+            DiffUnified => self.remember(|s| s.diff.unified = flip(s.diff.unified, false)),
+            DiffCollapse => self.remember(|s| s.diff.collapse = flip(s.diff.collapse, false)),
+            DiffWhitespace => self.remember(|s| s.diff.ignore_whitespace = flip(s.diff.ignore_whitespace, false)),
+            ShowIgnored => self.handle_action(Action::ToggleIgnored),
+            GroupByFolder => {
+                self.commit.by_dir = !self.commit.by_dir;
+                let (on, root) = (self.commit.by_dir, self.root.clone());
+                self.commit.rebuild(&self.status, &root);
+                self.remember(|s| s.commit.group_by_folder = Some(on));
+            }
+            FindCase => self.remember(|s| s.find.case = flip(s.find.case, false)),
+            FindWords => self.remember(|s| s.find.words = flip(s.find.words, false)),
+            FindRegex => self.remember(|s| s.find.regex = flip(s.find.regex, false)),
+            CopyOnSelect => {
+                let on = !self.copy_on_select();
+                self.remember(|s| s.mouse.copy_on_select = Some(on));
+            }
+            EditConfig => {
+                self.prefs = None;
+                self.open_config_file();
+            }
+        }
+    }
+
+    /// The next (or previous) look: Follow herdr first, then every look.
+    fn step_look(&mut self, forward: bool) {
+        let mut ids = vec![HERDR.to_string()];
+        ids.extend(self.theme_loader.available());
+        let current = if self.follows_herdr() {
+            HERDR
+        } else {
+            self.theme.id.as_str()
+        };
+        let pos = ids.iter().position(|i| i == current).unwrap_or(0);
+        let n = ids.len();
+        let next = ids[if forward { (pos + 1) % n } else { (pos + n - 1) % n }].clone();
+        let look = if next == HERDR {
+            vista_core::herdr::current_theme()
+        } else {
+            next.clone()
+        };
+        self.remember(|s| s.look = Some(next));
+        if let Err(e) = self.set_theme(&look) {
+            self.notify(
+                format!("herdr's theme \"{look}\" has no vista look ({e})"),
+                MsgKind::Error,
+            );
+        }
     }
 
     /// A click on a label or button: does what its key does.
@@ -2390,6 +2508,13 @@ impl App {
                 if i < self.find_window.tabs.len() {
                     self.find_window.active = i;
                     self.focus = Focus::Bottom;
+                }
+            }
+            Click::Pref(i) => {
+                if let Some(p) = self.prefs.as_mut() {
+                    p.selected = i;
+                    let pref = p.selected_pref();
+                    self.change_pref(pref, true);
                 }
             }
             Click::Amend => {
@@ -2460,7 +2585,7 @@ impl App {
             Action::ToggleProject => self.toggle_left(LeftPanel::Project),
             Action::ToggleCommit => self.toggle_left(LeftPanel::Commit),
             Action::CycleTheme => self.cycle_theme(),
-            Action::OpenSettings => self.open_settings(),
+            Action::OpenSettings => self.prefs = Some(crate::prefs::PrefsPage::default()),
             Action::ToggleIgnored => {
                 self.project.show_ignored = !self.project.show_ignored;
                 let shown = self.project.show_ignored;
@@ -2642,10 +2767,30 @@ impl App {
     // ----- looks -----------------------------------------------------------
 
     pub fn set_theme(&mut self, id: &str) -> Result<(), String> {
-        let theme = self.theme_loader.load(id).map_err(|e| e.to_string())?;
+        let filled = self.fill_background();
+        let theme = load_look(&self.theme_loader, id, filled).map_err(|e| e.to_string())?;
         self.theme_stamp = stamp(self.theme_loader.user_path(id).as_deref());
         self.theme = theme;
+        self.theme_filled = filled;
         Ok(())
+    }
+
+    /// The look follows herdr's theme: `herdr` was picked (or configured),
+    /// and `--theme` / `VISTA_THEME` didn't choose another.
+    pub fn follows_herdr(&self) -> bool {
+        let picked = self.ui.borrow().look.clone();
+        !self.theme_forced && picked.as_deref().unwrap_or(&self.config.theme) == HERDR
+    }
+
+    /// Paint looks' own background where they'd use the terminal's.
+    pub fn fill_background(&self) -> bool {
+        self.ui.borrow().looks.fill_background.unwrap_or(false)
+    }
+
+    /// Copy a mouse selection on release: remembered, else `[mouse] copy_on_select`.
+    pub fn copy_on_select(&self) -> bool {
+        let remembered = self.ui.borrow().mouse.copy_on_select;
+        remembered.unwrap_or(self.config.mouse.copy_on_select)
     }
 
     fn cycle_theme(&mut self) {
@@ -2685,7 +2830,7 @@ impl App {
         }
         self.theme_stamp = now;
         let id = self.theme.id.clone();
-        match self.theme_loader.load(&id) {
+        match load_look(&self.theme_loader, &id, self.theme_filled) {
             Ok(t) => {
                 self.theme = t;
                 self.notify(format!("Reloaded look `{id}`"), MsgKind::Info);
@@ -2709,6 +2854,15 @@ pub fn default_picker(protocol: ImageProtocol) -> Option<Picker> {
             Some(p)
         }
     }
+}
+
+/// Loads look `id`, its "terminal" colours filled in when `filled`.
+fn load_look(loader: &ThemeLoader, id: &str, filled: bool) -> Result<Theme, vista_theme::ThemeError> {
+    let mut theme = loader.load(id)?;
+    if filled {
+        theme.fill_terminal();
+    }
+    Ok(theme)
 }
 
 fn stamp(path: Option<&Path>) -> Option<SystemTime> {

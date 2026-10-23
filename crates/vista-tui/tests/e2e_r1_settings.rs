@@ -135,16 +135,18 @@ fn view_settings_survive_a_restart() {
     });
 }
 
-/// ⚙ in the top bar (or Ctrl-,) opens config.toml, written out with every
-/// default when there was none.
+/// Preferences' last row opens config.toml, written out with every default
+/// when there was none.
 #[test]
-fn the_gear_opens_the_settings_file() {
+fn preferences_open_the_settings_file() {
     let repo = repo();
     let mut vista = Vista::launch(BIN, &repo).size(150, 40).start();
     vista.expect_text("1: Project");
     let config = vista.config_dir().join("config.toml");
     assert!(!config.exists());
     let (row, col) = vista.expect_text("⚙").position();
+    vista.click(col, row);
+    let (row, col) = vista.expect_text("Edit config.toml…").position();
     vista.click(col, row);
     vista.expect_text("Settings apply when vista starts again");
     let written = std::fs::read_to_string(&config).unwrap();

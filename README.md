@@ -79,9 +79,9 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 
 `Alt-9` opens the Git window at the bottom (like IntelliJ's Log): commits newest first (hash, branch/tag names, subject, author, date) and, on the right, the files the selected commit changed (`A`/`M`/`D`/`R`, with the old name for renames). `Tab`/`←→` switch lists, `Enter` (or double-click) on a file opens its change as a **read-only diff** of the commit against its parent (`Δ name @abc1234`): same viewer, no checkboxes, `]`/`[` and `J`/`K` step through that commit's files, `e` opens the current file. `Alt-H` shows the history of the open file (following renames); `a` there goes back to all commits, `r` reloads, `Esc` hides the window.
 
-### Settings
+### Preferences
 
-`Ctrl-,` or the `⚙` at the right of the top bar opens `~/.config/vista/config.toml` for editing (written with every default the first time). Changes apply when vista starts again.
+`Ctrl-,` or the `⚙` at the right of the top bar opens **Preferences**: the look (including Follow herdr), Fill background, line numbers, wrapping, diff, tree, Commit-window, Find and mouse settings, changed in place and remembered ([docs](docs/19-preferences.md)). Its last row opens `~/.config/vista/config.toml` (written with every default the first time) for key bindings and the rest.
 
 ### Remembered settings
 

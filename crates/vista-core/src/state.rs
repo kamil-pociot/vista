@@ -14,9 +14,13 @@ use crate::config::Paths;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiState {
-    /// The look picked with Ctrl-T.
+    /// The look picked with Ctrl-T or in Preferences; `herdr` follows herdr.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub look: Option<String>,
+    #[serde(skip_serializing_if = "LooksState::is_empty")]
+    pub looks: LooksState,
+    #[serde(skip_serializing_if = "MouseState::is_empty")]
+    pub mouse: MouseState,
     #[serde(skip_serializing_if = "ViewerState::is_empty")]
     pub viewer: ViewerState,
     #[serde(skip_serializing_if = "DiffState::is_empty")]
@@ -31,6 +35,23 @@ pub struct UiState {
     pub projects: ProjectsState,
     #[serde(skip_serializing_if = "LayoutState::is_empty")]
     pub layout: LayoutState,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LooksState {
+    /// Paint the look's own background where it would use the terminal's
+    /// (looks with `"terminal"` colours, such as herdr's).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fill_background: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MouseState {
+    /// Overrides `[mouse] copy_on_select`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_on_select: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +135,8 @@ macro_rules! is_empty {
     )*};
 }
 is_empty!(
+    LooksState,
+    MouseState,
     ViewerState,
     DiffState,
     CommitState,

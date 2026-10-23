@@ -162,7 +162,7 @@ impl Action {
             Action::RevealFile => "Reveal current file in tree",
             Action::CollapseAll => "Collapse all folders",
             Action::CycleTheme => "Switch to next look",
-            Action::OpenSettings => "Open settings (config.toml)",
+            Action::OpenSettings => "Preferences",
             Action::NextOccurrence => "Next Find result",
             Action::PrevOccurrence => "Previous Find result",
         }

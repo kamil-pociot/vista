@@ -6,7 +6,7 @@ Everything on screen that names a window, an option or a key can be clicked. A c
 
 | Where | Labels | Same as |
 |---|---|---|
-| Top bar | `Ctrl-P Go to File`, `Ctrl-F Find in Files`, `⎇ branch`, `⚙` | `Ctrl-P`, `Ctrl-F`, `Alt-9` (Git window), `Ctrl-,` (settings) |
+| Top bar | `Ctrl-P Go to File`, `Ctrl-F Find in Files`, `⎇ branch`, `⚙` | `Ctrl-P`, `Ctrl-F`, `Alt-9` (Git window), `Ctrl-,` (Preferences) |
 | Bottom bar | `1: Project`, `2: Commit`, `3: Find`, `T: Terminal`, `9: Git`, `?: Help` | their tool-window keys |
 | Icon rail (looks with `tool_windows = "icon-rail"`) | `◫` `⎇` `⌕` `?` | Project, Commit, Find in Files, Help |
 | Key-hint line (looks with `keyhints = true`) | each hint | its key |
@@ -20,6 +20,7 @@ Everything on screen that names a window, an option or a key can be clicked. A c
 | Confirm dialog | `y yes`, `n no` | `y`, `n` |
 | Diff viewer | `◂` `▸` (previous / next change), `(␣)`, `u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit` | `[` `]`, `Space`, those keys |
 | Find in file (`/`) | `n`, `N`, `Esc close` | those keys |
+| Preferences | a setting's row; beside the page | selects and changes it; closes it |
 | Help | anywhere | closes it, like any key |
 
 While a popup is open only its own labels can be clicked; the screen behind it is covered.

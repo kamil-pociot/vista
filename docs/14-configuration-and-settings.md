@@ -12,7 +12,7 @@ vista --probe-image   draw a test gradient with the image protocol
 
 ## config.toml
 
-`~/.config/vista/config.toml`, or `$VISTA_CONFIG_DIR/config.toml`. **Open Settings** (`Ctrl-,`, the `⚙` at the right of the top bar, or `?` → help) opens it for editing; when there is none yet it is written first, with every setting at its default and a comment on each. Changes apply when vista starts again.
+`~/.config/vista/config.toml`, or `$VISTA_CONFIG_DIR/config.toml`. Most settings are on the **Preferences** page instead (`Ctrl-,`, the `⚙` at the right of the top bar; see [19 · Preferences](19-preferences.md)), which changes them in place. Its last row, Edit config.toml…, opens this file; when there is none yet it is written first, with every setting at its default and a comment on each. Changes here apply when vista starts again.
 
 ```toml
 theme = "darcula"            # or quiet, paper, a herdr theme (kanagawa, nord, …), "herdr" to follow herdr, or a file in ~/.config/vista/themes/

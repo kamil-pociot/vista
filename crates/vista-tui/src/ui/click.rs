@@ -30,6 +30,8 @@ pub enum Click {
     FindWindowTab(usize),
     /// The Commit window's Amend checkbox.
     Amend,
+    /// A row of the Preferences page (index into `prefs::all()`): select and change it.
+    Pref(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

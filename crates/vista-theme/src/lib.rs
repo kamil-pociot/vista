@@ -279,6 +279,12 @@ impl Theme {
         self.terminal.contains(token)
     }
 
+    /// Paints `terminal_bg` instead of the terminal's background everywhere
+    /// (the "Fill background" preference).
+    pub fn fill_terminal(&mut self) {
+        self.terminal.clear();
+    }
+
     pub fn try_color(&self, token: &str) -> Option<Rgb> {
         self.palette.get(token).copied()
     }

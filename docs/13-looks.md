@@ -33,7 +33,8 @@ borders = "rounded"
 - With herdr's `auto_switch = true`, `dark_name` or `light_name` is used by the macOS appearance (dark elsewhere).
 - No herdr config: herdr's default, `catppuccin`.
 - A herdr theme with no vista look (`terminal`): darcula at start, else the current look stays, with a note.
-- `Ctrl-T` still picks another look for now; the next change in herdr takes over again. Following beats the look remembered from `Ctrl-T`; `--theme` and `VISTA_THEME` beat following.
+- Follow herdr is also a choice in [Preferences](19-preferences.md) (`Ctrl-,`). Picking a look there or with `Ctrl-T` stops following; the pick is remembered and wins over `theme = …` in `config.toml`. `--theme` and `VISTA_THEME` win over both.
+- **Fill background** in Preferences paints herdr's looks with their own background (`terminal_bg`) instead of the terminal's.
 
 ## Using looks
 
