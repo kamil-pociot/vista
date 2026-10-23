@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           grep -E '^test .* FAILED$' test.log | sed -E 's/^test (.*) \.\.\. FAILED$/::error title=Test failed::\1/' | head -20
-          grep -E -A3 "^thread '.*' .*panicked at" test.log | grep -v -E '^(--|note: .*|)$' | head -40 | sed -E 's/^/::warning title=Panic::/'
+          grep -E -A3 "^thread '.*' .*panicked at" test.log | grep -v -E '^(--|note: .*)?$' | head -40 | sed -E 's/^/::warning title=Panic::/'
       - name: Upload e2e traces
         if: failure()
         uses: actions/upload-artifact@v4

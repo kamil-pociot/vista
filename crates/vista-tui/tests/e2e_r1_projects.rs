@@ -234,7 +234,8 @@ fn only_opens_one_project_and_leaves_the_remembered_ones() {
     // A project added here isn't remembered as open either.
     add(&mut vista, &d);
     vista.expect_text_in("d.txt", 0..40);
-    vista.press("ctrl+q");
+    // One Ctrl-Q: nothing unsaved, so vista is gone (a second key would
+    // go to a closed terminal).
     vista.press("ctrl+q");
     vista.expect_exit();
     let saved: toml::Table = std::fs::read_to_string(&state).unwrap().parse().unwrap();
