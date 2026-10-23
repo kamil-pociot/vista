@@ -376,6 +376,7 @@ Layout per mockup **A · Find in Files**. Behaviour mirrors IntelliJ's `Ctrl+Shi
 ### Terminal notifications ✅
 - [x] Desktop notifications from programs in terminal tabs and the Terminal tool window (`OSC 9`, `OSC 777;notify`, `OSC 99`) are passed on to the outer terminal (wrapped for tmux). Before this, the vt100 parser dropped them, so Claude Code's notifications never reached Ghostty.
 - [x] A tab whose program notified while off screen is marked `●` (terminal tab, or the project for its tool-window shell) until shown. vista uses the notification itself as the signal, where herdr guesses agent state from process names and output.
+- [x] Every notification plays `[terminal] notify_sound` (`Glass` by default, `none` to silence), like herdr's sounds: Ghostty shows nothing for the focused tab, which is vista's when a background agent needs input.
 - [x] Inside herdr, which drops these sequences and can't see agents running inside vista, notifications also go to `herdr notification show`.
 - [x] Shift-Enter reaches terminal programs as `ESC CR`, so it's a newline in Claude Code again. Programs inside vista can't use the kitty keyboard protocol, so a plain CR was all they got.
 - [x] Tests: OSC filtering units, `e2e_r1_terminal` (passed-on bytes via `expect_output`, both marks, Shift-Enter bytes read by a real program).

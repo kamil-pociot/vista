@@ -31,6 +31,7 @@ folder_colours = true
 
 [terminal]
 commands = ["claude agents"]
+notify_sound = "Glass"       # played on terminal notifications: a macOS sound, a file, or "none"
 
 [mouse]
 copy_on_select = true        # copy a mouse selection on release; false: Ctrl-C / Cmd-C / y

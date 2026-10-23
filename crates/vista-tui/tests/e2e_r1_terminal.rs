@@ -313,3 +313,49 @@ fn inside_herdr_a_notification_goes_to_herdr() {
         ]
     );
 }
+
+/// A notification plays `[terminal] notify_sound`, also with its tab on screen
+/// (where Ghostty shows nothing); `none` keeps quiet.
+#[test]
+fn a_notification_plays_the_notify_sound() {
+    use std::os::unix::fs::PermissionsExt;
+    for (setting, want) in [("Ping", Some("/System/Library/Sounds/Ping.aiff")), ("none", None)] {
+        let repo = repo();
+        let bin = tempfile::tempdir().unwrap();
+        let player = bin.path().join("player");
+        let out = bin.path().join("played");
+        std::fs::write(
+            &player,
+            format!("#!/bin/sh\nprintf '%s\\n' \"$1\" >> '{}'\n", out.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&player, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut vista = Vista::launch(BIN, &repo)
+            .config(&format!(
+                "[terminal]\ncommands = [\"cat\"]\nnotify_sound = \"{setting}\"\n"
+            ))
+            .env("SHELL", "/bin/sh")
+            .env("VISTA_SOUND_PLAYER", &player.to_string_lossy())
+            .size(140, 30)
+            .start();
+        vista.expect_text("1: Project");
+        vista.press("ctrl+o");
+        vista.type_text(">printf '\\033]9;Claude needs you\\007'; cat");
+        vista.press("enter");
+        vista.expect_output(b"\x1b]9;Claude needs you\x07");
+        match want {
+            Some(file) => {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+                while !out.exists() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                let played = std::fs::read_to_string(&out).expect("a sound was played");
+                assert_eq!(played.lines().collect::<Vec<_>>(), [file]);
+            }
+            None => {
+                vista.settle(std::time::Duration::from_millis(300));
+                assert!(!out.exists(), "no sound with notify_sound = none");
+            }
+        }
+    }
+}

@@ -1536,7 +1536,9 @@ impl App {
                     s.mark_exited();
                 }
             }
-            AppEvent::TermNotify(n) => crate::terminal::notify(&n, &self.project_name),
+            AppEvent::TermNotify(n) => {
+                crate::terminal::notify(&n, &self.project_name, &self.config.terminal.notify_sound)
+            }
             AppEvent::Log { generation, result } => {
                 if generation == self.log.generation {
                     match result {

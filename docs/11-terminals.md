@@ -16,6 +16,7 @@ For long-running programs such as `claude agents`:
 ```toml
 [terminal]
 commands = ["claude agents", "htop"]
+notify_sound = "Glass"     # a macOS system sound, a file, or "none"
 ```
 
 ## Terminal tool window
@@ -34,12 +35,13 @@ Programs ask the terminal for desktop notifications with escape sequences. Claud
 - Claude Code picks its kind of notification from `TERM_PROGRAM`. Programs in vista inherit it from the terminal vista runs in, so directly in Ghostty nothing needs configuring. Multiplexers such as herdr and tmux drop `TERM_PROGRAM`, and then Claude Code sends nothing on `auto`. Set `"preferredNotifChannel": "ghostty"` in `~/.claude/settings.json`.
 - Inside tmux the sequence is wrapped for tmux to hand on, which needs `set -g allow-passthrough on`.
 - herdr doesn't pass these sequences on. It shows its own notifications for the agents it sees in its panes, and an agent inside vista is hidden from it. So inside a herdr pane (`HERDR_ENV=1`), vista also runs `herdr notification show "<title> · <tab>" --body <text> --sound request`. The `herdr` it runs is `$HERDR_BIN_PATH`, or the one on `PATH`.
+- **A sound** (`[terminal] notify_sound`, `Glass` by default) plays for every notification, even with its tab on screen. Ghostty shows nothing for the tab you're looking at, and that is vista's whenever a background agent in `claude agents` needs input or finishes. Give a macOS system sound's name (`Glass`, `Ping`, `Hero`, … from `/System/Library/Sounds`), a sound file (`~/sounds/ding.mp3`), or `none`. It plays with `afplay`, or rings the terminal's bell where there is none. At most one sound plays per second.
 - Ghostty doesn't show a notification that comes from the tab you're looking at, with or without vista. To try one, run `sleep 5; printf '\e]777;notify;Test;hello\a'` in a vista terminal and switch to another app. Claude Code's "waiting for your input" comes about 60 s after its reply, if you haven't touched it.
 - Every notification passed on is logged at debug level (`VISTA_LOG=debug`), which helps when one doesn't show up.
 - A tab that isn't on screen when its program sends one is marked until you look at it. A terminal tab shows `● claude agents` instead of `▶`. A project shows `● name` when its Terminal tool window's shell sent the notification while another project or a terminal tab was on screen. The mark uses the look's `ui.warning` colour.
 
 ## Code and tests
 
-- `vista-tui/src/term_tab.rs` (PTY, reader thread, key and mouse encoding, picking notifications out of the output), `ui/term.rs`, `workspace.rs` (terminal tabs, marking tabs), `app.rs` (bottom terminal), `terminal.rs` (`notify`: the escape sequence, tmux wrapping, `herdr notification`), `ui/projects.rs` (the `●` mark).
-- Unit: xterm key encoding (Shift-Enter as `ESC CR`), mouse reporting only when the program asks, a real program round trip, which OSCs count as notifications (and their title and body), the herdr command.
-- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding, a notification reaching the outer terminal and marking a terminal tab or a project tab, a fake `herdr` getting it inside herdr, Shift-Enter arriving as `ESC CR`), `e2e_r1_tabs.rs` (dragging terminal tabs). The harness's `expect_output` waits for raw bytes vista writes, such as the passed-on notification.
+- `vista-tui/src/term_tab.rs` (PTY, reader thread, key and mouse encoding, picking notifications out of the output), `ui/term.rs`, `workspace.rs` (terminal tabs, marking tabs), `app.rs` (bottom terminal), `terminal.rs` (`notify`: the escape sequence, tmux wrapping, `herdr notification`, the sound), `ui/projects.rs` (the `●` mark).
+- Unit: xterm key encoding (Shift-Enter as `ESC CR`), mouse reporting only when the program asks, a real program round trip, which OSCs count as notifications (and their title and body), the herdr command, which file a `notify_sound` names.
+- E2e: `e2e_r1_terminal.rs` (run a command, type into it, exit and close, `>` shell, tool window focus and hiding, a notification reaching the outer terminal and marking a terminal tab or a project tab, a fake `herdr` getting it inside herdr, a fake player playing `notify_sound` (and not for `none`), Shift-Enter arriving as `ESC CR`), `e2e_r1_tabs.rs` (dragging terminal tabs). The harness's `expect_output` waits for raw bytes vista writes, such as the passed-on notification.

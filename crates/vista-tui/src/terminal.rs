@@ -47,23 +47,69 @@ pub fn set_title(title: &str) {
 /// Passes on a desktop notification a terminal tab's program (in tab or
 /// project `from`) asked for: its escape sequence to the terminal vista runs
 /// in and, inside herdr (which doesn't pass those on), to `herdr notification`.
-pub fn notify(n: &crate::term_tab::Notification, from: &str) {
+/// `sound` (`[terminal] notify_sound`) plays too: Ghostty shows nothing for
+/// the tab you're looking at, which is vista's when an agent elsewhere asks.
+pub fn notify(n: &crate::term_tab::Notification, from: &str, sound: &str) {
     tracing::debug!("notification from {from}: {:?} {:?}", n.title, n.body);
     pass_through(&n.seq);
     if let Some((bin, args)) = herdr_command(n, from, |k| std::env::var(k).ok()) {
-        // Off the UI thread; waited for so it doesn't linger as a zombie.
-        std::thread::spawn(move || {
-            let child = std::process::Command::new(bin)
-                .args(args)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-            if let Ok(mut child) = child {
-                let _ = child.wait();
-            }
+        run_detached(bin, args);
+    }
+    if !n.partial
+        && let Some(file) = sound_file(sound)
+        && sound_due(std::time::Instant::now())
+    {
+        // `VISTA_SOUND_PLAYER` is for tests; without afplay, the terminal's bell.
+        let player = std::env::var("VISTA_SOUND_PLAYER").unwrap_or_else(|_| "afplay".into());
+        if !run_detached(player, vec![file.display().to_string()]) {
+            pass_through(b"\x07");
+        }
+    }
+}
+
+/// Runs a command off the UI thread, waited for so it doesn't linger as a
+/// zombie. False when it can't be started.
+fn run_detached(bin: String, args: Vec<String>) -> bool {
+    let child = std::process::Command::new(bin)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// The file to play for `[terminal] notify_sound`: a macOS system sound by
+/// name, or a path; nothing for `none` or an empty setting.
+fn sound_file(sound: &str) -> Option<std::path::PathBuf> {
+    let sound = sound.trim();
+    if sound.is_empty() || sound.eq_ignore_ascii_case("none") {
+        return None;
+    }
+    if sound.contains('/') {
+        return Some(match sound.strip_prefix("~/") {
+            Some(rest) => std::path::PathBuf::from(std::env::var_os("HOME")?).join(rest),
+            None => sound.into(),
         });
     }
+    Some(format!("/System/Library/Sounds/{sound}.aiff").into())
+}
+
+/// At most one sound a second: agents finishing together make one sound.
+fn sound_due(now: std::time::Instant) -> bool {
+    static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if last.is_some_and(|t| now.duration_since(t) < std::time::Duration::from_secs(1)) {
+        return false;
+    }
+    *last = Some(now);
+    true
 }
 
 /// The `herdr notification show` command for `n` when vista runs in a herdr
@@ -204,6 +250,16 @@ mod tests {
             body: body.into(),
             partial,
         }
+    }
+
+    #[test]
+    fn notify_sound_names_a_system_sound_or_a_file() {
+        assert_eq!(sound_file("Glass"), Some("/System/Library/Sounds/Glass.aiff".into()));
+        assert_eq!(sound_file("/tmp/ding.mp3"), Some("/tmp/ding.mp3".into()));
+        assert_eq!(sound_file("none"), None);
+        assert_eq!(sound_file(" "), None);
+        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+        assert_eq!(sound_file("~/s/ding.mp3"), Some(home.join("s/ding.mp3")));
     }
 
     #[test]

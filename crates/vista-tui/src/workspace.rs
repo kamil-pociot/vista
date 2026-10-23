@@ -263,7 +263,7 @@ impl Workspace {
                 AppEvent::TermOutput(pending) => pending.store(false, std::sync::atomic::Ordering::SeqCst),
                 AppEvent::TermExited => self.terminals[ti].mark_exited(),
                 AppEvent::TermNotify(n) => {
-                    crate::terminal::notify(&n, &self.terminals[ti].title);
+                    crate::terminal::notify(&n, &self.terminals[ti].title, &self.config.terminal.notify_sound);
                     if self.terminal != Some(ti) {
                         self.terminals[ti].waiting = true;
                         self.refresh_bars();

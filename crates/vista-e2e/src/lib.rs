@@ -172,6 +172,8 @@ impl<'a> Launcher<'a> {
             // tmux, and don't reach a herdr the tests run in.
             ("TMUX".into(), String::new()),
             ("HERDR_ENV".into(), String::new()),
+            // Notification sounds stay silent.
+            ("VISTA_SOUND_PLAYER".into(), "true".into()),
             ("VISTA_KEYBOARD".into(), "legacy".into()),
             ("VISTA_IMAGE_PROTOCOL".into(), "halfblocks".into()),
             ("VISTA_THEME".into(), self.theme.clone()),

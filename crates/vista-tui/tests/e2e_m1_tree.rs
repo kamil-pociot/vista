@@ -177,15 +177,16 @@ fn typing_in_the_tree_searches_it() {
     let repo = Fixture::rust_project().build();
     let mut vista = Vista::launch(BIN, &repo).size(140, 36).start();
     vista.expect_text("ROADMAP.md");
-    vista.type_text("md");
-    vista.expect_text("⌕ md▏");
+    // `.md`: the root's random name (`vista-e2e-…`) can't match it.
+    vista.type_text(".md");
+    vista.expect_text("⌕ .md▏");
     vista.expect_text("2 matches");
-    // README.md first (the first match after the selection), its `md` marked.
+    // README.md first (the first match after the selection), its `.md` marked.
     let (row, col) = vista.expect_text_in("README.md", 0..40).position();
     vista.expect_text_in("README.md", 0..40).to_have_bg("ui.selection");
     let theme_match = vista.theme().color("ui.match");
     assert_eq!(
-        vista.bg_at(col + 7, row),
+        vista.bg_at(col + 6, row),
         Some(theme_match),
         "the matched letters stand out"
     );
@@ -198,18 +199,18 @@ fn typing_in_the_tree_searches_it() {
     // No match: the query turns red, the selection stays.
     vista.type_text("zz");
     vista.expect_text("no matches");
-    vista.expect_text("mdzz").to_have_fg("ui.error");
+    vista.expect_text(".mdzz").to_have_fg("ui.error");
     vista.press("backspace");
     vista.press("backspace");
     vista.expect_text("2 matches");
     // Enter opens it and ends the search.
     vista.press("enter");
     vista.expect_text("A sample project.");
-    vista.expect_no_text("⌕ md");
+    vista.expect_no_text("⌕ .md");
     // Esc ends a search without opening anything.
     vista.press("alt+1");
-    vista.type_text("carg");
-    vista.expect_text("⌕ carg▏");
+    vista.type_text("cargo.");
+    vista.expect_text("⌕ cargo.▏");
     vista.press("esc");
-    vista.expect_no_text("⌕ carg");
+    vista.expect_no_text("⌕ cargo.");
 }

@@ -117,12 +117,16 @@ pub struct TerminalConfig {
     /// Commands offered in the Projects popup (Ctrl-O); any other runs as
     /// `>command`. They run through your login shell in the project folder.
     pub commands: Vec<String>,
+    /// Played when a program asks for a notification: a macOS system sound
+    /// (`Glass`, `Ping`, …), a sound file, or `none`.
+    pub notify_sound: String,
 }
 
 impl Default for TerminalConfig {
     fn default() -> Self {
         Self {
             commands: vec!["claude agents".into()],
+            notify_sound: "Glass".into(),
         }
     }
 }
