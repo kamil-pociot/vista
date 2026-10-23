@@ -11,11 +11,17 @@ vista --probe         check what your terminal supports (images, keyboard)
 
 ## Install
 
+With Homebrew (macOS and Linux; the formula lives in this repository):
+
 ```sh
-cargo install --path crates/vista-tui      # from a checkout
+brew tap kamil-pociot/term-vista https://github.com/kamil-pociot/term-vista
+brew install kamil-pociot/term-vista/vista
+brew install neovim                        # optional: editing inside vista
 ```
 
-Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise `$EDITOR` is used). Release binaries for macOS and Linux are built by `.github/workflows/release.yml` on `v*` tags; `packaging/homebrew/vista.rb` is a formula template for a tap.
+Or from a checkout: `cargo install --path crates/vista-tui`.
+
+Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise `$EDITOR` is used). Release binaries for macOS (Apple Silicon and Intel) and Linux are built by `.github/workflows/release.yml` on `v*` tags; `Formula/vista.rb` installs them (see [Releasing](#releasing)).
 
 Terminal: any truecolor terminal works. Images use the kitty graphics protocol (Ghostty, kitty, WezTerm) and fall back to coloured half-blocks. On macOS, set Ghostty's `macos-option-as-alt = true` so `Alt-…` shortcuts reach vista.
 
@@ -118,3 +124,9 @@ End-to-end tests run the real binary in a pseudo-terminal (`crates/vista-e2e`): 
 | `vista-nvim` | embedded Neovim (msgpack-RPC, line grid) |
 | `vista-tui` | the app (`vista` binary) |
 | `vista-e2e` | PTY test harness and git fixtures |
+
+## Releasing
+
+1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), commit.
+2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`. The Release workflow builds the binaries and attaches them, with their checksums, to a GitHub release.
+3. When it's done: `packaging/update-formula.sh 0.2.0`, commit `Formula/vista.rb` and push. `brew upgrade vista` picks it up.
