@@ -169,6 +169,9 @@ fn refresh_action_rescans() {
     let repo = Fixture::rust_project().build();
     let mut vista = Vista::launch(BIN, &repo).env("VISTA_NO_WATCH", "1").start();
     vista.expect_text("README.md");
+    // Startup re-reads the tree once (files created before watching began);
+    // the branch shows after that. Only then is the file really late.
+    vista.expect_text("⎇ main");
     repo.write("LATE.txt", "x");
     vista.settle(std::time::Duration::from_millis(300));
     vista.expect_no_text("LATE.txt");
