@@ -45,6 +45,9 @@ pub struct Workspace {
     look: Option<String>,
     confirm: Option<(Confirm, Instant)>,
     pub should_quit: bool,
+    /// Remember which projects are open (`projects.open` / `active`); off
+    /// for `--only`, where each vista keeps to its own project.
+    pub persist_open: bool,
     /// The project tab being dragged to a new place.
     dragging: Option<TabTarget>,
     /// The mouse column during that drag (its direction decides moves).
@@ -86,6 +89,7 @@ impl Workspace {
             look: None,
             confirm: None,
             should_quit: false,
+            persist_open: true,
             dragging: None,
             drag_col: 0,
             top_hits: Vec::new(),
@@ -212,26 +216,39 @@ impl Workspace {
         }
     }
 
-    /// Saves which projects are open (and the recent ones).
+    /// Saves which projects are open (and the recent ones; only those with
+    /// `--only`).
     fn persist(&mut self) {
         let open: Vec<PathBuf> = self.projects.iter().map(|p| p.app.root.clone()).collect();
         let active = open.get(self.active).cloned();
-        let result = {
-            let mut ui = self.ui.borrow_mut();
-            let before = ui.clone();
+        let persist_open = self.persist_open;
+        // Into the file as it is now: other vistas keep their own settings
+        // and recent projects.
+        let update = |ui: &mut UiState| {
             let mut recent = open.clone();
             recent.extend(ui.projects.recent.iter().cloned());
             let mut seen = std::collections::HashSet::new();
             recent.retain(|r| seen.insert(r.clone()));
             recent.truncate(MAX_RECENT);
-            ui.projects.open = open;
-            ui.projects.active = active;
+            if persist_open {
+                ui.projects.open = open.clone();
+                ui.projects.active = active.clone();
+            }
             ui.projects.recent = recent;
-            (*ui != before).then(|| ui.save(&self.ui_path))
         };
-        if let Some(Err(e)) = result {
-            self.active_app()
-                .notify(format!("cannot save settings: {e}"), MsgKind::Error);
+        let unchanged = {
+            let mut copy = self.ui.borrow().clone();
+            update(&mut copy);
+            copy == *self.ui.borrow()
+        };
+        if unchanged {
+            return;
+        }
+        match UiState::update(&self.ui_path, update) {
+            Ok(merged) => *self.ui.borrow_mut() = merged,
+            Err(e) => self
+                .active_app()
+                .notify(format!("cannot save settings: {e}"), MsgKind::Error),
         }
     }
 

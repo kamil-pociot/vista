@@ -409,6 +409,10 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 ### Linux CI ✅
 - [x] Neovim 0.10+ is required: an older one (Ubuntu's apt 0.9.5, which made the Linux CI fail: no change reports, wrong diff layout) is refused with a reason and `$EDITOR` is used; tests skip their Neovim cases. CI installs Neovim 0.11 from its release on Linux.
 
+### herdr-vista support (0.3.0)
+- [x] `vista --only [PATH]`: just that project; `projects.open` / `active` aren't touched (recent still learns it).
+- [x] Several vistas share `state.toml`: every save is read-modify-write under a lock on `state.toml.lock`, with a per-process temp file; each instance takes the merged result. Rust 1.89+ (`File::lock`).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

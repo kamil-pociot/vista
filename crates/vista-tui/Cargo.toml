@@ -32,3 +32,4 @@ image = "0.25"
 vista-e2e.workspace = true
 insta.workspace = true
 tempfile.workspace = true
+toml.workspace = true

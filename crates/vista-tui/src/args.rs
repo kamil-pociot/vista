@@ -19,6 +19,9 @@ pub struct Args {
     pub command: Command,
     pub path: Option<PathBuf>,
     pub theme: Option<String>,
+    /// `--only`: just this project (no restore), and don't remember which
+    /// projects are open (several vistas, one per repository, as herdr runs them).
+    pub only: bool,
 }
 
 pub const USAGE: &str = "\
@@ -28,6 +31,7 @@ USAGE:
     vista [PATH] [OPTIONS]
 
 OPTIONS:
+    --only            Open just this project: don't reopen last time's, or remember which are open
     --theme <ID>      Use a look (darcula, quiet, paper, or a file in ~/.config/vista/themes)
     --list-themes     List available looks
     --probe           Report terminal capabilities (images, keyboard protocol)
@@ -42,6 +46,7 @@ impl Args {
             command: Command::Run,
             path: None,
             theme: None,
+            only: false,
         };
         let mut it = args.into_iter();
         while let Some(a) = it.next() {
@@ -51,6 +56,7 @@ impl Args {
                 "--probe" => out.command = Command::Probe { image: false },
                 "--probe-image" => out.command = Command::Probe { image: true },
                 "--list-themes" => out.command = Command::ListThemes,
+                "--only" => out.only = true,
                 "--theme" => out.theme = Some(it.next().ok_or("--theme needs a value")?),
                 s if s.starts_with("--theme=") => out.theme = Some(s["--theme=".len()..].to_string()),
                 s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option `{s}`")),
@@ -81,6 +87,17 @@ mod tests {
         assert_eq!(a.path, Some(PathBuf::from("src")));
         assert_eq!(a.theme.as_deref(), Some("quiet"));
         assert_eq!(parse(&["--theme=paper"]).unwrap().theme.as_deref(), Some("paper"));
+    }
+
+    #[test]
+    fn parses_only_with_and_without_a_path() {
+        let a = parse(&["--only", "src"]).unwrap();
+        assert!(a.only);
+        assert_eq!(a.path, Some(PathBuf::from("src")));
+        let a = parse(&["--only"]).unwrap();
+        assert!(a.only && a.path.is_none());
+        assert!(!parse(&["src"]).unwrap().only);
+        assert!(parse(&["--theme", "nord", "--only", "x"]).unwrap().only);
     }
 
     #[test]

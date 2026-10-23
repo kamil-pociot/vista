@@ -171,16 +171,44 @@ impl UiState {
         }
     }
 
-    /// Writes the settings (atomically: a temp file, then a rename).
-    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+    /// Applies `change` to the file as it is now and writes it back, under an
+    /// exclusive lock on `state.toml.lock`: several vistas share the file,
+    /// and saving a whole in-memory copy would undo what the others saved.
+    /// Returns the merged settings (this instance's change plus everyone
+    /// else's).
+    pub fn update(path: &Path, change: impl FnOnce(&mut UiState)) -> std::io::Result<UiState> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
+        let mut lock_path = path.as_os_str().to_owned();
+        lock_path.push(".lock");
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)?;
+        // Released when `lock` is dropped (also if writing fails).
+        lock.lock()?;
+        let mut state = UiState::load(path).0;
+        change(&mut state);
+        state.write(path)?;
+        Ok(state)
+    }
+
+    /// Replaces the whole file with these settings (tests, a reset); the app
+    /// saves with [`UiState::update`].
+    pub fn save(&self, path: &Path) -> std::io::Result<()> {
+        Self::update(path, |s| *s = self.clone()).map(|_| ())
+    }
+
+    /// Writes atomically: a temp file of this process, then a rename.
+    fn write(&self, path: &Path) -> std::io::Result<()> {
         let text = format!(
             "# View settings vista remembers (written by vista; delete to reset).\n{}",
             toml::to_string(self).map_err(std::io::Error::other)?
         );
-        let tmp = path.with_extension("toml.tmp");
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(format!(".{}.tmp", std::process::id()));
         std::fs::write(&tmp, text)?;
         std::fs::rename(&tmp, path)
     }
@@ -216,6 +244,56 @@ mod tests {
         assert!(!text.contains("wrap_code"), "unset values stay out: {text}");
         assert!(!text.contains("[tree]"), "empty sections stay out: {text}");
         assert_eq!(UiState::load(&path), (s, None));
+    }
+
+    #[test]
+    fn updates_keep_what_other_instances_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        // Two vistas loaded the same file, then each changes one setting.
+        let (a, _) = UiState::load(&path);
+        let (b, _) = UiState::load(&path);
+        assert_eq!(a, b);
+        let after_a = UiState::update(&path, |s| s.viewer.line_numbers = Some(false)).unwrap();
+        let after_b = UiState::update(&path, |s| s.diff.unified = Some(true)).unwrap();
+        assert_eq!(after_a.viewer.line_numbers, Some(false));
+        // The second writer sees (and keeps) the first one's setting.
+        assert_eq!(after_b.viewer.line_numbers, Some(false));
+        assert_eq!(after_b.diff.unified, Some(true));
+        assert_eq!(UiState::load(&path), (after_b, None));
+        // Recent projects from two writers, most recent first.
+        for p in ["/one", "/two"] {
+            UiState::update(&path, |s| s.projects.recent.insert(0, PathBuf::from(p))).unwrap();
+        }
+        let recent = UiState::load(&path).0.projects.recent;
+        assert_eq!(recent, [PathBuf::from("/two"), PathBuf::from("/one")]);
+        // Each process writes its own temp file, and leaves none behind.
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(left.is_empty(), "{left:?}");
+    }
+
+    #[test]
+    fn many_writers_at_once_lose_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        std::thread::scope(|scope| {
+            for i in 0..16 {
+                let path = &path;
+                scope.spawn(move || {
+                    for k in 0..10 {
+                        let p = PathBuf::from(format!("/w{i}/{k}"));
+                        UiState::update(path, |s| s.projects.recent.push(p)).unwrap();
+                        // The file parses at every moment.
+                        assert_eq!(UiState::load(path).1, None);
+                    }
+                });
+            }
+        });
+        assert_eq!(UiState::load(&path).0.projects.recent.len(), 160, "no update lost");
     }
 
     #[test]

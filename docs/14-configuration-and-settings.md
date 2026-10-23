@@ -5,6 +5,7 @@
 ```
 vista [PATH]          open a folder (default: .)
 vista path/to/file    open a file, with its folder as the project
+vista --only [PATH]   just this project: don't reopen last time's, or remember which are open
 vista --theme quiet   pick a look
 vista --probe         report TERM, TERM_PROGRAM, COLORTERM, TMUX and kitty graphics/keyboard support
 vista --probe-image   draw a test gradient with the image protocol
@@ -53,7 +54,9 @@ Settings changed in the app are saved to `state.toml` next to `config.toml` and 
 - open projects and their order;
 - the look picked with `Ctrl-T`.
 
-Until a setting is changed, its default comes from `config.toml` (or vista's built-in). Delete `state.toml` to reset. Recent files (per project) and the Find in Files history live in vista's cache folder, not in `state.toml`.
+Until a setting is changed, its default comes from `config.toml` (or vista's built-in). Delete `state.toml` to reset.
+
+**Several vistas at once** (one per repository, as herdr's vista plugin runs them) share `state.toml` safely. Every save takes an exclusive lock on `state.toml.lock`, reads the file as it is now, applies just the change being made, writes a temp file of its own (`state.toml.<pid>.tmp`) and renames it into place. One vista's change is never undone by another saving, and each takes the merged result, so it also sees what the others saved. Settings another vista changes don't reach a running one until it next saves something. Recent files (per project) and the Find in Files history live in vista's cache folder, not in `state.toml`.
 
 ## Code and tests
 

@@ -52,9 +52,14 @@ fn real_main() -> Result<()> {
     } else {
         (path, None)
     };
-    // The projects open last time come back, plus this one (shown).
+    // The projects open last time come back, plus this one (shown); with
+    // `--only`, just this one.
     let mut ws = Workspace::new(config, paths, args.theme);
-    ws.restore();
+    if args.only {
+        ws.persist_open = false;
+    } else {
+        ws.restore();
+    }
     let i = ws.open(&root).context("starting vista")?;
     ws.active = i;
     if let Some(f) = file {

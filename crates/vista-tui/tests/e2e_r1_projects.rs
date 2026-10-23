@@ -199,3 +199,56 @@ fn a_long_folder_list_scrolls_to_the_selection() {
     vista.press("enter");
     vista.expect_text_in("thirty.txt", 0..40);
 }
+
+/// `--only` (one vista per repository, as herdr runs them): just this
+/// project, and the open projects remembered for a plain `vista` stay as
+/// they were. Recent projects still learn this one.
+#[test]
+fn only_opens_one_project_and_leaves_the_remembered_ones() {
+    let a = project("alpha.txt", "in alpha\n");
+    let (b, c, d) = (
+        project("b.txt", "b\n"),
+        project("c.txt", "c\n"),
+        project("d.txt", "d\n"),
+    );
+    let canon = |r: &Repo| r.path().canonicalize().unwrap();
+    let state = a.home().join(".config/vista/state.toml");
+    std::fs::create_dir_all(state.parent().unwrap()).unwrap();
+    std::fs::write(
+        &state,
+        format!(
+            "[projects]\nopen = [{:?}, {:?}]\nactive = {:?}\n",
+            canon(&b),
+            canon(&c),
+            canon(&b)
+        ),
+    )
+    .unwrap();
+    let mut vista = Vista::launch(BIN, &a).arg("--only").size(160, 40).start();
+    vista.expect_text_in("alpha.txt", 0..40);
+    vista.expect_text(&format!(" {} ", name(&a)));
+    // No other project tab (one project: no ×).
+    vista.settle(std::time::Duration::from_millis(300));
+    vista.expect_no_text(&format!(" {} ", name(&b)));
+    vista.expect_no_text(&format!(" {} ", name(&c)));
+    // A project added here isn't remembered as open either.
+    add(&mut vista, &d);
+    vista.expect_text_in("d.txt", 0..40);
+    vista.press("ctrl+q");
+    vista.press("ctrl+q");
+    vista.expect_exit();
+    let saved: toml::Table = std::fs::read_to_string(&state).unwrap().parse().unwrap();
+    let projects = saved["projects"].as_table().unwrap();
+    let list = |k: &str| -> Vec<String> {
+        projects[k]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    let s = |r: &Repo| canon(r).display().to_string();
+    assert_eq!(list("open"), [s(&b), s(&c)]);
+    assert_eq!(projects["active"].as_str(), Some(s(&b).as_str()));
+    assert_eq!(&list("recent")[..2], [s(&a), s(&d)]);
+}

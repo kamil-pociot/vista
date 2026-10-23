@@ -155,3 +155,36 @@ fn preferences_open_the_settings_file() {
         vista.expect_text("vista settings. Changes apply when vista starts again.");
     }
 }
+
+/// Several vistas (one per repository, as herdr runs them) share
+/// `state.toml`: each saves its change into the file as it is now, so
+/// neither undoes the other's.
+#[test]
+fn two_vistas_keep_each_others_settings() {
+    let a = repo();
+    let b = Fixture::git().file("long.rs", "fn main() {}\n").commit("init").build();
+    let shared = a.home().join("shared-config");
+    std::fs::create_dir_all(&shared).unwrap();
+    let dir = shared.display().to_string();
+    let mut one = Vista::launch(BIN, &a)
+        .env("VISTA_CONFIG_DIR", &dir)
+        .open("README.md")
+        .start();
+    let mut two = Vista::launch(BIN, &b)
+        .env("VISTA_CONFIG_DIR", &dir)
+        .open("long.rs")
+        .start();
+    one.expect_text("Para one.");
+    two.expect_text("fn main");
+    one.press("L");
+    one.expect_text("Line numbers off");
+    two.press("w");
+    two.expect_text("Long lines wrap (code");
+    one.press("ctrl+q");
+    one.expect_exit();
+    two.press("ctrl+q");
+    two.expect_exit();
+    let state = std::fs::read_to_string(shared.join("state.toml")).unwrap();
+    assert!(state.contains("line_numbers = false"), "{state}");
+    assert!(state.contains("wrap_code = true"), "{state}");
+}

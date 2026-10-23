@@ -1477,16 +1477,22 @@ impl App {
         }
     }
 
-    /// Changes the remembered settings and saves them if anything changed.
-    fn remember(&mut self, change: impl FnOnce(&mut vista_core::UiState)) {
-        let saved = {
+    /// Changes the remembered settings and saves them if anything changed:
+    /// the change is applied to `state.toml` as it is now (other vistas may
+    /// have saved meanwhile), and this instance takes the merged result.
+    fn remember(&mut self, change: impl Fn(&mut vista_core::UiState)) {
+        let changed = {
             let mut ui = self.ui.borrow_mut();
             let before = ui.clone();
             change(&mut ui);
-            (*ui != before).then(|| ui.save(&self.ui_path))
+            *ui != before
         };
-        if let Some(Err(e)) = saved {
-            self.notify(format!("cannot save settings: {e}"), MsgKind::Error);
+        if !changed {
+            return;
+        }
+        match vista_core::UiState::update(&self.ui_path, &change) {
+            Ok(merged) => *self.ui.borrow_mut() = merged,
+            Err(e) => self.notify(format!("cannot save settings: {e}"), MsgKind::Error),
         }
     }
 
@@ -1977,9 +1983,9 @@ impl App {
         // Saved even if unchanged: a drag sets the width as it goes and
         // saves once, on release.
         if save {
-            let result = self.ui.borrow().save(&self.ui_path);
-            if let Err(e) = result {
-                self.notify(format!("cannot save settings: {e}"), MsgKind::Error);
+            match vista_core::UiState::update(&self.ui_path, |s| s.layout.left_width = Some(width)) {
+                Ok(merged) => *self.ui.borrow_mut() = merged,
+                Err(e) => self.notify(format!("cannot save settings: {e}"), MsgKind::Error),
             }
         }
     }
@@ -2463,7 +2469,7 @@ impl App {
         } else {
             next.clone()
         };
-        self.remember(|s| s.look = Some(next));
+        self.remember(|s| s.look = Some(next.clone()));
         if let Err(e) = self.set_theme(&look) {
             self.notify(
                 format!("herdr's theme \"{look}\" has no vista look ({e})"),
@@ -2799,7 +2805,7 @@ impl App {
         let next = ids[(pos + 1) % ids.len()].clone();
         match self.set_theme(&next) {
             Ok(()) => {
-                self.remember(|s| s.look = Some(next));
+                self.remember(|s| s.look = Some(next.clone()));
                 self.notify(format!("Look: {}", self.theme.name), MsgKind::Info);
             }
             Err(e) => self.notify(e, MsgKind::Error),
