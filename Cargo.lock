@@ -3434,6 +3434,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "tempfile",
+ "toml",
  "tracing",
  "tracing-subscriber",
  "unicode-width",

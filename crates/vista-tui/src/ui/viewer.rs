@@ -34,9 +34,10 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let name = match &t.diff {
-                Some(spec) => match &spec.revs {
-                    Some(r) => format!("Δ {name} @{}", r.short),
-                    None => format!("Δ {name}"),
+                Some(spec) => match (&spec.revs, &spec.base) {
+                    (_, Some(b)) => format!("Δ {name} ⇠ {}", b.short),
+                    (Some(r), None) => format!("Δ {name} @{}", r.short),
+                    (None, None) => format!("Δ {name}"),
                 },
                 None => name,
             };
@@ -218,8 +219,8 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             t,
         ),
         Content::Diff(_) => {
-            // History diffs are read-only: no picking changes for the commit.
-            let history = tab.diff.as_ref().is_some_and(|d| d.revs.is_some());
+            // History and review diffs are read-only: no picking changes for the commit.
+            let history = tab.diff.as_ref().is_some_and(|d| d.read_only());
             let commit = (!history).then_some(commit);
             crate::ui::diff::draw(f, area, tab, t, focused, &root, commit)
         }

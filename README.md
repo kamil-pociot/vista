@@ -21,7 +21,7 @@ brew install neovim                        # optional: editing inside vista
 
 Or from a checkout: `cargo install --path crates/vista-tui`.
 
-`vista --only [PATH]` opens just that project, without reopening last time's or remembering which are open (handy with one vista per repository).
+`vista --only [PATH]` opens just that project, without reopening last time's or remembering which are open (handy with one vista per repository). `vista --review <rev> [PATH]` opens the Review panel on everything changed since `rev`.
 
 Requirements: `git` on `PATH`. Optional: `nvim` 0.10+ for editing (otherwise, or with an older one, `$EDITOR` is used). Release binaries for macOS (Apple Silicon and Intel) and Linux are built by `.github/workflows/release.yml` on `v*` tags; `Formula/vista.rb` installs them (see [Releasing](#releasing)).
 
@@ -31,7 +31,7 @@ Terminal: any truecolor terminal works. Images use the kitty graphics protocol (
 
 | Where | Keys |
 |---|---|
-| Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-2` Commit · `Alt-3` Find results · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
+| Anywhere | `Ctrl-O` projects · `Alt-.`/`Alt-,` next/previous project · `Ctrl-P` Go to File · `Ctrl-F` Find in Files · `Ctrl-E` recent files · `Alt-1` Project · `Alt-2` Commit · `Alt-3` Find results · `Alt-R` Review · `Ctrl-K` commit · `Tab` next panel · `?` all shortcuts · `q` quit |
 | Project tree | drag the divider (or `Ctrl-Shift-←`/`→`) to resize; the width is remembered · `⌖` in the header (or `Ctrl-L`) shows the opened file in the tree · arrows, `Enter` or double-click open, `Alt-Enter` edit in Neovim, `Alt-I` show/hide ignored, `-` collapse all, `Ctrl-R` refresh · type to speed-search (IntelliJ): `↑`/`↓` step through matches, `Enter` opens, `Esc` ends |
 | Viewer | select text: drag with the mouse, double-click a word, `Shift-↑/↓` lines, `Ctrl-A` all; releasing the mouse copies (`[mouse] copy_on_select`), or `Ctrl-C` / `Cmd-C` / `y`, `Esc` clears · `/` find in file (`n`/`N`), `Ctrl-G` go to line, `w` wrap ⇄ scroll sideways (`←`/`→`, shift+wheel, trackpad; in Markdown: wrapped ⇄ full-width tables), `m` Markdown raw/rendered, `d` diff vs HEAD, `]`/`[` next/previous change (at the last one, press again for the next changed file), `e` edit, `Ctrl-L` reveal in tree |
 | Editor (Neovim) | everything goes to Neovim; `Ctrl-\` back to the tree; `:w` saves and refreshes git colours; long lines wrap if the viewer wrapped them, and `:set wrap` / `:set nowrap` carry back to the viewer |
@@ -80,6 +80,10 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 ### Git history
 
 `Alt-9` opens the Git window at the bottom (like IntelliJ's Log): commits newest first (hash, branch/tag names, subject, author, date) and, on the right, the files the selected commit changed (`A`/`M`/`D`/`R`, with the old name for renames). `Tab`/`←→` switch lists, `Enter` (or double-click) on a file opens its change as a **read-only diff** of the commit against its parent (`Δ name @abc1234`): same viewer, no checkboxes, `]`/`[` and `J`/`K` step through that commit's files, `e` opens the current file. `Alt-H` shows the history of the open file (following renames); `a` there goes back to all commits, `r` reloads, `Esc` hides the window.
+
+### Review
+
+`vista --review <rev>` (say, `--review main` on a feature branch) shows the **Review** panel on the left: every file changed since `rev`, committed or not, plus new files, under `Review · 3 files since abc1234 · 1 commit`. `Enter` opens a file as a read-only diff, base ⇄ working tree (`Δ name ⇠ abc1234`); `]`/`[` and `J`/`K` step through the review's files. The list and diffs follow changes on disk; the base stays. `Esc` goes back to the tree, `Alt-R` brings the review back. A base that's `HEAD` opens the Commit window instead ([docs](docs/20-review.md)).
 
 ### Preferences
 

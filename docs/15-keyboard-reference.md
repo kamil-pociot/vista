@@ -14,6 +14,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Alt-1` / `Alt-2` / `Alt-3` | Project / Commit / Find tool window |
 | `Alt-9` / `Alt-T` | Git / Terminal tool window |
 | `Alt-H` | history of the open file |
+| `Alt-R` | Review panel ([20 · Review](20-review.md)) |
 | `Ctrl-K` | commit |
 | `Tab` / `Shift-Tab` | next / previous panel |
 | `Alt-←` / `Alt-→` | previous / next file tab |

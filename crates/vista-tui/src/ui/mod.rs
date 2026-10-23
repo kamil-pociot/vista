@@ -11,6 +11,7 @@ pub mod log;
 pub mod prefs;
 pub mod project;
 pub mod projects;
+pub mod review;
 pub mod term;
 pub mod viewer;
 
@@ -53,6 +54,8 @@ pub struct Areas {
     pub reveal_button: Option<Rect>,
     /// The entry list of the Projects popup.
     pub projects_list: Option<Rect>,
+    /// The Review panel's list.
+    pub review_list: Option<Rect>,
     /// The Git window's commit and file lists.
     pub log_commits: Option<Rect>,
     /// The Terminal tool window's screen.
@@ -116,6 +119,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
             commit_message: None,
             reveal_button: None,
             projects_list: None,
+            review_list: None,
             log_commits: None,
             log_files: None,
             shell: None,
@@ -161,6 +165,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
         commit_message: None,
         reveal_button: None,
         projects_list: None,
+        review_list: None,
         log_commits: None,
         log_files: None,
         shell: None,
@@ -178,6 +183,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     // Regions recorded while drawing (cleared first, kept at the end).
     app.areas.commit_list = None;
     app.areas.commit_message = None;
+    app.areas.review_list = None;
 
     top_bar(f, areas.top, app);
     if let Some(rail) = areas.rail {
@@ -251,7 +257,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     app.buttons = click::take();
     let (tabs, viewer_area, goto_list) = (app.areas.tabs, app.areas.viewer, app.areas.goto_list);
     let (find_list, find_window) = (app.areas.find_list, app.areas.find_window);
-    let (commit_list, commit_message) = (app.areas.commit_list, app.areas.commit_message);
+    let (commit_list, commit_message, review_list) =
+        (app.areas.commit_list, app.areas.commit_message, app.areas.review_list);
     let (reveal_button, projects_list) = (app.areas.reveal_button, app.areas.projects_list);
     let (log_commits, log_files, shell) = (app.areas.log_commits, app.areas.log_files, app.areas.shell);
     app.areas = Areas {
@@ -262,6 +269,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         find_window,
         commit_list,
         commit_message,
+        review_list,
         reveal_button,
         projects_list,
         log_commits,
@@ -326,6 +334,10 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
             format!("{}: Commit", app.keymap.tool_number(Action::ToggleCommit)),
             "ui.panel.alt",
         ),
+        Some(LeftPanel::Review) => (
+            format!("{}: Review", app.keymap.tool_number(Action::ToggleReview)),
+            "ui.panel.alt",
+        ),
         _ => (
             format!("{}: Project", app.keymap.tool_number(Action::ToggleProject)),
             "ui.panel.alt",
@@ -339,6 +351,7 @@ fn left_panel(f: &mut Frame, area: Rect, app: &mut App) -> Rect {
     match app.left {
         Some(LeftPanel::Project) => project::draw(f, inner, app),
         Some(LeftPanel::Commit) => commit::draw(f, inner, app),
+        Some(LeftPanel::Review) => review::draw(f, inner, app),
         None => {}
     }
     inner

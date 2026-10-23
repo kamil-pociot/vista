@@ -6,6 +6,8 @@
 vista [PATH]          open a folder (default: .)
 vista path/to/file    open a file, with its folder as the project
 vista --only [PATH]   just this project: don't reopen last time's, or remember which are open
+vista --review <REV> [--review-label TEXT]
+                      the Review panel: what changed since REV (docs/20-review.md)
 vista --theme quiet   pick a look
 vista --probe         report TERM, TERM_PROGRAM, COLORTERM, TMUX and kitty graphics/keyboard support
 vista --probe-image   draw a test gradient with the image protocol

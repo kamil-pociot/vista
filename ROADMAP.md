@@ -412,6 +412,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 ### herdr-vista support (0.3.0)
 - [x] `vista --only [PATH]`: just that project; `projects.open` / `active` aren't touched (recent still learns it).
 - [x] Several vistas share `state.toml`: every save is read-modify-write under a lock on `state.toml.lock`, with a per-process temp file; each instance takes the merged result. Rust 1.89+ (`File::lock`).
+- [x] Review panel (`vista --review <rev>`, `--review-label`, `Alt-R`): everything changed since a base (committed, uncommitted, untracked), each a read-only diff base ⇄ working tree; refreshed as files change; a `HEAD` base opens the Commit window.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

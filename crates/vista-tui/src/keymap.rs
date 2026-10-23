@@ -43,6 +43,7 @@ pub enum Action {
     NextOccurrence,
     PrevOccurrence,
     OpenSettings,
+    ToggleReview,
 }
 
 impl Action {
@@ -82,6 +83,7 @@ impl Action {
         Action::NextOccurrence,
         Action::PrevOccurrence,
         Action::OpenSettings,
+        Action::ToggleReview,
     ];
 
     pub fn name(self) -> &'static str {
@@ -119,6 +121,7 @@ impl Action {
             Action::CollapseAll => "collapse-all",
             Action::CycleTheme => "cycle-theme",
             Action::OpenSettings => "settings",
+            Action::ToggleReview => "review",
             Action::NextOccurrence => "next-occurrence",
             Action::PrevOccurrence => "prev-occurrence",
         }
@@ -163,6 +166,7 @@ impl Action {
             Action::CollapseAll => "Collapse all folders",
             Action::CycleTheme => "Switch to next look",
             Action::OpenSettings => "Preferences",
+            Action::ToggleReview => "Review panel (what changed since a base: vista --review)",
             Action::NextOccurrence => "Next Find result",
             Action::PrevOccurrence => "Previous Find result",
         }
@@ -346,6 +350,7 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("ctrl+t", Action::CycleTheme),
     // IntelliJ / macOS settings are Cmd-, (Ghostty keeps that for its own).
     ("ctrl+,", Action::OpenSettings),
+    ("alt+r", Action::ToggleReview),
     ("ctrl+alt+down", Action::NextOccurrence),
     ("ctrl+alt+up", Action::PrevOccurrence),
 ];

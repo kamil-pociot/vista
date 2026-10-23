@@ -7,6 +7,7 @@
 
 pub mod cmd;
 pub mod log;
+pub mod review;
 pub mod status;
 pub mod write;
 

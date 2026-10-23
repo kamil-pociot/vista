@@ -22,6 +22,10 @@ pub struct Args {
     /// `--only`: just this project (no restore), and don't remember which
     /// projects are open (several vistas, one per repository, as herdr runs them).
     pub only: bool,
+    /// `--review <rev>`: open the Review panel on what changed since `rev`.
+    pub review: Option<String>,
+    /// `--review-label <text>`: what's being reviewed, shown in the panel.
+    pub review_label: Option<String>,
 }
 
 pub const USAGE: &str = "\
@@ -32,6 +36,9 @@ USAGE:
 
 OPTIONS:
     --only            Open just this project: don't reopen last time's, or remember which are open
+    --review <REV>    Review what changed since REV (committed, uncommitted, untracked)
+    --review-label <TEXT>
+                      What's being reviewed, shown in the Review panel
     --theme <ID>      Use a look (darcula, quiet, paper, or a file in ~/.config/vista/themes)
     --list-themes     List available looks
     --probe           Report terminal capabilities (images, keyboard protocol)
@@ -47,6 +54,8 @@ impl Args {
             path: None,
             theme: None,
             only: false,
+            review: None,
+            review_label: None,
         };
         let mut it = args.into_iter();
         while let Some(a) = it.next() {
@@ -57,6 +66,8 @@ impl Args {
                 "--probe-image" => out.command = Command::Probe { image: true },
                 "--list-themes" => out.command = Command::ListThemes,
                 "--only" => out.only = true,
+                "--review" => out.review = Some(it.next().ok_or("--review needs a revision")?),
+                "--review-label" => out.review_label = Some(it.next().ok_or("--review-label needs a value")?),
                 "--theme" => out.theme = Some(it.next().ok_or("--theme needs a value")?),
                 s if s.starts_with("--theme=") => out.theme = Some(s["--theme=".len()..].to_string()),
                 s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option `{s}`")),
@@ -98,6 +109,16 @@ mod tests {
         assert!(a.only && a.path.is_none());
         assert!(!parse(&["src"]).unwrap().only);
         assert!(parse(&["--theme", "nord", "--only", "x"]).unwrap().only);
+    }
+
+    #[test]
+    fn parses_review_and_its_label() {
+        let a = parse(&["--only", "--review", "abc123", "--review-label", "fix auth", "repo"]).unwrap();
+        assert_eq!(a.review.as_deref(), Some("abc123"));
+        assert_eq!(a.review_label.as_deref(), Some("fix auth"));
+        assert_eq!(a.path, Some(PathBuf::from("repo")));
+        assert!(parse(&["--review"]).is_err());
+        assert!(parse(&["--review-label"]).is_err());
     }
 
     #[test]

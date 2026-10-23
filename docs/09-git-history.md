@@ -27,3 +27,5 @@
 - `vista-git/src/log.rs` (`git log` with a field-separated format, `diff-tree -r -M --name-status -z`, content at any revision), `vista-tui/src/log.rs`, `ui/log.rs`, `diffview.rs` (revision pairs).
 - Unit: log and name-status parsing, including renames.
 - E2e: `e2e_r1_history.rs` (commit list, files, read-only diff, file history across a rename).
+
+See also: [20 · Review](20-review.md) (everything changed since a base, committed or not).

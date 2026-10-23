@@ -62,6 +62,11 @@ pub enum AppEvent {
     TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
     /// A terminal tab's program ended.
     TermExited,
+    /// The Review panel's list, refreshed (`generation` drops stale ones).
+    Review {
+        generation: u64,
+        result: Result<vista_git::review::Review, String>,
+    },
     /// The commit log (Git window) loaded.
     Log {
         generation: u64,

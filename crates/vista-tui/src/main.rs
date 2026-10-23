@@ -65,6 +65,17 @@ fn real_main() -> Result<()> {
     if let Some(f) = file {
         ws.active_app().open_file(&f);
     }
+    if let Some(rev) = &args.review {
+        // Worked out before the UI starts; a bad revision is a message, not a refusal.
+        let app = ws.active_app();
+        match app.git.as_ref().map(|git| vista_tui::app::review_base(git, rev)) {
+            Some(Ok(base)) => {
+                app.apply_review(base, args.review_label.clone());
+            }
+            Some(Err(e)) => app.notify(format!("review: {e}"), vista_tui::app::MsgKind::Error),
+            None => app.notify("review: not a git repository", vista_tui::app::MsgKind::Error),
+        }
+    }
     tracing::info!("app ready in {:?}", started.elapsed());
     run::run(ws)
 }

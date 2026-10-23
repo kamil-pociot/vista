@@ -39,3 +39,5 @@ vista doesn't build a patch: it rebuilds the file from `HEAD` plus the ticked ch
 - Integration: commit subsets, deletions, renames, partial content, amend, first commit, hooks, rollback, add, push.
 - Proptest: no exclusions gives the new text, all excluded gives the old text, excluding a change keeps exactly its old lines.
 - E2e: `e2e_m6_commit.rs` (counts, ticking, amend, hooks, rollback, add, empty message, push to a remote), `e2e_m9_partial.rs` (commit 1 of 3 changes; `git show HEAD:` holds exactly that change).
+
+See also: [20 · Review](20-review.md) (everything changed since a base, committed or not).

@@ -86,7 +86,7 @@ pub fn commit_files(git: &Git, commit: &Commit) -> Result<Vec<CommitFile>, GitEr
 }
 
 /// `M\0path\0R100\0old\0new\0…` → files.
-fn parse_name_status(out: &str, top: &Path) -> Vec<CommitFile> {
+pub(crate) fn parse_name_status(out: &str, top: &Path) -> Vec<CommitFile> {
     let mut parts = out.split('\0').filter(|s| !s.is_empty());
     let mut files = Vec::new();
     while let Some(status) = parts.next() {

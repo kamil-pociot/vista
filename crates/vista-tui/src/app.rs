@@ -33,6 +33,32 @@ use vista_git::write::{CommitFile, CommitResult};
 use vista_nvim::{Grid, Nvim, NvimEvent};
 use vista_search::FileIndex;
 
+/// What `--review <rev>` (or the control socket) asks for, worked out off
+/// the UI thread by [`review_base`].
+pub enum ReviewBase {
+    /// The base is HEAD: nothing committed to review; the Commit window.
+    Head,
+    Review(Box<vista_git::review::Review>),
+}
+
+/// What a review request put on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewShown {
+    Review { files: usize, commits: usize },
+    CommitWindow,
+}
+
+/// Resolves `rev` and lists what changed since it (runs git: call it off
+/// the UI thread, or before the UI starts).
+pub fn review_base(git: &vista_git::Git, rev: &str) -> Result<ReviewBase, String> {
+    let base = vista_git::review::resolve(git, rev).map_err(|e| e.to_string())?;
+    if vista_git::review::is_head(git, &base) {
+        return Ok(ReviewBase::Head);
+    }
+    let review = vista_git::review::Review::load(git, &base).map_err(|e| e.to_string())?;
+    Ok(ReviewBase::Review(Box::new(review)))
+}
+
 /// `theme = "herdr"`: use herdr's theme.
 pub const HERDR: &str = "herdr";
 
@@ -52,6 +78,8 @@ pub enum Focus {
 pub enum LeftPanel {
     Project,
     Commit,
+    /// What changed since a base revision (`vista --review`).
+    Review,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +153,7 @@ const DOUBLE_CLICK: Duration = Duration::from_millis(500);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClickList {
     Commit,
+    Review,
     FindPopup,
     FindWindow,
     Goto,
@@ -175,6 +204,8 @@ pub struct App {
     pub buttons: Vec<crate::ui::click::Button>,
     /// The Preferences page, when open (Ctrl-,).
     pub prefs: Option<crate::prefs::PrefsPage>,
+    /// The review (one per project), shown in the Review panel.
+    pub review: Option<crate::review::ReviewView>,
     pub project: ProjectView,
     /// The repository, if the project is inside one.
     pub git: Option<Git>,
@@ -336,6 +367,7 @@ impl App {
             areas: Default::default(),
             buttons: Vec::new(),
             prefs: None,
+            review: None,
             project,
             git,
             status: StatusSnapshot::default(),
@@ -542,7 +574,10 @@ impl App {
         let t = self.viewer.active_tab()?;
         let Content::Diff(d) = &t.content else { return None };
         let rel = t.path.strip_prefix(&self.root).unwrap_or(&t.path);
-        let label = format!("HEAD {} · {}", d.head, rel.display());
+        let label = match t.diff.as_ref().and_then(|s| s.base.as_ref()) {
+            Some(b) => format!("base {} · {}", b.short, rel.display()),
+            None => format!("HEAD {} · {}", d.head, rel.display()),
+        };
         // Open where the diff is: the cursor's line and the top visible line
         // of the working-tree side, and the same sideways scroll.
         let view = vista_nvim::DiffView {
@@ -1128,8 +1163,85 @@ impl App {
         let spec = crate::diffview::DiffSpec {
             orig_path: change.orig_path.clone(),
             revs: None,
+            base: None,
         };
         self.viewer.open_diff(&change.path, spec, &ctx);
+        self.focus = Focus::Main;
+    }
+
+    // ----- review ---------------------------------------------------------------
+
+    /// Shows a review ([`review_base`]): the Review panel, or the Commit
+    /// window when the base is HEAD (nothing committed to review). Replaces
+    /// the review there was.
+    pub fn apply_review(&mut self, base: ReviewBase, label: Option<String>) -> ReviewShown {
+        self.prefs = None;
+        self.focus = Focus::Left;
+        match base {
+            ReviewBase::Head => {
+                self.review = None;
+                self.left = Some(LeftPanel::Commit);
+                ReviewShown::CommitWindow
+            }
+            ReviewBase::Review(review) => {
+                let shown = ReviewShown::Review {
+                    files: review.files.len(),
+                    commits: review.commits,
+                };
+                // Later than any refresh still running for the old review.
+                let generation = self.review.as_ref().map_or(0, |v| v.generation + 1);
+                let mut v = crate::review::ReviewView::new(*review, label, self.commit.by_dir, &self.root);
+                v.generation = generation;
+                self.review = Some(v);
+                self.left = Some(LeftPanel::Review);
+                shown
+            }
+        }
+    }
+
+    /// Refreshes the review's list in the background (files changed).
+    fn request_review(&mut self) {
+        let (Some(git), Some(v)) = (self.git.clone(), self.review.as_mut()) else {
+            return;
+        };
+        v.generation += 1;
+        let (generation, base, tx) = (v.generation, v.review.base.clone(), self.tx.clone());
+        std::thread::spawn(move || {
+            let result = vista_git::review::Review::load(&git, &base).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::Review { generation, result });
+        });
+    }
+
+    /// Keys while the Review panel has focus.
+    fn review_key(&mut self, key: &KeyEvent) -> bool {
+        let Some(v) = self.review.as_mut() else { return false };
+        match v.handle_key(key) {
+            crate::review::ReviewOutcome::Handled => true,
+            crate::review::ReviewOutcome::Open(f) => {
+                self.open_review_diff(&f);
+                true
+            }
+            crate::review::ReviewOutcome::Close => {
+                self.left = Some(LeftPanel::Project);
+                true
+            }
+            crate::review::ReviewOutcome::Unhandled => false,
+        }
+    }
+
+    /// A review file's diff: the base ⇄ the working tree, read-only.
+    fn open_review_diff(&mut self, file: &vista_git::CommitFile) {
+        let Some(v) = &self.review else { return };
+        let spec = crate::diffview::DiffSpec {
+            orig_path: file.old_path.clone(),
+            revs: None,
+            base: Some(crate::diffview::Base {
+                hash: v.review.base.clone(),
+                short: v.review.short.clone(),
+            }),
+        };
+        let ctx = self.load_ctx();
+        self.viewer.open_diff(&file.path, spec, &ctx);
         self.focus = Focus::Main;
     }
 
@@ -1257,6 +1369,7 @@ impl App {
                 short: commit.short.clone(),
                 subject: commit.subject.clone(),
             }),
+            base: None,
         };
         self.viewer.open_diff(&file.path, spec, &ctx);
         self.focus = Focus::Main;
@@ -1266,6 +1379,24 @@ impl App {
     /// Changed files in Commit-window order (in a history diff: that
     /// commit's files).
     fn changed_files(&self) -> Vec<Change> {
+        let in_review = self
+            .viewer
+            .active_tab()
+            .and_then(|t| t.diff.as_ref())
+            .is_some_and(|d| d.base.is_some());
+        if in_review && let Some(v) = &self.review {
+            return v
+                .files_in_order()
+                .into_iter()
+                .map(|f| Change {
+                    status: crate::review::status_of(&f),
+                    path: f.path,
+                    orig_path: f.old_path,
+                    staged: false,
+                    unstaged: false,
+                })
+                .collect();
+        }
         let history = self
             .viewer
             .active_tab()
@@ -1402,15 +1533,23 @@ impl App {
             self.commit.selected = row;
         }
         let ctx = self.load_ctx();
-        // Stepping within a history diff stays in that commit.
-        let revs = self
+        // Stepping within a history diff stays in that commit, within a
+        // review diff on that base (and the review list follows).
+        let (revs, base) = self
             .viewer
             .active_tab()
             .and_then(|t| t.diff.as_ref())
-            .and_then(|d| d.revs.clone());
+            .map(|d| (d.revs.clone(), d.base.clone()))
+            .unwrap_or_default();
+        if base.is_some()
+            && let Some(v) = self.review.as_mut()
+        {
+            v.select_path(&change.path);
+        }
         let spec = crate::diffview::DiffSpec {
             orig_path: change.orig_path.clone(),
             revs,
+            base,
         };
         self.viewer.retarget_diff(&change.path, spec, &ctx);
         if let Some(t) = self.viewer.active_tab_mut() {
@@ -1449,6 +1588,8 @@ impl App {
             self.viewer.reload_paths(&change.paths, &ctx);
         }
         self.request_status();
+        // Work may still be going on: the review list follows (its base stays).
+        self.request_review();
     }
 
     pub fn load_ctx(&self) -> LoadCtx {
@@ -1567,6 +1708,19 @@ impl App {
             AppEvent::TermExited => {
                 if let Some(s) = self.shell.as_mut() {
                     s.mark_exited();
+                }
+            }
+            AppEvent::Review { generation, result } => {
+                if let Some(v) = self.review.as_mut()
+                    && v.generation == generation
+                {
+                    match result {
+                        Ok(review) => {
+                            let root = self.root.clone();
+                            v.refresh(review, &root);
+                        }
+                        Err(e) => self.notify(format!("review: {e}"), MsgKind::Error),
+                    }
                 }
             }
             AppEvent::Log { generation, result } => {
@@ -1875,7 +2029,7 @@ impl App {
                     self.step_diff_file(forward);
                     return;
                 }
-                ViewerOutcome::ToggleHunk(..) if tab.diff.as_ref().is_some_and(|d| d.revs.is_some()) => {
+                ViewerOutcome::ToggleHunk(..) if tab.diff.as_ref().is_some_and(|d| d.read_only()) => {
                     self.notify("History diffs are read-only", MsgKind::Info);
                     return;
                 }
@@ -1913,6 +2067,9 @@ impl App {
                 }
                 ViewerOutcome::Unhandled => {}
             }
+        }
+        if self.focus == Focus::Left && self.left == Some(LeftPanel::Review) && self.review_key(&key) {
+            return;
         }
         if self.focus == Focus::Left && self.left == Some(LeftPanel::Commit) && self.commit_key(&key) {
             return;
@@ -2140,6 +2297,38 @@ impl App {
                 if !on_box && self.is_double_click(ClickList::Commit, i) {
                     self.commit_key(&KeyEvent::from(KeyCode::Enter));
                 }
+            }
+            return;
+        }
+        if let Some(r) = self
+            .areas
+            .review_list
+            .filter(|r| r.contains(pos) && self.left == Some(LeftPanel::Review))
+        {
+            match m.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    self.focus = Focus::Left;
+                    let row = (m.row - r.y) as usize;
+                    let double = self.is_double_click(ClickList::Review, row);
+                    if let Some(v) = self.review.as_mut() {
+                        v.click(row);
+                        if double && let Some(f) = v.selected_file().cloned() {
+                            self.open_review_diff(&f);
+                        }
+                    }
+                }
+                MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                    if let Some(v) = self.review.as_mut() {
+                        let down = matches!(m.kind, MouseEventKind::ScrollDown);
+                        let max = v.rows.len().saturating_sub(v.view_height.max(1));
+                        v.scroll = if down {
+                            (v.scroll + 3).min(max)
+                        } else {
+                            v.scroll.saturating_sub(3)
+                        };
+                    }
+                }
+                _ => {}
             }
             return;
         }
@@ -2590,6 +2779,13 @@ impl App {
             Action::FocusNext | Action::FocusPrev => self.cycle_focus(),
             Action::ToggleProject => self.toggle_left(LeftPanel::Project),
             Action::ToggleCommit => self.toggle_left(LeftPanel::Commit),
+            Action::ToggleReview => {
+                if self.review.is_some() {
+                    self.toggle_left(LeftPanel::Review);
+                } else {
+                    self.notify("No review: open one with `vista --review <rev>`", MsgKind::Info);
+                }
+            }
             Action::CycleTheme => self.cycle_theme(),
             Action::OpenSettings => self.prefs = Some(crate::prefs::PrefsPage::default()),
             Action::ToggleIgnored => {

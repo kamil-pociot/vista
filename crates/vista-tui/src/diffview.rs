@@ -9,12 +9,33 @@ use vista_render::{Highlighter, StyledLine};
 use crate::viewer::ImageState;
 
 /// Which file a diff tab compares.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DiffSpec {
     /// HEAD path for renames (the parent's path, for history diffs).
     pub orig_path: Option<PathBuf>,
     /// A commit from the history (read-only); `None` is HEAD ⇄ working tree.
     pub revs: Option<Revs>,
+    /// A review's base ⇄ the working tree (read-only).
+    pub base: Option<Base>,
+}
+
+/// A review diff: this revision ⇄ the working tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Base {
+    pub hash: String,
+    pub short: String,
+}
+
+impl DiffSpec {
+    /// History and review diffs can't be ticked for a commit or rolled back.
+    pub fn read_only(&self) -> bool {
+        self.revs.is_some() || self.base.is_some()
+    }
+
+    /// Whether `other` compares the same revisions (the same tab).
+    pub fn same_kind(&self, other: &DiffSpec) -> bool {
+        self.revs == other.revs && self.base == other.base
+    }
 }
 
 /// A history diff: the commit's parent ⇄ the commit.
@@ -295,9 +316,22 @@ pub fn load(git: Option<&vista_git::Git>, path: &Path, spec: &DiffSpec, images_e
         };
     };
     let head_path = spec.orig_path.as_deref().unwrap_or(path);
-    let (old, new, head, sides) = match &spec.revs {
+    let (old, new, head, sides) = match (&spec.revs, &spec.base) {
+        // A review: the base (fixed) ⇄ the working tree as it is now.
+        (_, Some(b)) => {
+            let sides = (
+                format!("{} · review base (read-only)", b.short),
+                "Working tree".to_string(),
+            );
+            (
+                git.content_at(&b.hash, head_path),
+                std::fs::read(path).ok(),
+                b.short.clone(),
+                sides,
+            )
+        }
         // From the history: the commit's parent ⇄ the commit, both from git.
-        Some(r) => {
+        (Some(r), None) => {
             let old = r.parent.as_deref().and_then(|p| git.content_at(p, head_path));
             let new = git.content_at(&r.commit, path);
             let parent = r.parent.as_deref().map(|p| &p[..p.len().min(7)]).unwrap_or("(none)");
@@ -307,7 +341,7 @@ pub fn load(git: Option<&vista_git::Git>, path: &Path, spec: &DiffSpec, images_e
             );
             (old, new, r.short.clone(), sides)
         }
-        None => {
+        (None, None) => {
             let head = git
                 .run(&["rev-parse", "--short", "HEAD"])
                 .map(|s| s.trim().to_string())
@@ -377,6 +411,55 @@ mod tests {
 
     fn doc(old: &str, new: &str) -> DiffDoc {
         DiffDoc::text(old.into(), new.into(), Path::new("a.rs"), "abc1234".into())
+    }
+
+    #[test]
+    fn a_review_diff_is_the_base_against_the_working_tree() {
+        let repo = vista_e2e::Fixture::git()
+            .file("a.txt", "one\n")
+            .file("b.txt", "bee\n")
+            .file("gone.txt", "bye\n")
+            .file("bin.dat", [0u8, 1, 2])
+            .commit("base")
+            .run(&["mv", "b.txt", "c.txt"])
+            .delete("gone.txt")
+            .commit("later")
+            .file("a.txt", "one\ntwo\n")
+            .file("new.txt", "hi\n")
+            .file("bin.dat", [0u8, 1, 2, 3])
+            .build();
+        // Canonical, as the app's paths are (/var is /private/var on macOS).
+        let root = repo.path().canonicalize().unwrap();
+        let git = vista_git::Git::discover(&root).unwrap();
+        let hash = vista_git::review::resolve(&git, "HEAD~1").unwrap();
+        let spec = |orig: Option<&str>| DiffSpec {
+            orig_path: orig.map(|o| root.join(o)),
+            revs: None,
+            base: Some(Base {
+                short: hash[..7].to_string(),
+                hash: hash.clone(),
+            }),
+        };
+        let text = |rel: &str, orig: Option<&str>| {
+            let doc = load(Some(&git), &root.join(rel), &spec(orig), false).doc.unwrap();
+            (doc.old_text, doc.new_text, doc.sides.0)
+        };
+        // Modified (uncommitted), renamed (committed), added, deleted.
+        let (old, new, left) = text("a.txt", None);
+        assert_eq!((old.as_str(), new.as_str()), ("one\n", "one\ntwo\n"));
+        assert!(left.contains("review base"), "{left}");
+        assert_eq!(text("c.txt", Some("b.txt")).0, "bee\n");
+        assert_eq!(text("new.txt", None).0, "");
+        assert_eq!(text("gone.txt", None), ("bye\n".into(), String::new(), left.clone()));
+        let bin = load(Some(&git), &root.join("bin.dat"), &spec(None), false).doc.unwrap();
+        assert!(matches!(
+            bin.body,
+            DiffBody::Binary {
+                old: Some(3),
+                new: Some(4)
+            }
+        ));
+        assert!(spec(None).read_only() && !spec(None).same_kind(&DiffSpec::default()));
     }
 
     #[test]

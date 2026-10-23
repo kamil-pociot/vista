@@ -15,6 +15,7 @@ pub mod probe;
 pub mod project;
 pub mod projects;
 pub mod recent;
+pub mod review;
 pub mod run;
 pub mod selection;
 pub mod style;
