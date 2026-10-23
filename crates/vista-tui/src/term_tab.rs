@@ -80,7 +80,8 @@ fn notification(params: &[&[u8]]) -> Option<Notification> {
     };
     let mut seq = b"\x1b]".to_vec();
     seq.extend_from_slice(&params.join(&b';'));
-    seq.extend_from_slice(b"\x1b\\");
+    // BEL, as Claude Code ends it (every terminal that knows these takes it).
+    seq.push(0x07);
     Some(Notification {
         seq,
         title,
@@ -462,19 +463,19 @@ mod tests {
         let seq = |s: &str| osc(s).unwrap().seq;
         let parts = |s: &str| osc(s).map(|n| (n.title, n.body, n.partial));
         let part = |t: &str, b: &str, p| Some((t.to_string(), b.to_string(), p));
-        assert_eq!(seq("9;Claude needs you"), b"\x1b]9;Claude needs you\x1b\\");
+        assert_eq!(seq("9;Claude needs you"), b"\x1b]9;Claude needs you\x07");
         assert_eq!(parts("9;Claude needs you"), part("", "Claude needs you", false));
-        assert_eq!(seq("9;a;b"), b"\x1b]9;a;b\x1b\\");
+        assert_eq!(seq("9;a;b"), b"\x1b]9;a;b\x07");
         assert_eq!(parts("9;a;b"), part("", "a;b", false));
         assert_eq!(
             seq("777;notify;Claude Code;waiting"),
-            b"\x1b]777;notify;Claude Code;waiting\x1b\\"
+            b"\x1b]777;notify;Claude Code;waiting\x07"
         );
         assert_eq!(
             parts("777;notify;Claude Code;waiting"),
             part("Claude Code", "waiting", false)
         );
-        assert_eq!(seq("99;i=1:d=0;hi"), b"\x1b]99;i=1:d=0;hi\x1b\\");
+        assert_eq!(seq("99;i=1:d=0;hi"), b"\x1b]99;i=1:d=0;hi\x07");
         assert_eq!(parts("99;i=1:d=0;hi"), part("", "hi", true));
         assert_eq!(parts("99;i=1:p=body;there"), part("", "there", false));
         // Progress bars (ConEmu's 9;4), other 777s, hyperlinks, colours: no.
@@ -490,7 +491,7 @@ mod tests {
         let mut p = vt100::Parser::new_with_callbacks(nz(5), nz(20), 0, Notifications::default());
         p.process(b"before\x1b]9;Claude is waiting\x07after\x1b]2;title\x07");
         let seqs: Vec<_> = p.callbacks().0.iter().map(|n| n.seq.clone()).collect();
-        assert_eq!(seqs, vec![b"\x1b]9;Claude is waiting\x1b\\".to_vec()]);
+        assert_eq!(seqs, vec![b"\x1b]9;Claude is waiting\x07".to_vec()]);
         assert!(p.screen().contents().contains("beforeafter"));
     }
 

@@ -196,7 +196,7 @@ fn a_notification_reaches_the_outer_terminal_and_marks_the_tab() {
     vista.press("ctrl+\\");
     vista.expect_text("1: Project");
     repo.write("go", "");
-    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x1b\\");
+    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x07");
     vista.expect_text("● sh notify.sh").to_have_fg("ui.warning");
     // Shown once: the mark goes.
     click_tab(&mut vista, "● sh notify.sh");
@@ -232,7 +232,7 @@ fn a_notification_from_the_tool_window_marks_the_project_tab() {
     vista.expect_text("▶ cat × ");
     vista.expect_no_text("1: Project");
     repo.write("go", "");
-    vista.expect_output(b"\x1b]9;shell wants you\x1b\\");
+    vista.expect_output(b"\x1b]9;shell wants you\x07");
     vista.expect_text(&format!("● {name}")).to_have_fg("ui.warning");
     vista.press("ctrl+\\");
     vista.expect_text("1: Project");
@@ -293,7 +293,7 @@ fn inside_herdr_a_notification_goes_to_herdr() {
     vista.press("ctrl+o");
     vista.type_text(">printf '\\033]777;notify;Claude Code;needs input\\007'; cat");
     vista.press("enter");
-    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x1b\\");
+    vista.expect_output(b"\x1b]777;notify;Claude Code;needs input\x07");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
     while !out.exists() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
