@@ -2,7 +2,6 @@
 class Vista < Formula
   desc "Keyboard-driven terminal take on IntelliJ: tree, viewer, search, git, diffs"
   homepage "https://github.com/kamil-pociot/term-vista"
-  version "0.1.0"
   license "MIT"
 
   uses_from_macos "git"

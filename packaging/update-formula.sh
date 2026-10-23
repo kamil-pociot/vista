@@ -19,7 +19,6 @@ cat > "$dir/vista.rb" <<RUBY
 class Vista < Formula
   desc "Keyboard-driven terminal take on IntelliJ: tree, viewer, search, git, diffs"
   homepage "https://github.com/$repo"
-  version "$version"
   license "MIT"
 
   uses_from_macos "git"
