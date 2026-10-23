@@ -28,7 +28,7 @@ The `1: Project` tool window (`Alt-1`) on the left shows the project folder as a
 | `Ctrl-L` (`Alt-F1`), `⌖` | reveal the open file |
 | `Ctrl-Shift-→` / `←`, drag divider | widen / narrow the panel |
 
-Mouse: click selects, clicking the arrow expands, the wheel scrolls.
+Mouse: click selects, clicking the arrow expands, the wheel scrolls (the selection stays where it is; the next arrow key brings it back into view).
 
 ## Settings
 

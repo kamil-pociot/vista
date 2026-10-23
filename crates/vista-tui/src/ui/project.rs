@@ -32,7 +32,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     let searching = app.project.search.is_some() && area.height > 1;
     let rows_h = area.height - u16::from(searching);
     app.project.view_height = rows_h as usize;
-    app.project.scroll_into_view();
+    app.project.follow_selection();
     let t = &app.theme;
     let letters = t.chrome.git_indicator == GitIndicator::ColourLetter;
     let pv = &app.project;

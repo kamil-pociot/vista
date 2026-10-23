@@ -28,6 +28,9 @@ pub struct ProjectView {
     pub show_ignored: bool,
     /// Rows visible in the last draw.
     pub view_height: usize,
+    /// The selection the view last scrolled to: drawing follows the
+    /// selection only when it moved, so the wheel can scroll away from it.
+    followed: Option<usize>,
     /// Speed search (IntelliJ): typing selects the rows whose names match.
     pub search: Option<String>,
     last_click: Option<(usize, Instant)>,
@@ -42,6 +45,7 @@ impl ProjectView {
             scroll: 0,
             show_ignored,
             view_height: 20,
+            followed: None,
             search: None,
             last_click: None,
         };
@@ -96,6 +100,17 @@ impl ProjectView {
             self.scroll = self.selected + 1 - h;
         }
         let max_scroll = self.rows.len().saturating_sub(h);
+        self.scroll = self.scroll.min(max_scroll);
+    }
+
+    /// Before drawing: brings the selection into view if it moved since
+    /// the last draw; keeps the scroll within the rows.
+    pub fn follow_selection(&mut self) {
+        if self.followed != Some(self.selected) {
+            self.followed = Some(self.selected);
+            self.scroll_into_view();
+        }
+        let max_scroll = self.rows.len().saturating_sub(self.view_height.max(1));
         self.scroll = self.scroll.min(max_scroll);
     }
 

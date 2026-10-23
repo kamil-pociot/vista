@@ -36,6 +36,7 @@ The list comes from `git diff --name-status -z -M <base>` (the working tree agai
 | `Alt-R` | show the review again (`review` in `[keys]`); without one, says how to open one |
 | `↑` / `↓` (`k` / `j`), `PgUp` / `PgDn`, `Home` / `End` | select |
 | `Enter`, double-click | open the file's diff |
+| wheel | scroll (the selection stays; the next arrow key brings it back into view) |
 | `Esc`, `Alt-1` | back to the Project tree (`Alt-2`: the Commit window) |
 
 ## Code and tests

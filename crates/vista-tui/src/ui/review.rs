@@ -66,11 +66,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         ..area
     };
     v.view_height = list.height as usize;
-    if v.selected < v.scroll {
-        v.scroll = v.selected;
-    } else if v.selected >= v.scroll + v.view_height.max(1) {
-        v.scroll = v.selected + 1 - v.view_height.max(1);
-    }
+    v.follow_selection();
     let v = &*v;
     let mut lines = Vec::new();
     for (i, row) in v.rows.iter().enumerate().skip(v.scroll).take(list.height as usize) {

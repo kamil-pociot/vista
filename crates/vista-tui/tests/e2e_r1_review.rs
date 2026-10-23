@@ -121,3 +121,28 @@ fn review_of_head_is_the_commit_window_and_a_bad_rev_says_why() {
     vista.expect_text("`nope` is not a commit here");
     vista.expect_text("1: Project");
 }
+
+#[test]
+fn the_wheel_scrolls_a_long_review_past_the_selection() {
+    let mut f = Fixture::git().file("base.txt", "x\n").commit("base");
+    for i in 0..60 {
+        f = f.file(&format!("f{i:02}.txt"), "new\n");
+    }
+    let repo = f.commit("agent: sixty files").build();
+    let mut vista = Vista::launch(BIN, &repo)
+        .arg("--review")
+        .arg("HEAD~1")
+        .size(100, 24)
+        .start();
+    vista.expect_text("Review · 60 files");
+    vista.expect_text_in("f00.txt", 0..40).to_have_bg("ui.selection");
+    for _ in 0..15 {
+        vista.scroll_down(10, 10);
+    }
+    // At the end, with the selected f00 far above.
+    vista.expect_text_in("f59.txt", 0..40);
+    vista.expect_no_text("f00.txt");
+    // A key brings the view back to the selection.
+    vista.press("down");
+    vista.expect_text_in("f01.txt", 0..40).to_have_bg("ui.selection");
+}

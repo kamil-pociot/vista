@@ -89,9 +89,15 @@ fn mouse_selects_toggles_and_scrolls() {
     vista.scroll_down(10, 10);
     vista.expect_no_text("file00.txt");
     vista.expect_text("file12.txt");
-    vista.scroll_up(10, 10);
-    vista.scroll_up(10, 10);
-    vista.scroll_up(10, 10);
+    // On, well past the selected row: the view doesn't snap back to it.
+    for _ in 0..9 {
+        vista.scroll_down(10, 10);
+    }
+    vista.expect_text("file45.txt");
+    vista.expect_no_text("file03.txt");
+    for _ in 0..12 {
+        vista.scroll_up(10, 10);
+    }
     vista.expect_text("file00.txt");
     // Double-click on a folder collapses it.
     let (row, col) = vista.expect_text("▾ many").position();

@@ -36,6 +36,9 @@ pub struct ReviewView {
     pub selected: usize,
     pub scroll: usize,
     pub view_height: usize,
+    /// The selection the view last scrolled to: drawing follows the
+    /// selection only when it moved, so the wheel can scroll away from it.
+    followed: Option<usize>,
     pub by_dir: bool,
     /// Bumped per refresh; stale results are dropped.
     pub generation: u64,
@@ -60,6 +63,7 @@ impl ReviewView {
             selected: 0,
             scroll: 0,
             view_height: 20,
+            followed: None,
             by_dir,
             generation: 0,
         };
@@ -98,6 +102,27 @@ impl ReviewView {
         }
         self.rows = rows;
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
+    }
+
+    /// Before drawing: brings the selection into view if it moved since
+    /// the last draw; keeps the scroll within the rows.
+    pub fn follow_selection(&mut self) {
+        let h = self.view_height.max(1);
+        if self.followed != Some(self.selected) {
+            self.followed = Some(self.selected);
+            if self.selected < self.scroll {
+                self.scroll = self.selected;
+            } else if self.selected >= self.scroll + h {
+                self.scroll = self.selected + 1 - h;
+            }
+        }
+        self.scroll = self.scroll.min(self.rows.len().saturating_sub(h));
+    }
+
+    /// The mouse wheel: the view moves, the selection stays.
+    pub fn scroll_by(&mut self, delta: isize) {
+        let max = self.rows.len().saturating_sub(self.view_height.max(1));
+        self.scroll = (self.scroll as isize + delta).clamp(0, max as isize) as usize;
     }
 
     pub fn file_at(&self, row: usize) -> Option<&CommitFile> {
@@ -182,6 +207,30 @@ mod tests {
                 .collect(),
             commits: 1,
         }
+    }
+
+    #[test]
+    fn the_wheel_scrolls_away_from_the_selection_until_it_moves() {
+        let names: Vec<String> = (0..50).map(|i| format!("f{i:02}.txt")).collect();
+        let paths: Vec<(char, &str)> = names.iter().map(|n| ('M', n.as_str())).collect();
+        let mut v = ReviewView::new(review(&paths), None, false, Path::new("/r"));
+        v.view_height = 10;
+        v.follow_selection();
+        for _ in 0..5 {
+            v.scroll_by(3);
+            v.follow_selection();
+        }
+        // Well past the selection (row 0), as far as the wheel took it.
+        assert_eq!((v.selected, v.scroll), (0, 15));
+        for _ in 0..20 {
+            v.scroll_by(3);
+        }
+        v.follow_selection();
+        assert_eq!(v.scroll, 40, "no further than the last row");
+        // A key moves the selection: the view goes back to it.
+        v.handle_key(&KeyEvent::from(KeyCode::Down));
+        v.follow_selection();
+        assert_eq!((v.selected, v.scroll), (1, 1));
     }
 
     #[test]

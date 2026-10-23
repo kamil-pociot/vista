@@ -2344,13 +2344,11 @@ impl App {
                 }
                 MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
                     if let Some(v) = self.review.as_mut() {
-                        let down = matches!(m.kind, MouseEventKind::ScrollDown);
-                        let max = v.rows.len().saturating_sub(v.view_height.max(1));
-                        v.scroll = if down {
-                            (v.scroll + 3).min(max)
+                        v.scroll_by(if matches!(m.kind, MouseEventKind::ScrollDown) {
+                            3
                         } else {
-                            v.scroll.saturating_sub(3)
-                        };
+                            -3
+                        });
                     }
                 }
                 _ => {}
