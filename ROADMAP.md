@@ -426,6 +426,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Preferences gets a second page, Keymap (`Tab`, the Keymap… row, or a click): every action and its keys; press a key to add it (a key another action has asks before taking it), `Delete` removes the selected key, `r` / `R` reset one / all, `/` filters by name, action or key.
 - [x] Applied at once in every open project; saved as `[keys]` in `state.toml`, on top of config.toml's `[keys]` (the defaults Reset goes back to).
 - [x] Tests: `keymap` (key names round trip, bind/unbind/reset over the config), `keymap_page`, `app` units, `e2e_r1_keymap` (3 PTY tests).
+- [x] Version 0.4.0 (with Go to Line:Column).
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
