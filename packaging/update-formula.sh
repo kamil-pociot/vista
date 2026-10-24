@@ -4,7 +4,7 @@
 #   packaging/update-formula.sh 0.1.0
 set -eu
 version="${1:?usage: $0 VERSION (e.g. 0.1.0)}"
-repo="kamil-pociot/term-vista"
+repo="kamil-pociot/vista"
 base="https://github.com/$repo/releases/download/v$version"
 sha() {
   curl -fsSL "$base/vista-v$version-$1.tar.gz.sha256" | cut -d' ' -f1

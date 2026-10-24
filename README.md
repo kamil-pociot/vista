@@ -14,10 +14,12 @@ vista --probe         check what your terminal supports (images, keyboard)
 With Homebrew (macOS and Linux; the formula lives in this repository):
 
 ```sh
-brew tap kamil-pociot/term-vista https://github.com/kamil-pociot/term-vista
-brew install kamil-pociot/term-vista/vista
+brew tap kamil-pociot/vista https://github.com/kamil-pociot/vista
+brew install kamil-pociot/vista/vista
 brew install neovim                        # optional: editing inside vista
 ```
+
+Installed from the old `kamil-pociot/term-vista` tap? Switch with `brew uninstall vista && brew untap kamil-pociot/term-vista`, then the two lines above.
 
 Or from a checkout: `cargo install --path crates/vista-tui`.
 

@@ -7,7 +7,7 @@ version = "0.3.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.89"
-repository = "https://github.com/kamil-pociot/term-vista"
+repository = "https://github.com/kamil-pociot/vista"
 
 [workspace.dependencies]
 vista-core = { path = "crates/vista-core" }
