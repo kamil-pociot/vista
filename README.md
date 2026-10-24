@@ -19,8 +19,6 @@ brew install kamil-pociot/vista/vista
 brew install neovim                        # optional: editing inside vista
 ```
 
-Installed from the old `kamil-pociot/term-vista` tap? Switch with `brew uninstall vista && brew untap kamil-pociot/term-vista`, then the two lines above.
-
 Or from a checkout: `cargo install --path crates/vista-tui`.
 
 `vista --only [PATH]` opens just that project, without reopening last time's or remembering which are open (handy with one vista per repository). `vista --review <rev> [PATH]` opens the Review panel on everything changed since `rev`. A running vista takes requests on a control socket (`<runtime dir>/<pid>.sock`, or `vista --remote <pid> '<json>'`): show a project, a review or the Commit window ([docs](docs/21-control-socket.md)).
