@@ -20,7 +20,8 @@ Everything on screen that names a window, an option or a key can be clicked. A c
 | Confirm dialog | `y yes`, `n no` | `y`, `n` |
 | Diff viewer | `◂` `▸` (previous / next change), `(␣)`, `u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit` | `[` `]`, `Space`, those keys |
 | Find in file (`/`) | `n`, `N`, `Esc close` | those keys |
-| Preferences | a setting's row; beside the page | selects and changes it; closes it |
+| Preferences | `Settings` / `Keymap` at the top; a setting's row; a Keymap row or one of its keys; the hints; beside the page | shows that page; selects and changes it; selects it; their keys; closes it |
+| Go to Line:Column | `Enter go`, `Esc cancel`; beside the popup | those keys; cancels |
 | Help | anywhere | closes it, like any key |
 
 While a popup is open only its own labels can be clicked; the screen behind it is covered.

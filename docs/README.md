@@ -24,5 +24,7 @@ vista is a lean, keyboard-driven terminal replacement for the parts of IntelliJ 
 | 19 | [Preferences](19-preferences.md) | Settings on one page (`Ctrl-,`, `⚙`), changed in place and remembered; Fill background |
 | 20 | [Review](20-review.md) | Everything changed since a base (`vista --review <rev>`, `Alt-R`), each file a read-only diff against it |
 | 21 | [Control socket](21-control-socket.md) | `<runtime dir>/<pid>.sock`: other programs show a project, a review or the Commit window; `vista --remote` |
+| 22 | [Go to Line:Column](22-go-to-line.md) | `Ctrl-G` from any panel: `42`, `42:7`, `:7`; a column caret; diffs, rendered Markdown and Neovim |
+| 23 | [Keymap](23-keymap.md) | Preferences' second page: every action's keys, added by pressing them, removed, reset; applied at once |
 
 See also: [`../README.md`](../README.md) (install and quick reference), [`../ROADMAP.md`](../ROADMAP.md) (research, decisions, milestones), [`../AGENTS.md`](../AGENTS.md) (working on the code).

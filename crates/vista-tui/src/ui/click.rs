@@ -32,6 +32,10 @@ pub enum Click {
     Amend,
     /// A row of the Preferences page (index into `prefs::all()`): select and change it.
     Pref(usize),
+    /// Settings or Keymap, at the top of Preferences.
+    PrefsPage(crate::prefs::Page),
+    /// A row of the Keymap page (index into its rows), and one of its keys.
+    KeymapRow(usize, Option<usize>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -110,13 +110,6 @@ impl RecentPopup {
     }
 }
 
-/// A one-line input in the viewer (go to line).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Prompt {
-    pub label: &'static str,
-    pub input: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

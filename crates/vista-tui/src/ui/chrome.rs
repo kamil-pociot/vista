@@ -251,8 +251,10 @@ fn status_spans(app: &App) -> Vec<Span<'static>> {
             }
             match app.viewer.active_tab() {
                 Some(tab) => {
-                    if tab.has_cursor() {
-                        spans.push(Span::styled(format!("{}:1   ", tab.cursor + 1), t.fg("ui.text")));
+                    if tab.has_cursor()
+                        && let Some((line, column, _)) = tab.position()
+                    {
+                        spans.push(Span::styled(format!("{line}:{column}   "), t.fg("ui.text")));
                     }
                     if !tab.language.is_empty() {
                         spans.push(Span::styled(format!("{} ", tab.language), t.fg("ui.dim")));

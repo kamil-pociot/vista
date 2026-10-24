@@ -416,6 +416,17 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Control socket `<runtime dir>/<pid>.sock` (`VISTA_RUNTIME_DIR` › `$XDG_RUNTIME_DIR/vista` › `$TMPDIR/vista-<uid>`): JSON lines `status`, `open-project`, `review`, `commit`, `open-file`, applied on the UI thread before the reply; removed on quit, `SIGTERM`, `SIGHUP`; `vista --remote`.
 - [x] Version 0.3.0.
 
+### Go to Line:Column ✅
+- [x] `Ctrl-G` (`goto-line`, rebindable) from any panel opens IntelliJ's Go to Line:Column popup, filled in with the cursor's position and selected: `42`, `42:7`, `:7`; past the end goes to the last line / end of line.
+- [x] A column puts a caret on that character (shown in the status bar, scrolled to sideways) that carries over to `e`.
+- [x] Diffs count working-tree lines (HEAD's for a deleted file) and unfold a collapsed diff to show the line; the status bar shows file lines in diffs too. Rendered Markdown scrolls the line's block to the top. In Neovim, `Ctrl-G` opens the same popup from Neovim's cursor.
+- [x] Tests: `goto_line`, `viewer`, `diffview` units, `e2e_r1_goto_line` (5 PTY tests).
+
+### Keymap page ✅
+- [x] Preferences gets a second page, Keymap (`Tab`, the Keymap… row, or a click): every action and its keys; press a key to add it (a key another action has asks before taking it), `Delete` removes the selected key, `r` / `R` reset one / all, `/` filters by name, action or key.
+- [x] Applied at once in every open project; saved as `[keys]` in `state.toml`, on top of config.toml's `[keys]` (the defaults Reset goes back to).
+- [x] Tests: `keymap` (key names round trip, bind/unbind/reset over the config), `keymap_page`, `app` units, `e2e_r1_keymap` (3 PTY tests).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

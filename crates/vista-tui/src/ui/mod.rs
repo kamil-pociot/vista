@@ -177,6 +177,8 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
 
 /// Draws project `app` in `area` (the window).
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
+    // Another project's Keymap page may have changed the keys.
+    app.sync_keymap();
     f.render_widget(Block::new().style(app.theme.base()), area);
     click::begin();
     let mut areas = compute_areas(area, app);
@@ -226,6 +228,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         || app.projects_popup.is_some()
         || app.confirm.is_some()
         || app.prefs.is_some()
+        || app.goto_line.is_some()
         || app.show_help;
     if app.recent_popup.is_some() {
         viewer::draw_recent(f, area, app);
@@ -247,6 +250,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     }
     if app.prefs.is_some() {
         prefs::draw(f, area, app);
+    }
+    if app.goto_line.is_some() {
+        viewer::draw_goto_line(f, area, app);
     }
     if app.show_help {
         help::draw(f, area, app);

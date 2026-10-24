@@ -259,6 +259,30 @@ impl Nvim {
         Ok(())
     }
 
+    /// The cursor: 1-based (line, column in characters) and the buffer's
+    /// line count.
+    pub fn position(&self) -> Result<(usize, usize, usize), RpcError> {
+        let v = self.lua(
+            "local p = vim.fn.getcursorcharpos() return { p[2], p[3], vim.api.nvim_buf_line_count(0) }",
+            vec![],
+        )?;
+        let n = |i: usize| v.as_array().and_then(|a| a.get(i)).and_then(Value::as_u64).unwrap_or(1) as usize;
+        Ok((n(0), n(1), n(2)))
+    }
+
+    /// Moves the cursor to a 1-based line (clamped to the buffer) and
+    /// column in characters, centred like IntelliJ's Go to Line.
+    pub fn go_to(&self, line: usize, column: usize) -> Result<(), RpcError> {
+        self.lua(
+            "local l, c = ...
+             l = math.max(1, math.min(l, vim.api.nvim_buf_line_count(0)))
+             vim.fn.setcursorcharpos(l, math.max(1, c))
+             vim.cmd('normal! zz')",
+            vec![Value::from(line as u64), Value::from(column as u64)],
+        )?;
+        Ok(())
+    }
+
     /// Sends keys (Neovim notation). Doesn't wait.
     pub fn input(&self, keys: &str) -> Result<(), RpcError> {
         self.rpc.request_async("nvim_input", vec![Value::from(keys)])

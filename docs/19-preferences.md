@@ -1,6 +1,6 @@
 # 19 · Preferences
 
-`Ctrl-,` or the `⚙` at the right of the top bar opens **Preferences**: vista's settings on one page, changed in place. A change applies at once and is remembered in `state.toml`, like every toggle elsewhere in vista. `config.toml` keeps the defaults, and its last row opens that file for what the page doesn't cover (key bindings, the editor, images).
+`Ctrl-,` or the `⚙` at the right of the top bar opens **Preferences**: vista's settings on one page, changed in place. A change applies at once and is remembered in `state.toml`, like every toggle elsewhere in vista. `config.toml` keeps the defaults, and its last row opens that file for what the page doesn't cover (the editor, images). `Tab` switches to the second page, **Keymap**, where every key can be changed ([23 · Keymap](23-keymap.md)).
 
 ## What's on it
 
@@ -14,7 +14,8 @@
 | Commit window | Group changes by folder | `g` there |
 | Find in Files | Match case, Whole words, Regular expressions | `Alt-C`, `Alt-W`, `Alt-X` there |
 | Mouse | Copy selection on release | `[mouse] copy_on_select` |
-| More | Edit config.toml… | |
+| More | Keymap… (how many keys are changed; opens the Keymap page) | `Tab` |
+| | Edit config.toml… | |
 
 Under the list, a line explains the selected setting.
 
@@ -29,6 +30,7 @@ Under the list, a line explains the selected setting.
 | `↑` / `↓` (`k` / `j`) | select |
 | `Space`, `Enter`, `→` (`l`) | change (on / off flips; the look steps forward) |
 | `←` (`h`) | change back (the look steps back) |
+| `Tab` (or a click on `Keymap` at the top) | Keymap page |
 | `Esc` (`q`), a click beside the page | close |
 
 A click on a row selects and changes it.

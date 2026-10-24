@@ -5,7 +5,7 @@ vista embeds a real Neovim (`nvim --embed`, msgpack-RPC, line grid) and draws it
 ## Editing a file
 
 - `e` opens the selected tree file, or the viewer's file at its current line. Switching file tabs switches buffers.
-- While the editor has focus every key goes to Neovim, except `Ctrl-\` (back to the tree) and the tool-window keys.
+- While the editor has focus every key goes to Neovim, except `Ctrl-\` (back to the tree), the tool-window keys and `Ctrl-G` ([Go to Line:Column](22-go-to-line.md), filled in with Neovim's cursor).
 - `:w` saves and refreshes git colours, the gutter and the Commit window at once. `:q` returns to the viewer.
 - `●` marks unsaved buffers in tabs and the tree; quitting vista with unsaved changes asks for a second `q`.
 - **Follows the viewer:** long lines wrap in Neovim if the viewer wrapped them, line numbers follow `Shift-L`, and `:set wrap` / `:set nowrap` carry back to the viewer.

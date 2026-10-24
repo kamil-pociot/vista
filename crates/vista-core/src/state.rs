@@ -5,6 +5,7 @@
 //! `config.toml` where it has one, otherwise vista's built-in). Changing a
 //! setting in the app writes it here.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,10 @@ pub struct UiState {
     pub projects: ProjectsState,
     #[serde(skip_serializing_if = "LayoutState::is_empty")]
     pub layout: LayoutState,
+    /// Key bindings changed on the Keymap page, on top of config.toml's
+    /// `[keys]` and in the same form (`"ctrl+g" = "goto-line"`, `"q" = "none"`).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub keys: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,9 +243,11 @@ mod tests {
         s.look = Some("paper".into());
         s.projects.open = vec![PathBuf::from("/a"), PathBuf::from("/b")];
         s.projects.active = Some(PathBuf::from("/b"));
+        s.keys.insert("ctrl+g".into(), "none".into());
         s.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("line_numbers = false"), "{text}");
+        assert!(text.contains("[keys]\n\"ctrl+g\" = \"none\""), "{text}");
         assert!(!text.contains("wrap_code"), "unset values stay out: {text}");
         assert!(!text.contains("[tree]"), "empty sections stay out: {text}");
         assert_eq!(UiState::load(&path), (s, None));

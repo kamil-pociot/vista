@@ -19,9 +19,10 @@ use crate::editor;
 use crate::event::{AppEvent, EventRx, EventTx};
 use crate::find::{FindOutcome, FindPopup, FindWindow, ResultTab};
 use crate::goto::{GotoOutcome, GotoPopup, GotoTab};
+use crate::goto_line::{GotoLine, GotoLineOutcome};
 use crate::keymap::{Action, Keymap};
 use crate::project::{Outcome, ProjectView};
-use crate::recent::{PopupOutcome, Prompt, Recent, RecentPopup};
+use crate::recent::{PopupOutcome, Recent, RecentPopup};
 use crate::viewer::{Content, ImageState, LoadCtx, MdImages, Viewer, ViewerOutcome};
 use ratatui_image::picker::Picker;
 use std::collections::HashSet;
@@ -191,6 +192,11 @@ pub struct App {
     theme_loader: ThemeLoader,
     theme_stamp: Option<SystemTime>,
     pub keymap: Keymap,
+    /// The bindings under the Keymap page's changes: defaults and config.toml.
+    pub keymap_base: Keymap,
+    /// The Keymap page's changes `keymap` was built with (shared `UiState`
+    /// `keys`; another project's page may change them).
+    keymap_keys: std::collections::BTreeMap<String, String>,
     pub focus: Focus,
     pub left: Option<LeftPanel>,
     pub show_help: bool,
@@ -221,7 +227,8 @@ pub struct App {
     pub md_images: MdImages,
     pub recent: Recent,
     pub recent_popup: Option<RecentPopup>,
-    pub prompt: Option<Prompt>,
+    /// The Go to Line:Column popup (`Ctrl-G`).
+    pub goto_line: Option<GotoLine>,
     /// The embedded editor, started on first use.
     pub nvim: Option<Nvim>,
     pub grid: Grid,
@@ -331,7 +338,10 @@ impl App {
             }
         };
         let theme_stamp = stamp(theme_loader.user_path(&theme.id).as_deref());
-        let (keymap, warnings) = Keymap::with_overrides(&opts.config.keys);
+        let (keymap_base, mut warnings) = Keymap::with_overrides(&opts.config.keys);
+        let keymap_keys = ui.borrow().keys.clone();
+        let (keymap, page_warnings) = keymap_base.with(&keymap_keys);
+        warnings.extend(page_warnings);
         let (tx, rx) = match opts.events {
             Some(tx) => (tx, None),
             None => {
@@ -360,6 +370,8 @@ impl App {
             theme_forced,
             theme_filled: filled,
             keymap,
+            keymap_base,
+            keymap_keys,
             focus: Focus::Left,
             left: Some(LeftPanel::Project),
             show_help: false,
@@ -381,7 +393,7 @@ impl App {
             md_images: MdImages::default(),
             recent,
             recent_popup: None,
-            prompt: None,
+            goto_line: None,
             nvim: None,
             grid: Grid::default(),
             dirty: HashSet::new(),
@@ -520,8 +532,19 @@ impl App {
                 (t.path.clone(), line)
             }),
         };
+        // The column Go to Line put the caret on carries over.
+        let column = self
+            .viewer
+            .active_tab()
+            .and_then(|t| t.caret.filter(|(l, _)| *l == t.cursor && !t.editing))
+            .map(|(_, c)| c + 1);
         if let Some((path, line)) = target {
             self.start_editing(&path, line);
+            if let (Some(l), Some(c), Some(n)) = (line, column, self.nvim.as_ref())
+                && self.editing_focused()
+            {
+                let _ = n.go_to(l, c);
+            }
         }
     }
 
@@ -1206,7 +1229,7 @@ impl App {
     /// control socket) shows what it asked for.
     pub fn dismiss_popups(&mut self) {
         self.show_help = false;
-        self.prompt = None;
+        self.goto_line = None;
         self.projects_popup = None;
         self.goto = None;
         self.find = None;
@@ -1927,6 +1950,7 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        self.sync_keymap();
         // Anything but next/previous change drops a "press again" offer.
         if !matches!(
             self.keymap.action_for(&key),
@@ -1940,9 +1964,15 @@ impl App {
             return;
         }
         if let Some(p) = self.prefs.as_mut() {
+            if p.page == crate::prefs::Page::Keymap {
+                let outcome = p.keymap.handle_key(&key, &self.keymap);
+                self.keymap_outcome(outcome);
+                return;
+            }
             match p.handle_key(&key) {
                 crate::prefs::PrefsOutcome::Handled => {}
                 crate::prefs::PrefsOutcome::Close => self.prefs = None,
+                crate::prefs::PrefsOutcome::SwitchPage => p.page = crate::prefs::Page::Keymap,
                 crate::prefs::PrefsOutcome::Change(pref, forward) => self.change_pref(pref, forward),
             }
             return;
@@ -1995,8 +2025,15 @@ impl App {
             }
             return;
         }
-        if self.prompt.is_some() {
-            self.prompt_key(&key);
+        if let Some(g) = self.goto_line.as_mut() {
+            match g.handle_key(&key) {
+                GotoLineOutcome::Handled => {}
+                GotoLineOutcome::Close => self.goto_line = None,
+                GotoLineOutcome::Go(t) => {
+                    self.goto_line = None;
+                    self.go_to_line(t);
+                }
+            }
             return;
         }
         if self.focus == Focus::Bottom && self.shell_visible {
@@ -2010,6 +2047,7 @@ impl App {
                     a @ (Action::ToggleProject
                     | Action::ToggleCommit
                     | Action::ToggleFind
+                    | Action::GotoLine
                     | Action::NextProject
                     | Action::PrevProject),
                 ) => self.handle_action(a),
@@ -2081,13 +2119,6 @@ impl App {
                         unstaged: false,
                     });
                     self.open_diff(&change);
-                    return;
-                }
-                ViewerOutcome::GotoLinePrompt => {
-                    self.prompt = Some(Prompt {
-                        label: "Go to line",
-                        input: String::new(),
-                    });
                     return;
                 }
                 ViewerOutcome::Unhandled => {}
@@ -2173,6 +2204,7 @@ impl App {
     }
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
+        self.sync_keymap();
         let pos = Position::new(m.column, m.row);
         // Dragging in the viewer extends the selection (scrolling at the edges).
         if self.selecting {
@@ -2263,9 +2295,13 @@ impl App {
                 self.click(c);
                 return;
             }
-            // A click beside the Preferences page closes it.
+            // A click beside the Preferences page or Go to Line closes it.
             if self.prefs.is_some() {
                 self.prefs = None;
+                return;
+            }
+            if self.goto_line.is_some() {
+                self.goto_line = None;
                 return;
             }
             if self.projects_popup.is_some() {
@@ -2616,6 +2652,8 @@ impl App {
             FindWords => on(ui.find.words.unwrap_or(false)),
             FindRegex => on(ui.find.regex.unwrap_or(false)),
             CopyOnSelect => on(ui.mouse.copy_on_select.unwrap_or(self.config.mouse.copy_on_select)),
+            Keymap if ui.keys.is_empty() => "Default".into(),
+            Keymap => format!("{} changed", ui.keys.len()),
             EditConfig => String::new(),
         }
     }
@@ -2657,10 +2695,60 @@ impl App {
                 let on = !self.copy_on_select();
                 self.remember(|s| s.mouse.copy_on_select = Some(on));
             }
+            Keymap => {
+                if let Some(p) = self.prefs.as_mut() {
+                    p.page = crate::prefs::Page::Keymap;
+                }
+            }
             EditConfig => {
                 self.prefs = None;
                 self.open_config_file();
             }
+        }
+    }
+
+    // ----- keymap -----------------------------------------------------------
+
+    /// Rebuilds the keymap when the Keymap page's changes differ from the
+    /// ones it was built with (made here or in another project).
+    pub fn sync_keymap(&mut self) {
+        if self.ui.borrow().keys == self.keymap_keys {
+            return;
+        }
+        self.keymap_keys = self.ui.borrow().keys.clone();
+        let (km, warnings) = self.keymap_base.with(&self.keymap_keys);
+        self.keymap = km;
+        if let Some(w) = warnings.first() {
+            self.notify(format!("state.toml [keys]: {}", w.0), MsgKind::Error);
+        }
+    }
+
+    /// Changes the remembered key bindings: they apply at once.
+    fn change_keys(&mut self, change: impl Fn(&mut std::collections::BTreeMap<String, String>, &Keymap)) {
+        let base = self.keymap_base.clone();
+        self.remember(|s| change(&mut s.keys, &base));
+        self.sync_keymap();
+    }
+
+    fn keymap_outcome(&mut self, outcome: crate::keymap_page::KeymapOutcome) {
+        use crate::keymap_page::KeymapOutcome::*;
+        match outcome {
+            Handled => {}
+            Close => self.prefs = None,
+            SwitchPage => {
+                if let Some(p) = self.prefs.as_mut() {
+                    p.page = crate::prefs::Page::Settings;
+                }
+            }
+            Bind(action, chord) => {
+                self.change_keys(|keys, base| crate::keymap::bind(keys, base, chord, Some(action)));
+                if let Some(p) = self.prefs.as_mut() {
+                    p.keymap.select_chord(&self.keymap, action, chord);
+                }
+            }
+            Unbind(chord) => self.change_keys(|keys, base| crate::keymap::bind(keys, base, chord, None)),
+            Reset(action) => self.change_keys(|keys, base| crate::keymap::reset(keys, base, action)),
+            ResetAll => self.change_keys(|keys, _| keys.clear()),
         }
     }
 
@@ -2733,6 +2821,24 @@ impl App {
                     p.selected = i;
                     let pref = p.selected_pref();
                     self.change_pref(pref, true);
+                }
+            }
+            Click::PrefsPage(page) => {
+                if let Some(p) = self.prefs.as_mut() {
+                    p.page = page;
+                }
+            }
+            Click::KeymapRow(row, chip) => {
+                if let Some(p) = self.prefs.as_mut() {
+                    let k = &mut p.keymap;
+                    if k.selected != row {
+                        k.chip = 0;
+                    }
+                    k.selected = row;
+                    if let Some(c) = chip {
+                        k.chip = c;
+                    }
+                    k.mode = crate::keymap_page::Mode::Browse;
                 }
             }
             Click::Amend => {
@@ -2847,6 +2953,7 @@ impl App {
                 self.viewer.cycle(-1);
                 self.sync_editor_buffer();
             }
+            Action::GotoLine => self.open_goto_line(),
             Action::RecentFiles => self.recent_popup = Some(RecentPopup::new(self.recent.list.len())),
             Action::ToggleTerminal => {
                 if self.shell_visible && self.focus == Focus::Bottom {
@@ -2942,27 +3049,42 @@ impl App {
         }
     }
 
-    fn prompt_key(&mut self, key: &KeyEvent) {
-        use ratatui::crossterm::event::KeyCode;
-        let Some(p) = self.prompt.as_mut() else { return };
-        match key.code {
-            KeyCode::Esc => self.prompt = None,
-            KeyCode::Backspace => {
-                p.input.pop();
-            }
-            KeyCode::Char(c) if c.is_ascii_digit() => p.input.push(c),
-            KeyCode::Enter => {
-                let n: usize = p.input.parse().unwrap_or(0);
-                self.prompt = None;
-                if let Some(t) = self.viewer.active_tab_mut()
-                    && n > 0
-                {
-                    t.set_cursor(n - 1);
-                    let h = t.view_height.max(1);
-                    t.scroll = (n - 1).saturating_sub(h / 2);
+    /// Opens Go to Line:Column at the cursor of the file in front: the
+    /// editor's when editing, else the viewer's.
+    fn open_goto_line(&mut self) {
+        let position = if self.editing_focused() {
+            self.nvim.as_ref().and_then(|n| n.position().ok())
+        } else {
+            match self.viewer.active_tab() {
+                None => {
+                    self.notify("Open a file first", MsgKind::Info);
+                    return;
                 }
+                Some(t) => t.position(),
             }
-            _ => {}
+        };
+        match position {
+            Some((line, column, lines)) => {
+                self.focus = Focus::Main;
+                self.goto_line = Some(GotoLine::new(line, column, lines));
+            }
+            None => self.notify("No lines to go to here", MsgKind::Info),
+        }
+    }
+
+    fn go_to_line(&mut self, t: crate::goto_line::Target) {
+        if self.editing_focused() {
+            let Some(n) = self.nvim.as_ref() else { return };
+            let res = n
+                .position()
+                .and_then(|(line, _, _)| n.go_to(t.line.unwrap_or(line), t.column.unwrap_or(1)));
+            if let Err(e) = res {
+                self.notify(format!("editor: {e}"), MsgKind::Error);
+            }
+            return;
+        }
+        if let Some(tab) = self.viewer.active_tab_mut() {
+            tab.go_to(t.line, t.column);
         }
     }
 
@@ -3107,6 +3229,63 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let app = app_at(&root, tmp.path(), None);
         (tmp, app)
+    }
+
+    #[test]
+    fn keymap_page_changes_apply_at_once_and_are_remembered() {
+        use crate::keymap::KeyChord;
+        let (tmp, mut app) = app();
+        let press = |app: &mut App, k: &str| {
+            let c = KeyChord::parse(k).unwrap();
+            app.handle_key(KeyEvent::new(c.code, c.mods));
+        };
+        app.handle_action(Action::OpenSettings);
+        press(&mut app, "tab");
+        let page = &mut app.prefs.as_mut().unwrap().keymap;
+        page.filter = "go to line".into();
+        // A new key, then Ctrl-P taken from Go to File.
+        press(&mut app, "enter");
+        press(&mut app, "alt+g");
+        press(&mut app, "enter");
+        press(&mut app, "ctrl+p");
+        press(&mut app, "enter");
+        let chord = |k| KeyChord::parse(k).unwrap();
+        assert_eq!(app.keymap.action_of(chord("alt+g")), Some(Action::GotoLine));
+        assert_eq!(app.keymap.action_of(chord("ctrl+p")), Some(Action::GotoLine));
+        assert_eq!(app.keymap.hint(Action::GotoFile), "Ctrl-Shift-N");
+        // The key just taken is selected: Delete removes it.
+        assert_eq!(
+            app.prefs.as_ref().unwrap().keymap.selected_chord(&app.keymap),
+            Some(chord("ctrl+p"))
+        );
+        press(&mut app, "delete");
+        assert_eq!(app.keymap.action_of(chord("ctrl+p")), None);
+        let saved = vista_core::UiState::load(&vista_core::UiState::path(&app.paths)).0;
+        assert_eq!(saved.keys.get("ctrl+p").map(String::as_str), Some("none"));
+        assert_eq!(saved.keys.get("alt+g").map(String::as_str), Some("goto-line"));
+        // Another project sharing the settings follows.
+        let mut other = App::new(AppOptions {
+            events: None,
+            ui: Some(app.ui.clone()),
+            root: tmp.path().join("p"),
+            config: vista_core::Config::default(),
+            paths: app.paths.clone(),
+            theme: None,
+        })
+        .unwrap();
+        other.sync_keymap();
+        assert_eq!(other.keymap.action_of(chord("alt+g")), Some(Action::GotoLine));
+        // Reset: Go to Line's own key goes; Ctrl-P, removed from Go to File, stays removed.
+        press(&mut app, "r");
+        assert_eq!(app.keymap.action_of(chord("alt+g")), None);
+        assert_eq!(app.keymap.action_of(chord("ctrl+p")), None);
+        other.sync_keymap();
+        assert_eq!(other.keymap.action_of(chord("alt+g")), None);
+        // Reset all, after asking.
+        press(&mut app, "R");
+        press(&mut app, "enter");
+        assert_eq!(app.keymap.action_of(chord("ctrl+p")), Some(Action::GotoFile));
+        assert!(app.ui.borrow().keys.is_empty());
     }
 
     #[test]

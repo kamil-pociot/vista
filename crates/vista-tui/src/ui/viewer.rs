@@ -6,7 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui_image::StatefulImage;
 use ratatui_image::protocol::StatefulProtocol;
 use vista_diff::LineMark;
@@ -62,7 +62,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
     let mut body = inner;
-    let bar = search_or_prompt_line(app);
+    let bar = search_line(app);
     if bar.is_some() && body.height > 1 {
         body.height -= 1;
     }
@@ -77,14 +77,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     }
 }
 
-fn search_or_prompt_line(app: &App) -> Option<Vec<click::Item>> {
+fn search_line(app: &App) -> Option<Vec<click::Item>> {
     let t = &app.theme;
-    if let Some(p) = &app.prompt {
-        return Some(vec![
-            (Span::styled(format!(" {}: ", p.label), t.fg("ui.text.strong")), None),
-            (Span::styled(format!("{}▏", p.input), t.fg("ui.text")), None),
-        ]);
-    }
     let tab = app.viewer.active_tab()?;
     let s = tab.search.as_ref()?;
     let mut items = vec![
@@ -375,6 +369,17 @@ fn decorate(line: &StyledLine, tab: &Tab, idx: usize) -> StyledLine {
     if let Some(r) = tab.selection.and_then(|sel| sel.range_on(idx, len)) {
         l = overlay(&l, &[r], |s| s.bg = Some("ui.selection"));
     }
+    // The column Go to Line went to.
+    if let Some((line, c)) = tab.caret
+        && line == idx
+        && idx == tab.cursor
+        && c < len
+    {
+        l = overlay(&l, &[(c, c + 1)], |s| {
+            s.bg = Some("ui.selection");
+            s.underline = true;
+        });
+    }
     l
 }
 
@@ -621,6 +626,62 @@ fn draw_markdown(
 }
 
 /// The recent-files popup.
+/// The Go to Line:Column popup, IntelliJ's small dialog.
+pub fn draw_goto_line(f: &mut Frame, area: Rect, app: &App) {
+    let Some(g) = &app.goto_line else { return };
+    let t = &app.theme;
+    let rect = crate::ui::help::centered(area, 46, 4);
+    f.render_widget(Clear, rect);
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_style(t.fg("ui.popup.border"))
+        .style(t.fg_bg("ui.text", "ui.popup"))
+        .title(Span::styled(
+            " Go to Line:Column ",
+            t.fg("ui.text.strong").add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    if inner.height < 2 {
+        return;
+    }
+    // The prefilled position shows selected: typing replaces it.
+    let input_style = if g.fresh {
+        t.fg_bg("ui.text.strong", "ui.selection")
+    } else {
+        t.fg("ui.text.strong")
+    };
+    let field = Line::from(vec![
+        Span::styled(" [Line] [:column]: ", t.fg("ui.dim")),
+        Span::styled(g.input.clone(), input_style),
+        Span::styled("▏", t.fg("ui.text")),
+    ]);
+    f.render_widget(Paragraph::new(field), Rect { height: 1, ..inner });
+    use ratatui::crossterm::event::KeyCode;
+    let dim = t.fg("ui.dim");
+    let mut items: Vec<click::Item> = vec![(Span::styled(format!(" Lines 1–{} · ", g.lines.max(1)), dim), None)];
+    items.extend(click::hints(
+        &[
+            ("Enter go", click::key(KeyCode::Enter, None)),
+            ("Esc cancel", click::key(KeyCode::Esc, None)),
+        ],
+        " · ",
+        dim,
+    ));
+    let hints = Rect {
+        y: inner.y + 1,
+        height: 1,
+        ..inner
+    };
+    click::line(
+        f,
+        hints,
+        items,
+        ratatui::layout::Alignment::Left,
+        ratatui::style::Style::default(),
+    );
+}
+
 pub fn draw_recent(f: &mut Frame, area: Rect, app: &App) {
     let Some(p) = &app.recent_popup else { return };
     let t = &app.theme;
@@ -628,7 +689,7 @@ pub fn draw_recent(f: &mut Frame, area: Rect, app: &App) {
     let h = (items.len() as u16 + 4).clamp(6, area.height.saturating_sub(4).max(6));
     let w = 70.min(area.width.saturating_sub(4)).max(30);
     let rect = crate::ui::help::centered(area, w, h);
-    f.render_widget(ratatui::widgets::Clear, rect);
+    f.render_widget(Clear, rect);
     let block = Block::bordered()
         .border_style(t.fg("ui.popup.border"))
         .style(t.fg_bg("ui.text", "ui.popup"))
@@ -679,9 +740,9 @@ pub fn draw_change_hop(f: &mut Frame, area: Rect, app: &App) {
         width: w,
         height: 3,
     };
-    f.render_widget(ratatui::widgets::Clear, rect);
-    let block = ratatui::widgets::Block::new()
-        .borders(ratatui::widgets::Borders::ALL)
+    f.render_widget(Clear, rect);
+    let block = Block::new()
+        .borders(Borders::ALL)
         .border_style(t.fg("ui.popup.border"))
         .style(t.fg_bg("ui.text", "ui.popup"));
     let inner = block.inner(rect);

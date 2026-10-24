@@ -11,6 +11,7 @@ expression: "vista_tui::testing::text(&buf)"
                        │                Alt-2  Commit tool window           │
                        │                Alt-3  Find tool window             │
                        │ Ctrl-P, Ctrl-Shift-N  Go to File                   │
+                       │               Ctrl-G  Go to Line:Column            │
                        │ Ctrl-F, Ctrl-Shift-F  Find in Files                │
                        │               Ctrl-E  Recent files                 │
                        │         e, Alt-Enter  Edit file in Neovim          │
@@ -34,5 +35,4 @@ expression: "vista_tui::testing::text(&buf)"
                        │                Alt-,  Previous project             │
                        │       Alt-F1, Ctrl-L  Reveal current file in tree  │
                        │                    -  Collapse all folders         │
-                       │               Ctrl-T  Switch to next look          │
  1: Project   2: Commit└ any key to close ──────────────────────────────────┘       Darcula Classic

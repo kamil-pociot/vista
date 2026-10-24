@@ -1,7 +1,7 @@
 //! The Preferences page (`Ctrl-,`, `⚙`): vista's settings, changed in
 //! place. A change applies at once and is remembered in `state.toml`, like
-//! the toggles elsewhere; `config.toml` keeps the defaults (and key
-//! bindings, which the last row opens).
+//! the toggles elsewhere; `config.toml` keeps the defaults, which the last
+//! row opens. `Tab` switches to the Keymap page (`keymap_page`).
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -21,6 +21,7 @@ pub enum Pref {
     FindWords,
     FindRegex,
     CopyOnSelect,
+    Keymap,
     EditConfig,
 }
 
@@ -33,7 +34,7 @@ pub const SECTIONS: &[(&str, &[Pref])] = &[
     ("Commit window", &[Pref::GroupByFolder]),
     ("Find in Files", &[Pref::FindCase, Pref::FindWords, Pref::FindRegex]),
     ("Mouse", &[Pref::CopyOnSelect]),
-    ("More", &[Pref::EditConfig]),
+    ("More", &[Pref::Keymap, Pref::EditConfig]),
 ];
 
 impl Pref {
@@ -53,6 +54,7 @@ impl Pref {
             Pref::FindWords => "Whole words",
             Pref::FindRegex => "Regular expressions",
             Pref::CopyOnSelect => "Copy selection on release",
+            Pref::Keymap => "Keymap…",
             Pref::EditConfig => "Edit config.toml…",
         }
     }
@@ -76,8 +78,9 @@ impl Pref {
             Pref::FindWords => "Find in Files matches whole words (Alt-W there).",
             Pref::FindRegex => "Find in Files takes a regular expression (Alt-X there).",
             Pref::CopyOnSelect => "Releasing the mouse after selecting copies; off, Ctrl-C / Cmd-C / y do.",
+            Pref::Keymap => "Every action and its keys: add, remove or reset them (Tab).",
             Pref::EditConfig => {
-                "Defaults, key bindings and the rest, in the settings file. They apply when vista starts again."
+                "Defaults for these settings and the rest, in the settings file. They apply when vista starts again."
             }
         }
     }
@@ -95,12 +98,24 @@ pub enum PrefsOutcome {
     Close,
     /// Change the selected setting: to the next value (`true`) or back.
     Change(Pref, bool),
+    /// Over to the Keymap page.
+    SwitchPage,
+}
+
+/// The two pages of Preferences.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Page {
+    #[default]
+    Settings,
+    Keymap,
 }
 
 #[derive(Debug, Default)]
 pub struct PrefsPage {
     /// Index into [`all`].
     pub selected: usize,
+    pub page: Page,
+    pub keymap: crate::keymap_page::KeymapPage,
 }
 
 impl PrefsPage {
@@ -114,6 +129,7 @@ impl PrefsPage {
         let pref = self.selected_pref();
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => return PrefsOutcome::Close,
+            KeyCode::Tab | KeyCode::BackTab => return PrefsOutcome::SwitchPage,
             KeyCode::Up | KeyCode::Char('k') => self.selected = (self.selected + n - 1) % n,
             KeyCode::Down | KeyCode::Char('j') => self.selected = (self.selected + 1) % n,
             KeyCode::Home => self.selected = 0,

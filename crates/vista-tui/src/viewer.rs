@@ -85,6 +85,9 @@ pub struct Tab {
     pub scroll: usize,
     /// Cursor line.
     pub cursor: usize,
+    /// The column Go to Line put the caret on: (line, 0-based char). Only
+    /// while the cursor is still on that line.
+    pub caret: Option<(usize, usize)>,
     pub hscroll: usize,
     /// Long lines wrap (`w`); otherwise they scroll sideways. In rendered
     /// Markdown this also decides whether tables wrap or keep full width.
@@ -122,8 +125,6 @@ pub struct Tab {
 pub enum ViewerOutcome {
     Handled,
     Unhandled,
-    /// Ask for a line number.
-    GotoLinePrompt,
     /// Open the working file at a 0-based line (from a diff).
     OpenAt(usize),
     /// Show the diff of the next/previous changed file.
@@ -318,6 +319,7 @@ impl Viewer {
             language: String::new(),
             scroll: 0,
             cursor: 0,
+            caret: None,
             hscroll: 0,
             wrap: false,
             land: None,
@@ -1014,6 +1016,101 @@ impl Tab {
         }
     }
 
+    /// Where the cursor is in the file, for Go to Line and the status bar:
+    /// 1-based (line, column) and the file's line count. `None` for tabs
+    /// without lines (images, binary files).
+    pub fn position(&self) -> Option<(usize, usize, usize)> {
+        let column = |line: usize| match self.caret {
+            Some((l, c)) if l == line => c + 1,
+            _ => 1,
+        };
+        match &self.content {
+            Content::Text { lines, .. } | Content::Markdown { lines, raw: true, .. } => {
+                Some((self.cursor + 1, column(self.cursor), lines.len()))
+            }
+            // Rendered Markdown: the source line of the block at the top.
+            Content::Markdown { lines, rendered, .. } => {
+                let line = rendered
+                    .as_ref()
+                    .and_then(|(_, _, rows)| {
+                        rows[..(self.scroll + 1).min(rows.len())]
+                            .iter()
+                            .rev()
+                            .find_map(|r| r.src_line)
+                    })
+                    .unwrap_or(1);
+                Some((line, 1, lines.len()))
+            }
+            Content::Diff(d) if matches!(d.body, crate::diffview::DiffBody::Text) => {
+                let (new, count) = d.side_for_lines();
+                let line = if new {
+                    d.new_line_at(self.cursor)
+                } else {
+                    d.old_line_at(self.cursor)
+                };
+                Some((line.map_or(1, |l| l + 1), 1, count))
+            }
+            _ => None,
+        }
+    }
+
+    /// Go to Line: puts the cursor on a 1-based line of the file (the
+    /// current one when `None`) and the caret on a 1-based column. Lines
+    /// past the end go to the last. In a diff this is the working tree's
+    /// line (HEAD's when the file was deleted); false where there are no lines.
+    pub fn go_to(&mut self, line: Option<usize>, column: Option<usize>) -> bool {
+        let Some((current, _, count)) = self.position() else {
+            return false;
+        };
+        let line = line.unwrap_or(current).clamp(1, count.max(1)) - 1;
+        let target = match &mut self.content {
+            Content::Text { .. } | Content::Markdown { raw: true, .. } => line,
+            Content::Markdown { rendered, .. } => {
+                // The last rendered row starting a block at or before the line.
+                let rows = rendered.as_ref().map(|(_, _, r)| r.as_slice()).unwrap_or_default();
+                rows.iter()
+                    .rposition(|r| r.src_line.is_some_and(|s| s <= line + 1))
+                    .unwrap_or(0)
+            }
+            Content::Diff(d) => {
+                let new = d.side_for_lines().0;
+                match d.display_row_of(line, new) {
+                    Some(i) => i,
+                    // Folded away: unfold this diff to show it.
+                    None if d.collapse => {
+                        d.collapse = false;
+                        d.rebuild();
+                        d.display_row_of(line, new).unwrap_or(0)
+                    }
+                    None => 0,
+                }
+            }
+            _ => return false,
+        };
+        self.set_cursor(target);
+        let h = self.view_height.max(1);
+        if !self.has_cursor() {
+            // Rendered Markdown scrolls the block to the top.
+        } else if target < self.scroll || target >= self.scroll + h || self.scroll_sub.is_some() {
+            self.scroll = target.saturating_sub(h / 2);
+            self.scroll_sub = None;
+        }
+        self.caret = None;
+        if let (Some(c), Content::Text { lines, .. } | Content::Markdown { lines, raw: true, .. }) =
+            (column, &self.content)
+        {
+            let len = lines.get(target).map_or(0, |l| line_text(l).chars().count());
+            let c = (c - 1).min(len);
+            self.caret = Some((target, c));
+            // Scroll sideways to show it (drawing clamps the far end).
+            let w = self.view_width.saturating_sub(8).max(1);
+            if !self.wrap && (c < self.hscroll || c >= self.hscroll + w) {
+                self.hscroll = c.saturating_sub(w / 2);
+            }
+        }
+        true
+    }
+
     /// Keys while the search query is being typed.
     fn search_key(&mut self, key: &KeyEvent) -> ViewerOutcome {
         let Some(s) = self.search.as_mut() else {
@@ -1087,7 +1184,6 @@ impl Tab {
             KeyCode::PageDown => self.move_cursor(page),
             KeyCode::Char('u') if ctrl => self.move_cursor(-page / 2),
             KeyCode::Char('d') if ctrl => self.move_cursor(page / 2),
-            KeyCode::Char('g') if ctrl => return ViewerOutcome::GotoLinePrompt,
             KeyCode::Home | KeyCode::Char('g') if !ctrl => self.set_cursor(0),
             KeyCode::End | KeyCode::Char('G') if !ctrl => self.set_cursor(usize::MAX / 2),
             KeyCode::Left | KeyCode::Char('h') if !ctrl && !self.wrap => self.hscroll_by(-4),
@@ -1227,10 +1323,39 @@ mod tests {
         assert_eq!((t.cursor, t.scroll), (99, 90));
         t.handle_key(&key(KeyCode::Char('g')));
         assert_eq!((t.cursor, t.scroll), (0, 0));
+        // Ctrl-G is Go to Line, a keymap action.
         assert_eq!(
             t.handle_key(&KeyEvent::new(KeyCode::Char('g'), KeyModifiers::CONTROL)),
-            ViewerOutcome::GotoLinePrompt
+            ViewerOutcome::Unhandled
         );
+    }
+
+    #[test]
+    fn go_to_line_and_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.rs");
+        let src: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&p, &src).unwrap();
+        let (ctx, rx) = ctx();
+        let mut v = Viewer::new();
+        v.open(&p, &ctx);
+        finish(&mut v, &rx);
+        let t = v.active_tab_mut().unwrap();
+        t.view_height = 10;
+        assert_eq!(t.position(), Some((1, 1, 100)));
+        assert!(t.go_to(Some(50), Some(3)));
+        assert_eq!((t.cursor, t.caret), (49, Some((49, 2))));
+        assert_eq!(t.position(), Some((50, 3, 100)));
+        assert!(t.scroll <= 49 && 49 < t.scroll + 10, "in view");
+        // Past the end of the line: its end. Past the last line: the last.
+        t.go_to(None, Some(99));
+        assert_eq!(t.position(), Some((50, 8, 100)));
+        t.go_to(Some(500), None);
+        assert_eq!(t.position(), Some((100, 1, 100)));
+        // Moving on drops the column.
+        t.go_to(Some(10), Some(4));
+        t.handle_key(&key(KeyCode::Down));
+        assert_eq!(t.position(), Some((11, 1, 100)));
     }
 
     #[test]

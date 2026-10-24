@@ -16,6 +16,7 @@ pub enum Action {
     ToggleCommit,
     ToggleFind,
     GotoFile,
+    GotoLine,
     FindInFiles,
     RecentFiles,
     Edit,
@@ -56,6 +57,7 @@ impl Action {
         Action::ToggleCommit,
         Action::ToggleFind,
         Action::GotoFile,
+        Action::GotoLine,
         Action::FindInFiles,
         Action::RecentFiles,
         Action::Edit,
@@ -96,6 +98,7 @@ impl Action {
             Action::ToggleCommit => "commit-window",
             Action::ToggleFind => "find-window",
             Action::GotoFile => "goto-file",
+            Action::GotoLine => "goto-line",
             Action::FindInFiles => "find-in-files",
             Action::RecentFiles => "recent-files",
             Action::Edit => "edit",
@@ -141,6 +144,7 @@ impl Action {
             Action::ToggleCommit => "Commit tool window",
             Action::ToggleFind => "Find tool window",
             Action::GotoFile => "Go to File",
+            Action::GotoLine => "Go to Line:Column",
             Action::FindInFiles => "Find in Files",
             Action::RecentFiles => "Recent files",
             Action::Edit => "Edit file in Neovim",
@@ -219,6 +223,9 @@ impl KeyChord {
         if s.is_empty() {
             return None;
         }
+        if s == "+" {
+            return Some(KeyChord::new(KeyCode::Char('+'), KeyModifiers::NONE));
+        }
         let mut mods = if capital {
             KeyModifiers::SHIFT
         } else {
@@ -267,6 +274,45 @@ impl KeyChord {
     }
 }
 
+impl KeyChord {
+    /// The name [`KeyChord::parse`] reads back (`ctrl+shift+f`, `alt+.`,
+    /// `space`), for writing bindings; `None` for keys it has no name for.
+    pub fn config_name(&self) -> Option<String> {
+        let key = match self.code {
+            KeyCode::Char(' ') => "space".to_string(),
+            KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
+            KeyCode::F(n) => format!("f{n}"),
+            KeyCode::Enter => "enter".into(),
+            KeyCode::Esc => "esc".into(),
+            KeyCode::Tab => "tab".into(),
+            KeyCode::BackTab => return Some("shift+tab".into()),
+            KeyCode::Backspace => "backspace".into(),
+            KeyCode::Delete => "delete".into(),
+            KeyCode::Up => "up".into(),
+            KeyCode::Down => "down".into(),
+            KeyCode::Left => "left".into(),
+            KeyCode::Right => "right".into(),
+            KeyCode::Home => "home".into(),
+            KeyCode::End => "end".into(),
+            KeyCode::PageUp => "pageup".into(),
+            KeyCode::PageDown => "pagedown".into(),
+            _ => return None,
+        };
+        let mut name = String::new();
+        for (m, prefix) in [
+            (KeyModifiers::CONTROL, "ctrl+"),
+            (KeyModifiers::ALT, "alt+"),
+            (KeyModifiers::SHIFT, "shift+"),
+        ] {
+            if self.mods.contains(m) {
+                name.push_str(prefix);
+            }
+        }
+        name.push_str(&key);
+        Some(name)
+    }
+}
+
 impl fmt::Display for KeyChord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.mods.contains(KeyModifiers::CONTROL) {
@@ -312,6 +358,8 @@ pub const DEFAULT_BINDINGS: &[(&str, Action)] = &[
     ("alt+3", Action::ToggleFind),
     ("ctrl+p", Action::GotoFile),
     ("ctrl+shift+n", Action::GotoFile),
+    // IntelliJ's Go to Line on Windows / Linux (Cmd-L on a Mac is the terminal's).
+    ("ctrl+g", Action::GotoLine),
     ("ctrl+f", Action::FindInFiles),
     ("ctrl+shift+f", Action::FindInFiles),
     ("ctrl+e", Action::RecentFiles),
@@ -375,7 +423,13 @@ impl Keymap {
     /// Defaults plus user overrides (`"ctrl+o" = "goto-file"`, `"q" = "none"`).
     /// Invalid entries are skipped and reported.
     pub fn with_overrides(overrides: &BTreeMap<String, String>) -> (Keymap, Vec<KeymapWarning>) {
-        let mut km = Keymap::defaults();
+        Keymap::defaults().with(overrides)
+    }
+
+    /// This keymap with overrides applied on top: config.toml's on the
+    /// defaults, then the ones made on the Keymap page (state.toml).
+    pub fn with(&self, overrides: &BTreeMap<String, String>) -> (Keymap, Vec<KeymapWarning>) {
+        let mut km = self.clone();
         let mut warnings = Vec::new();
         for (chord, action) in overrides {
             let Some(c) = KeyChord::parse(chord) else {
@@ -394,6 +448,11 @@ impl Keymap {
             }
         }
         (km, warnings)
+    }
+
+    /// The action a chord runs.
+    pub fn action_of(&self, chord: KeyChord) -> Option<Action> {
+        self.map.get(&chord).copied()
     }
 
     pub fn action_for(&self, ev: &KeyEvent) -> Option<Action> {
@@ -430,6 +489,25 @@ impl Keymap {
             .map(|c| c.to_string())
             .unwrap_or_default()
     }
+}
+
+/// Changes the Keymap page's overrides so that `chord` runs `action` (or
+/// nothing), given the bindings they go on top of (`base`). An override
+/// that would only repeat `base` is dropped.
+pub fn bind(overrides: &mut BTreeMap<String, String>, base: &Keymap, chord: KeyChord, action: Option<Action>) {
+    let Some(name) = chord.config_name() else { return };
+    overrides.retain(|k, _| KeyChord::parse(k) != Some(chord));
+    if base.action_of(chord) != action {
+        overrides.insert(name, action.map_or("none", Action::name).to_string());
+    }
+}
+
+/// Drops the overrides that change `action`'s keys, so it has `base`'s again.
+pub fn reset(overrides: &mut BTreeMap<String, String>, base: &Keymap, action: Action) {
+    overrides.retain(|k, v| {
+        let takes_its_key = KeyChord::parse(k).is_some_and(|c| base.action_of(c) == Some(action));
+        v != action.name() && !takes_its_key
+    });
 }
 
 #[cfg(test)]
@@ -517,6 +595,62 @@ mod tests {
         );
         assert_eq!(km.action_for(&ev(KeyCode::Char('q'), KeyModifiers::NONE)), None);
         assert_eq!(warnings.len(), 2);
+    }
+
+    #[test]
+    fn config_names_read_back_as_the_same_chord() {
+        let mut chords: Vec<KeyChord> = DEFAULT_BINDINGS
+            .iter()
+            .map(|(k, _)| KeyChord::parse(k).unwrap())
+            .collect();
+        chords.extend(
+            [
+                "+",
+                "ctrl++",
+                "alt+shift+x",
+                "ctrl+space",
+                "pageup",
+                "shift+up",
+                "ctrl+alt+delete",
+            ]
+            .map(|k| KeyChord::parse(k).unwrap()),
+        );
+        for c in chords {
+            let name = c.config_name().unwrap();
+            assert_eq!(KeyChord::parse(&name), Some(c), "{name}");
+        }
+        assert_eq!(KeyChord::parse("L").unwrap().config_name().as_deref(), Some("shift+l"));
+        assert_eq!(KeyChord::new(KeyCode::Insert, KeyModifiers::NONE).config_name(), None);
+    }
+
+    #[test]
+    fn binding_unbinding_and_resetting_on_top_of_the_config() {
+        let mut config = BTreeMap::new();
+        config.insert("ctrl+o".to_string(), "goto-file".to_string());
+        let (base, _) = Keymap::with_overrides(&config);
+        let mut o = BTreeMap::new();
+        let chord = |s| KeyChord::parse(s).unwrap();
+        // A new key for Go to Line; Ctrl-P taken from Go to File.
+        bind(&mut o, &base, chord("alt+g"), Some(Action::GotoLine));
+        bind(&mut o, &base, chord("ctrl+p"), Some(Action::GotoLine));
+        // Ctrl-O (Go to File in the config) unbound.
+        bind(&mut o, &base, chord("ctrl+o"), None);
+        let (km, warnings) = base.with(&o);
+        assert!(warnings.is_empty());
+        assert_eq!(km.action_of(chord("ctrl+p")), Some(Action::GotoLine));
+        assert_eq!(km.action_of(chord("alt+g")), Some(Action::GotoLine));
+        assert_eq!(km.action_of(chord("ctrl+o")), None);
+        assert_eq!(km.hint(Action::GotoFile), "Ctrl-Shift-N");
+        // Binding a key back to what the base has drops the override.
+        bind(&mut o, &base, chord("ctrl+o"), Some(Action::GotoFile));
+        assert!(!o.contains_key("ctrl+o"));
+        // Reset Go to Line: its own keys go, and Ctrl-P is Go to File's again.
+        reset(&mut o, &base, Action::GotoLine);
+        assert!(o.is_empty(), "{o:?}");
+        // Resetting Go to File gives Ctrl-P back too.
+        bind(&mut o, &base, chord("ctrl+p"), Some(Action::GotoLine));
+        reset(&mut o, &base, Action::GotoFile);
+        assert!(o.is_empty(), "{o:?}");
     }
 
     #[test]

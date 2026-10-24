@@ -31,6 +31,7 @@ An IntelliJ-style diff opens from the Commit window, from `d` in the viewer, and
 | `u` / `i` / `z` / `w` | unified / ignore whitespace / collapse / wrap |
 | `←`/`→` | scroll sideways |
 | `Enter` | open the file at this line |
+| `Ctrl-G` | go to a working-tree line, unfolding it if collapsed ([22](22-go-to-line.md)) |
 | `e` | edit side by side in Neovim ([08](08-editing-with-neovim.md#side-by-side-diff-editing)) |
 
 ## Code and tests

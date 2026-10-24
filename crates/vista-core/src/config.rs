@@ -242,6 +242,7 @@ copy_on_select = true                # copy a mouse selection on release
 [keys]
 # "ctrl+o" = "goto-file"             # bind a key to an action
 # "q" = "none"                       # unbind a key
+# (or change keys in the app: Preferences, then Tab for the Keymap page)
 "#;
 
 #[cfg(test)]

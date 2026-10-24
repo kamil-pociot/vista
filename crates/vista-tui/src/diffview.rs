@@ -237,6 +237,41 @@ impl DiffDoc {
         })
     }
 
+    /// Which side Go to Line counts lines on, and how many it has: the
+    /// working tree's, or HEAD's when the file is gone.
+    pub fn side_for_lines(&self) -> (bool, usize) {
+        let (old, new) = (self.old_hl.len(), self.new_hl.len());
+        if new == 0 && old > 0 { (false, old) } else { (true, new) }
+    }
+
+    /// The HEAD line (0-based) for a display row, if any.
+    pub fn old_line_at(&self, i: usize) -> Option<usize> {
+        let r = self.row_of(i)?;
+        self.sbs.rows[r..].iter().find_map(|x| x.left)
+    }
+
+    /// The display row showing 0-based `line` of the working tree (`new`)
+    /// or of HEAD; `None` when it is folded away.
+    pub fn display_row_of(&self, line: usize, new: bool) -> Option<usize> {
+        let side = |r: usize| {
+            let row = &self.sbs.rows[r];
+            if new { row.right } else { row.left }
+        };
+        (0..self.len()).find(|&i| {
+            if self.unified {
+                // A changed line shows twice: HEAD's (Old) and the new one.
+                match self.udisplay[i] {
+                    Unified::Both(r) => side(r) == Some(line),
+                    Unified::New(r) => new && side(r) == Some(line),
+                    Unified::Old(r) => !new && side(r) == Some(line),
+                    Unified::Fold { .. } => false,
+                }
+            } else {
+                self.row_of(i).is_some_and(|r| side(r) == Some(line))
+            }
+        })
+    }
+
     /// The HEAD line (0-based) of a display row that exists only in HEAD.
     pub fn head_only_line_at(&self, i: usize) -> Option<usize> {
         let row = &self.sbs.rows[self.row_of(i)?];
@@ -488,6 +523,35 @@ mod tests {
             handle_key(&mut d, &KeyEvent::from(KeyCode::Char('J')), 0),
             DiffKey::File(true)
         );
+    }
+
+    #[test]
+    fn finds_the_display_row_of_a_file_line() {
+        // Line 2 changed, a line inserted after line 5.
+        let old: String = (0..10).map(|i| format!("l{i}\n")).collect();
+        let new = old.replace("l2\n", "two\n").replace("l5\n", "l5\nadded\n");
+        let mut d = doc(&old, &new);
+        assert_eq!(d.side_for_lines(), (true, 11));
+        assert_eq!(d.display_row_of(2, true), Some(2));
+        assert_eq!(d.display_row_of(6, true), Some(6), "the inserted line");
+        assert_eq!(d.display_row_of(7, true), Some(7));
+        assert_eq!(d.display_row_of(6, false), Some(7), "HEAD's l6 sits beside the new l6");
+        assert_eq!(d.old_line_at(6), Some(6), "the next HEAD line below an insertion");
+        // Unified: the changed line shows twice, HEAD's first.
+        d.unified = true;
+        assert_eq!(d.display_row_of(2, false), Some(2));
+        assert_eq!(d.display_row_of(2, true), Some(3));
+        // Folded away: not shown.
+        d.collapse = true;
+        d.rebuild();
+        assert_eq!(d.display_row_of(10, true).map(|i| d.new_line_at(i)), Some(Some(10)));
+        let far: String = (0..60).map(|i| format!("l{i}\n")).collect();
+        let mut d = doc(&far, &far.replace("l1\n", "one\n"));
+        d.collapse = true;
+        d.rebuild();
+        assert_eq!(d.display_row_of(40, true), None);
+        // A deleted file counts HEAD's lines.
+        assert_eq!(doc("a\nb\n", "").side_for_lines(), (false, 2));
     }
 
     #[test]

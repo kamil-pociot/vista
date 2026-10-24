@@ -181,9 +181,9 @@ fn search_in_file_and_go_to_line() {
     vista.press("shift+n");
     vista.expect_text("10:1");
     vista.press("esc");
-    // Ctrl-G: go to line.
+    // Ctrl-G: go to line (more in e2e_r1_goto_line).
     vista.press("ctrl+g");
-    vista.expect_text("Go to line:");
+    vista.expect_text("Go to Line:Column");
     vista.type_text("150");
     vista.press("enter");
     vista.expect_text("150:1");

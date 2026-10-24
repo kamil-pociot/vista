@@ -42,7 +42,7 @@ copy_on_select = true        # copy a mouse selection on release; false: Ctrl-C 
 "q" = "none"                 # unbind
 ```
 
-Action names for `[keys]` are listed in [15](15-keyboard-reference.md#action-names). Uppercase letters mean Shift (`"L"`).
+Action names for `[keys]` are listed in [15](15-keyboard-reference.md#action-names). Uppercase letters mean Shift (`"L"`). Keys can also be changed in the app, on Preferences' Keymap page ([23](23-keymap.md)): those apply at once and are saved in `state.toml`, on top of these.
 
 ## state.toml (remembered settings)
 
@@ -56,7 +56,8 @@ Settings changed in the app are saved to `state.toml` next to `config.toml` and 
 - Find in Files case, words and regex;
 - the left panel's width;
 - open projects and their order;
-- the look picked with `Ctrl-T`.
+- the look picked with `Ctrl-T`;
+- key bindings changed on the Keymap page (`[keys]`, the same form as config.toml's; [23](23-keymap.md)).
 
 Until a setting is changed, its default comes from `config.toml` (or vista's built-in). Delete `state.toml` to reset.
 
