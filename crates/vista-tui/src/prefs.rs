@@ -12,6 +12,7 @@ pub enum Pref {
     LineNumbers,
     WrapMarkdown,
     WrapCode,
+    TabRows,
     DiffUnified,
     DiffCollapse,
     DiffWhitespace,
@@ -28,7 +29,10 @@ pub enum Pref {
 /// The page, in order: a heading, then its settings.
 pub const SECTIONS: &[(&str, &[Pref])] = &[
     ("Appearance", &[Pref::Look, Pref::FillBackground]),
-    ("Viewer", &[Pref::LineNumbers, Pref::WrapMarkdown, Pref::WrapCode]),
+    (
+        "Viewer",
+        &[Pref::LineNumbers, Pref::WrapMarkdown, Pref::WrapCode, Pref::TabRows],
+    ),
     ("Diff", &[Pref::DiffUnified, Pref::DiffCollapse, Pref::DiffWhitespace]),
     ("Project tree", &[Pref::ShowIgnored]),
     ("Commit window", &[Pref::GroupByFolder]),
@@ -45,6 +49,7 @@ impl Pref {
             Pref::LineNumbers => "Line numbers",
             Pref::WrapMarkdown => "Wrap Markdown",
             Pref::WrapCode => "Wrap code",
+            Pref::TabRows => "Tabs in several rows",
             Pref::DiffUnified => "Unified diffs",
             Pref::DiffCollapse => "Collapse unchanged lines",
             Pref::DiffWhitespace => "Ignore whitespace",
@@ -69,6 +74,9 @@ impl Pref {
             Pref::LineNumbers => "Line numbers in code, and source lines in rendered Markdown (Shift-L).",
             Pref::WrapMarkdown => "Long lines and tables wrap in Markdown (w in the viewer).",
             Pref::WrapCode => "Long lines wrap in code; off, they scroll sideways (w in the viewer).",
+            Pref::TabRows => {
+                "File tabs that don't fit wrap onto more rows; off, they stay on one row that scrolls (wheel, ◂ ▸)."
+            }
             Pref::DiffUnified => "One column instead of side by side, for diffs opened from now on (u in a diff).",
             Pref::DiffCollapse => "Fold runs of unchanged lines, for diffs opened from now on (z in a diff).",
             Pref::DiffWhitespace => "Changes in whitespace alone don't count (i in a diff).",

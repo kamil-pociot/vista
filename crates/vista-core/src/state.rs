@@ -36,6 +36,8 @@ pub struct UiState {
     pub projects: ProjectsState,
     #[serde(skip_serializing_if = "LayoutState::is_empty")]
     pub layout: LayoutState,
+    #[serde(skip_serializing_if = "TabsState::is_empty")]
+    pub tabs: TabsState,
     /// Key bindings changed on the Keymap page, on top of config.toml's
     /// `[keys]` and in the same form (`"ctrl+g" = "goto-line"`, `"q" = "none"`).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -65,6 +67,15 @@ pub struct LayoutState {
     /// Width of the tree / Commit panel in columns (dragged or Ctrl-Shift-←/→).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub left_width: Option<u16>,
+}
+
+/// File tabs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TabsState {
+    /// Tabs that don't fit wrap onto more rows; otherwise the row scrolls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multiple_rows: Option<bool>,
 }
 
 /// Projects open at exit (restored on start) and opened before.
@@ -148,7 +159,8 @@ is_empty!(
     TreeState,
     FindState,
     ProjectsState,
-    LayoutState
+    LayoutState,
+    TabsState
 );
 
 impl UiState {

@@ -53,12 +53,30 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
             dirty: *dirty,
         })
         .collect();
-    let (inner, hits) = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme);
+    // A tab that just became the active one scrolls into view; the wheel
+    // can scroll away from it after that.
+    let active_id = app.viewer.active_tab().map(|t| t.id);
+    let show = (active_id != app.viewer.strip_shown)
+        .then_some(app.viewer.active)
+        .flatten();
+    app.viewer.strip_shown = active_id;
+    let switch = app.diff_switch();
+    let opts = chrome::StripOptions {
+        wrap: app.tab_rows(),
+        reserve: if switch.is_some() { DIFF_SWITCH_WIDTH } else { 0 },
+        scroll: app.viewer.strip_scroll,
+        show,
+    };
+    let (inner, hits, scroll) = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme, opts);
+    app.viewer.strip_scroll = scroll;
     app.tab_hits = hits;
-    if let Some(diff) = app.diff_switch() {
+    if let Some(diff) = switch {
         diff_switch(f, Rect { height: 1, ..area }, app, diff);
     }
-    app.areas.tabs = Some(Rect { height: 1, ..area });
+    app.areas.tabs = Some(Rect {
+        height: inner.y - area.y,
+        ..area
+    });
     app.areas.viewer = Some(inner);
     if app.viewer.active.is_none() {
         crate::ui::empty_state(f, inner, app);
@@ -79,6 +97,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         click::line(f, r, items, ratatui::layout::Alignment::Left, app.theme.bg("ui.panel"));
     }
 }
+
+/// Columns the File / Diff switch takes at the right of the tab strip.
+const DIFF_SWITCH_WIDTH: u16 = 17;
 
 /// `File | Diff` at the right of the tab strip: the view shown stands out,
 /// the other one switches to it (as `d` does).

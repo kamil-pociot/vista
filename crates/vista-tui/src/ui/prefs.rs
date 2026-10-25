@@ -44,7 +44,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     // One size for both pages, so switching doesn't move the frame.
     let w = area.width.saturating_sub(4).min(78);
     let tallest = rows().len().max(Action::ALL.len() + 1) as u16;
-    let h = (tallest + 7).min(area.height.saturating_sub(2));
+    let h = (tallest + 6).min(area.height.saturating_sub(2));
     let rect = crate::ui::help::centered(area, w, h);
     f.render_widget(Clear, rect);
     let block = Block::new()
@@ -60,13 +60,17 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     if inner.height < 6 || inner.width < 20 {
         return;
     }
-    page_switcher(f, Rect { height: 1, ..inner }, app, page.page);
-    // The pages, then a rule, the selected row's explanation (2 rows) and the keys.
-    let body = Rect {
-        y: inner.y + 1,
-        height: inner.height - 1,
-        ..inner
+    // In the top border, after the title.
+    let title_w = " Preferences ".len() as u16 + 1;
+    let switcher = Rect {
+        x: rect.x + title_w,
+        y: rect.y,
+        width: rect.width.saturating_sub(title_w + 1),
+        height: 1,
     };
+    page_switcher(f, switcher, app, page.page);
+    // The pages, then a rule, the selected row's explanation (2 rows) and the keys.
+    let body = inner;
     let list = Rect {
         height: body.height.saturating_sub(4),
         ..body
@@ -99,7 +103,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
 /// `Settings  Keymap` at the top; the one shown stands out, both click.
 fn page_switcher(f: &mut Frame, area: Rect, app: &App, shown: Page) {
     let t = &app.theme;
-    let mut items: Vec<click::Item> = vec![(Span::raw(" "), None)];
+    let mut items: Vec<click::Item> = vec![(Span::styled("─ ", t.fg("ui.popup.border")), None)];
     for (p, name) in [(Page::Settings, "Settings"), (Page::Keymap, "Keymap")] {
         let style = if p == shown {
             t.fg_bg("ui.text.strong", "ui.selection").add_modifier(Modifier::BOLD)
@@ -107,9 +111,9 @@ fn page_switcher(f: &mut Frame, area: Rect, app: &App, shown: Page) {
             t.fg("ui.dim")
         };
         items.push((Span::styled(format!(" {name} "), style), Some(Click::PrefsPage(p))));
-        items.push((Span::raw(" "), None));
+        items.push((Span::styled("─", t.fg("ui.popup.border")), None));
     }
-    items.push((Span::styled("  Tab switches", t.fg("ui.dim")), None));
+    items.push((Span::styled(" Tab switches ", t.fg("ui.dim")), None));
     click::line(f, area, items, Alignment::Left, Style::default());
 }
 

@@ -3,8 +3,7 @@
 Preferences has a second page, **Keymap**: every action with its keys, IntelliJ's Settings › Keymap. `Tab` in Preferences (`Ctrl-,`, `⚙`) switches to it, as does its Keymap… row or a click on `Keymap` at the top. A key is added by pressing it, taken from another action after asking, removed, or reset to the default. Changes apply at once, in every open project, and are remembered.
 
 ```
-┌ Preferences ──────────────────────────────────────────────────────┐
-│  Settings   Keymap    Tab switches                                │
+┌ Preferences ─  Settings ─ Keymap ─ Tab switches ──────────────────┐
 │ Filter: go to                                                     │
 │   Go to File                              Ctrl-P   Ctrl-Shift-N   │
 │   Go to Line:Column                              Ctrl-G   Alt-G   │

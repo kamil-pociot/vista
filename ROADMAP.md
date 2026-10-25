@@ -432,6 +432,10 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] `File | Diff` at the right of the tab row for a changed file (and in diffs): switches the tab between the file and its diff against HEAD in place, at the same line; `d` does the same both ways. An already open tab of the other view comes to the front instead; history and review diffs open the file beside them.
 - [x] Tests: `e2e_m7_diff` (switch and `d` both ways in one tab at the same line; an existing diff or file tab reused).
 
+### Tabs that don't fit ✅
+- [x] File tabs that don't fit no longer disappear: one row that scrolls (wheel or sideways scroll over it, `◂` `▸` at its ends, clickable), keeping a tab that becomes active in view; or, with Preferences › Viewer › Tabs in several rows (`[tabs] multiple_rows` in `state.toml`), rows that wrap, the file below them. Tabs no longer run under the File / Diff switch; a tab dragged onto another row moves there.
+- [x] Tests: `strip_layout_tests` units, `e2e_r1_tabs` (scrolling row, several rows).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

@@ -55,6 +55,7 @@ Settings changed in the app are saved to `state.toml` next to `config.toml` and 
 - showing ignored files;
 - Find in Files case, words and regex;
 - the left panel's width;
+- file tabs in several rows (`[tabs] multiple_rows`);
 - open projects and their order;
 - the look picked with `Ctrl-T`;
 - key bindings changed on the Keymap page (`[keys]`, the same form as config.toml's; [23](23-keymap.md)).

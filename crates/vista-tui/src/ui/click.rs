@@ -38,6 +38,8 @@ pub enum Click {
     KeymapRow(usize, Option<usize>),
     /// The File / Diff switch: as `d` in the viewer.
     DiffSwitch,
+    /// ◂ / ▸ at the ends of a tab row that scrolls: right (`true`) or left.
+    TabScroll(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

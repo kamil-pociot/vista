@@ -137,3 +137,120 @@ fn dragging_a_project_tab_reorders_projects_and_is_remembered() {
     let (pa, pb) = (state.find(&an).unwrap(), state.find(&bn).unwrap());
     assert!(pb < pa, "saved order b, a:\n{state}");
 }
+
+const NAMES: [&str; 6] = [
+    "alpha_long_name",
+    "bravo_long_name",
+    "charlie_long_name",
+    "delta_long_name",
+    "echo_long_name",
+    "foxtrot_long_name",
+];
+
+/// Six files with long names, all opened: more tabs than one row holds.
+fn many_tabs(vista: &mut Vista) {
+    vista.expect_text("alpha_long_name.txt");
+    for n in NAMES {
+        open(vista, n, &format!("content of {n}"));
+    }
+}
+
+fn many_files() -> vista_e2e::Repo {
+    let mut fx = Fixture::git();
+    for n in NAMES {
+        fx = fx.file(&format!("{n}.txt"), format!("content of {n}\n"));
+    }
+    fx.commit("init").build()
+}
+
+#[test]
+fn a_row_of_tabs_that_does_not_fit_scrolls() {
+    let repo = many_files();
+    let mut vista = Vista::launch(BIN, &repo).size(100, 30).start();
+    many_tabs(&mut vista);
+    // The active (last) tab is in view; the first ones scrolled out, ◂ ▸ at the ends.
+    let strip = |vista: &Vista| vista.row_text(1);
+    vista.wait_until("the last tab in view", |s| {
+        s.contents()
+            .lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("foxtrot_long_name.txt ×"))
+    });
+    assert!(!strip(&vista).contains("alpha_long_name"), "{}", strip(&vista));
+    assert!(
+        strip(&vista).contains('◂') && strip(&vista).contains('▸'),
+        "{}",
+        strip(&vista)
+    );
+    // The wheel scrolls the row back to the first tab; the file shown stays.
+    let (_, col) = vista.expect_text("foxtrot_long_name.txt ×").position();
+    for _ in 0..30 {
+        vista.scroll_up(col, 1);
+    }
+    vista.wait_until("the first tab in view", |s| {
+        s.contents()
+            .lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("alpha_long_name.txt ×"))
+    });
+    vista.expect_text("content of foxtrot_long_name");
+    // A click on a tab scrolled into view switches to it.
+    let (row, col) = vista.expect_text_in("bravo_long_name.txt ×", 30..100).position();
+    vista.click(col + 1, row);
+    vista.expect_text("content of bravo_long_name");
+    // ▸ scrolls right.
+    let (row, col) = vista.expect_text("▸").position();
+    for _ in 0..30 {
+        vista.click(col, row);
+    }
+    vista.wait_until("scrolled to the end", |s| {
+        s.contents()
+            .lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("foxtrot_long_name.txt ×"))
+    });
+    // Another tab made active (bravo's neighbour, scrolled out) comes into view again.
+    assert!(!vista.row_text(1).contains("alpha_long_name"), "{}", vista.row_text(1));
+    vista.press("alt+left");
+    vista.expect_text("content of alpha_long_name");
+    vista.wait_until("the active tab in view", |s| {
+        s.contents()
+            .lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("alpha_long_name.txt ×"))
+    });
+}
+
+#[test]
+fn tabs_wrap_onto_several_rows_when_set() {
+    let repo = many_files();
+    let mut vista = Vista::launch(BIN, &repo).size(100, 30).start();
+    vista.expect_text("1: Project");
+    // Preferences › Tabs in several rows.
+    let (row, col) = vista.expect_text("⚙").position();
+    vista.click(col, row);
+    let (row, col) = vista.expect_text("Tabs in several rows").position();
+    vista.click(col, row);
+    vista.press("esc");
+    vista.expect_no_text(" Preferences ");
+    let state = std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap();
+    assert!(state.contains("[tabs]\nmultiple_rows = true"), "{state}");
+    many_tabs(&mut vista);
+    // Every tab is on screen, over two or more rows, and no arrows.
+    for n in NAMES {
+        vista.expect_text(&format!("{n}.txt ×"));
+    }
+    let rows: Vec<String> = (1..4).map(|r| vista.row_text(r)).collect();
+    assert!(
+        rows[0].contains("alpha_long_name") && rows[1].contains("foxtrot_long_name"),
+        "{rows:?}"
+    );
+    assert!(!rows[0].contains('◂'), "{rows:?}");
+    // The file shows below the rows of tabs.
+    let (content_row, _) = vista.expect_text("content of foxtrot_long_name").position();
+    assert!(content_row >= 3, "{content_row}");
+    // A tab on the first row switches to its file.
+    let (row, col) = vista.expect_text_in("alpha_long_name.txt ×", 30..100).position();
+    vista.click(col + 1, row);
+    vista.expect_text("content of alpha_long_name");
+}

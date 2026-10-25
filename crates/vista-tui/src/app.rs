@@ -153,6 +153,9 @@ pub const HOP_TTL: Duration = Duration::from_secs(4);
 /// Two clicks on the same row within this time open it.
 const DOUBLE_CLICK: Duration = Duration::from_millis(500);
 
+/// Columns a wheel step or ◂ ▸ scrolls the tab row by.
+const TAB_SCROLL: i32 = 8;
+
 /// Lists that open their row on a double click.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClickList {
@@ -255,6 +258,8 @@ pub struct App {
     dragging_tab: Option<usize>,
     /// The mouse column during a tab drag (its direction decides moves).
     drag_col: u16,
+    /// The mouse row during a tab drag (tabs may wrap onto several rows).
+    drag_row: u16,
     /// Text is being selected with the mouse in the viewer.
     selecting: bool,
     /// The Git tool window (log, file history).
@@ -409,6 +414,7 @@ impl App {
             dragging_divider: false,
             dragging_tab: None,
             drag_col: 0,
+            drag_row: 0,
             selecting: false,
             log: crate::log::LogWindow::default(),
             shell: None,
@@ -1701,6 +1707,11 @@ impl App {
     // ----- remembered settings ----------------------------------------------
 
     /// Line numbers in the viewer (and the editor).
+    /// File tabs wrap onto several rows (Preferences › Tabs).
+    pub fn tab_rows(&self) -> bool {
+        self.ui.borrow().tabs.multiple_rows.unwrap_or(false)
+    }
+
     pub fn line_numbers(&self) -> bool {
         self.ui.borrow().viewer.line_numbers.unwrap_or(true)
     }
@@ -2298,13 +2309,17 @@ impl App {
         if let Some(from) = self.dragging_tab {
             match m.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
-                    if let Some((to, _)) = self.tab_at(m.column)
-                        && crate::projects::drag_moves(from, to, m.column, self.drag_col)
+                    // Onto another row of tabs, or across a tab in the drag's direction.
+                    let row_changed = m.row != self.drag_row;
+                    if let Some((to, _)) = self.tab_at(m.column, m.row)
+                        && to != from
+                        && (row_changed || crate::projects::drag_moves(from, to, m.column, self.drag_col))
                     {
                         self.viewer.move_tab(from, to);
                         self.dragging_tab = Some(to);
                     }
                     self.drag_col = m.column;
+                    self.drag_row = m.row;
                     return;
                 }
                 MouseEventKind::Up(_) => {
@@ -2388,6 +2403,14 @@ impl App {
             return;
         }
         let inside = |r: Option<Rect>| r.is_some_and(|r| r.contains(pos));
+        // The wheel over a row of tabs that doesn't fit scrolls it sideways.
+        if inside(self.areas.tabs) {
+            match m.kind {
+                MouseEventKind::ScrollDown | MouseEventKind::ScrollRight => return self.scroll_tabs(TAB_SCROLL),
+                MouseEventKind::ScrollUp | MouseEventKind::ScrollLeft => return self.scroll_tabs(-TAB_SCROLL),
+                _ => {}
+            }
+        }
         let tree = self.areas.left_inner.filter(|_| self.left == Some(LeftPanel::Project));
         let viewer = self.areas.viewer;
         if let Some(r) = self
@@ -2577,7 +2600,7 @@ impl App {
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if inside(self.areas.tabs) => {
                 self.focus = Focus::Main;
-                match self.tab_at(m.column) {
+                match self.tab_at(m.column, m.row) {
                     Some((i, true)) => self.close_tab(i),
                     Some((i, false)) => {
                         self.viewer.activate(i);
@@ -2585,6 +2608,7 @@ impl App {
                         // Dragging from here moves the tab.
                         self.dragging_tab = Some(i);
                         self.drag_col = m.column;
+                        self.drag_row = m.row;
                     }
                     None => {}
                 }
@@ -2695,6 +2719,7 @@ impl App {
             LineNumbers => on(ui.viewer.line_numbers.unwrap_or(true)),
             WrapMarkdown => on(ui.viewer.wrap_markdown.unwrap_or(true)),
             WrapCode => on(ui.viewer.wrap_code.unwrap_or(false)),
+            TabRows => on(ui.tabs.multiple_rows.unwrap_or(false)),
             DiffUnified => on(ui.diff.unified.unwrap_or(false)),
             DiffCollapse => on(ui.diff.collapse.unwrap_or(false)),
             DiffWhitespace => on(ui.diff.ignore_whitespace.unwrap_or(false)),
@@ -2730,6 +2755,7 @@ impl App {
                 let on = !self.wrap_default(markdown);
                 self.set_wrap(markdown, on);
             }
+            TabRows => self.remember(|s| s.tabs.multiple_rows = flip(s.tabs.multiple_rows, false)),
             DiffUnified => self.remember(|s| s.diff.unified = flip(s.diff.unified, false)),
             DiffCollapse => self.remember(|s| s.diff.collapse = flip(s.diff.collapse, false)),
             DiffWhitespace => self.remember(|s| s.diff.ignore_whitespace = flip(s.diff.ignore_whitespace, false)),
@@ -2876,6 +2902,7 @@ impl App {
                 }
             }
             Click::DiffSwitch => self.toggle_diff(),
+            Click::TabScroll(right) => self.scroll_tabs(if right { TAB_SCROLL } else { -TAB_SCROLL }),
             Click::PrefsPage(page) => {
                 if let Some(p) = self.prefs.as_mut() {
                     p.page = page;
@@ -3081,12 +3108,17 @@ impl App {
 
     /// Which tab is at screen column `x`, and whether on its × (from the
     /// last draw of the tab strip).
-    fn tab_at(&self, x: u16) -> Option<(usize, bool)> {
+    fn tab_at(&self, x: u16, y: u16) -> Option<(usize, bool)> {
         self.tab_hits.iter().enumerate().find_map(|(i, h)| {
-            (h.label.0..h.label.1)
-                .contains(&x)
-                .then(|| (i, (h.close.0..h.close.1).contains(&x)))
+            (h.row == y && (h.label.0..h.label.1).contains(&x)).then(|| (i, (h.close.0..h.close.1).contains(&x)))
         })
+    }
+
+    /// Scrolls the one row of tabs by `delta` columns (drawing keeps it in
+    /// its limits); the active tab may scroll out of view.
+    fn scroll_tabs(&mut self, delta: i32) {
+        let s = &mut self.viewer.strip_scroll;
+        *s = (*s as i32 + delta).clamp(0, u16::MAX as i32) as u16;
     }
 
     /// Closes tab `i`; Neovim drops the side-by-side diff if that tab had it.

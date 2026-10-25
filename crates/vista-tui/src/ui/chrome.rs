@@ -122,15 +122,95 @@ pub struct TabLabel<'a> {
     pub dirty: bool,
 }
 
-/// Where a tab was drawn: its label and its close button (screen columns).
+/// Where a tab was drawn: its row, and its label and close button (screen
+/// columns; empty when scrolled out of view).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TabHit {
+    pub row: u16,
     pub label: (u16, u16),
     pub close: (u16, u16),
 }
 
-/// Draws the tab strip on the first row of `area` and returns the rest, and
-/// where each tab (and its ×) landed, for clicks.
+/// How the tab strip lays out tabs that don't fit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StripOptions {
+    /// Several rows (IntelliJ's "multiple rows") instead of one that scrolls.
+    pub wrap: bool,
+    /// Columns kept free at the right (the File / Diff switch).
+    pub reserve: u16,
+    /// Columns of the one row scrolled out at the left.
+    pub scroll: u16,
+    /// A tab to scroll into view (it just became the active one).
+    pub show: Option<usize>,
+}
+
+/// Where tabs go: (row, column within the strip's content) for each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StripLayout {
+    pub places: Vec<(u16, u16)>,
+    pub rows: u16,
+    /// The one row is wider than the room: it scrolls, between ◂ and ▸.
+    pub overflow: bool,
+    /// The scroll, kept within its limits.
+    pub scroll: u16,
+}
+
+/// Lays out tabs `widths` wide in `room` columns: wrapped onto rows, or on
+/// one row that scrolls (one column at each end goes to ◂ ▸ then).
+pub fn layout_strip(widths: &[u16], room: u16, opts: StripOptions) -> StripLayout {
+    let mut places = Vec::with_capacity(widths.len());
+    if opts.wrap {
+        let (mut row, mut x) = (0, 0);
+        for w in widths {
+            if x > 0 && x + w > room {
+                row += 1;
+                x = 0;
+            }
+            places.push((row, x));
+            x += w;
+        }
+        return StripLayout {
+            places,
+            rows: row + 1,
+            overflow: false,
+            scroll: 0,
+        };
+    }
+    let mut x = 0;
+    for w in widths {
+        places.push((0, x));
+        x += w;
+    }
+    let total = x;
+    if total <= room {
+        return StripLayout {
+            places,
+            rows: 1,
+            overflow: false,
+            scroll: 0,
+        };
+    }
+    let inner = room.saturating_sub(2).max(1);
+    let mut scroll = opts.scroll.min(total.saturating_sub(inner));
+    if let Some(i) = opts.show.filter(|i| *i < widths.len()) {
+        let (start, end) = (places[i].1, places[i].1 + widths[i]);
+        if start < scroll || widths[i] > inner {
+            scroll = start;
+        } else if end > scroll + inner {
+            scroll = end - inner;
+        }
+    }
+    StripLayout {
+        places,
+        rows: 1,
+        overflow: true,
+        scroll,
+    }
+}
+
+/// Draws the tab strip at the top of `area` (one row, or several when
+/// wrapping) and returns the rest, where each tab (and its ×) landed, and
+/// the scroll it ended at.
 pub fn tab_strip(
     f: &mut Frame,
     area: Rect,
@@ -138,67 +218,116 @@ pub fn tab_strip(
     active: Option<usize>,
     focused: bool,
     t: &Theme,
-) -> (Rect, Vec<TabHit>) {
+    opts: StripOptions,
+) -> (Rect, Vec<TabHit>, u16) {
     if area.height == 0 {
-        return (area, Vec::new());
+        return (area, Vec::new(), 0);
     }
-    let strip = Rect { height: 1, ..area };
     let strip_bg = match t.chrome.tabs {
         Tabs::Underline => "ui.panel",
         _ => "ui.bg",
     };
-    f.render_widget(Block::new().style(t.bg(strip_bg)), strip);
-    let mut spans = Vec::new();
-    let mut hits = Vec::with_capacity(tabs.len());
-    let mut x = strip.x;
     let width = |s: &str| unicode_width::UnicodeWidthStr::width(s) as u16;
-    for (i, tab) in tabs.iter().enumerate() {
-        let is_active = Some(i) == active;
-        let mark = if tab.dirty { "● " } else { "" };
-        let label = format!(" {mark}{} ", tab.title);
-        // The close button, IntelliJ-style, right of the title.
-        let close = "× ";
-        let style = match (t.chrome.tabs, is_active) {
-            (Tabs::Underline, true) => {
-                let s = t.fg_bg(tab.fg, "ui.bg");
-                if focused {
-                    s.add_modifier(Modifier::UNDERLINED)
-                } else {
-                    s
+    // Each tab's spans: the title, its ×, and a gap in looks that space tabs.
+    let drawn: Vec<Vec<Span>> = tabs
+        .iter()
+        .enumerate()
+        .map(|(i, tab)| {
+            let is_active = Some(i) == active;
+            let mark = if tab.dirty { "● " } else { "" };
+            let label = format!(" {mark}{} ", tab.title);
+            let style = match (t.chrome.tabs, is_active) {
+                (Tabs::Underline, true) => {
+                    let s = t.fg_bg(tab.fg, "ui.bg");
+                    if focused {
+                        s.add_modifier(Modifier::UNDERLINED)
+                    } else {
+                        s
+                    }
                 }
+                (Tabs::Underline, false) => t.fg_bg(tab.fg, "ui.panel"),
+                (Tabs::Pill, true) => t.fg_bg(tab.fg, "ui.selection.inactive"),
+                (Tabs::Pill, false) => t.fg(tab.fg),
+                (Tabs::Text, true) => t.fg(tab.fg).add_modifier(Modifier::BOLD),
+                (Tabs::Text, false) => t.fg("ui.dim"),
+            };
+            // The close button, IntelliJ-style, right of the title; dim, on
+            // the tab's own background.
+            let close_style = match style.bg {
+                Some(bg) => t.fg("ui.dim").bg(bg),
+                None => t.fg("ui.dim"),
+            };
+            let mut spans = vec![Span::styled(label, style), Span::styled("× ", close_style)];
+            if t.chrome.tabs != Tabs::Underline {
+                spans.push(Span::raw(" "));
             }
-            (Tabs::Underline, false) => t.fg_bg(tab.fg, "ui.panel"),
-            (Tabs::Pill, true) => t.fg_bg(tab.fg, "ui.selection.inactive"),
-            (Tabs::Pill, false) => t.fg(tab.fg),
-            (Tabs::Text, true) => t.fg(tab.fg).add_modifier(Modifier::BOLD),
-            (Tabs::Text, false) => t.fg("ui.dim"),
+            spans
+        })
+        .collect();
+    let widths: Vec<u16> = drawn
+        .iter()
+        .map(|spans| spans.iter().map(|s| width(&s.content)).sum())
+        .collect();
+    let room = area.width.saturating_sub(opts.reserve);
+    let mut layout = layout_strip(&widths, room, opts);
+    // Rows beyond what the area can spare stay off screen.
+    layout.rows = layout.rows.min(area.height.saturating_sub(1).max(1));
+    let strip = Rect {
+        height: layout.rows,
+        ..area
+    };
+    f.render_widget(Block::new().style(t.bg(strip_bg)), strip);
+    // The visible stretch of the content, and where it starts on screen.
+    let (view_x, view_w, scroll) = if layout.overflow {
+        (strip.x + 1, room.saturating_sub(2).max(1), layout.scroll)
+    } else {
+        (strip.x, room, 0)
+    };
+    let mut hits = Vec::with_capacity(tabs.len());
+    for (i, spans) in drawn.into_iter().enumerate() {
+        let ((row, x), w) = (layout.places[i], widths[i]);
+        let y = strip.y + row;
+        let label_w = width(&spans[0].content);
+        // Screen columns of [from, to) in content columns, cut to the view.
+        let screen = |from: u16, to: u16| -> (u16, u16) {
+            let a = from.max(scroll).min(scroll + view_w);
+            let b = to.max(scroll).min(scroll + view_w);
+            (view_x + a - scroll, view_x + b - scroll)
         };
-        let (lw, cw) = (width(&label), width(close));
         hits.push(TabHit {
-            label: (x, x + lw + cw),
-            close: (x + lw, x + lw + 1),
+            row: y,
+            label: screen(x, x + w),
+            close: screen(x + label_w, x + label_w + 1),
         });
-        x += lw + cw;
-        // The × is dim, on the tab's own background.
-        let close_style = match style.bg {
-            Some(bg) => t.fg("ui.dim").bg(bg),
-            None => t.fg("ui.dim"),
-        };
-        spans.push(Span::styled(label, style));
-        spans.push(Span::styled(close, close_style));
-        if t.chrome.tabs != Tabs::Underline {
-            spans.push(Span::raw(" "));
-            x += 1;
+        let (a, b) = screen(x, x + w);
+        if row >= layout.rows || a >= b {
+            continue;
         }
+        // Cut on the left: the paragraph skips those columns.
+        let skip = scroll.saturating_sub(x);
+        f.render_widget(
+            Paragraph::new(Line::from(spans)).scroll((0, skip)),
+            Rect::new(a, y, b - a, 1),
+        );
     }
-    f.render_widget(Paragraph::new(Line::from(spans)), strip);
+    if layout.overflow {
+        let end = scroll + view_w >= widths.iter().sum::<u16>();
+        let arrow = |on: bool| if on { t.fg("ui.text") } else { t.fg("ui.dim") };
+        let left = Rect::new(strip.x, strip.y, 1, 1);
+        let right = Rect::new(view_x + view_w, strip.y, 1, 1);
+        f.render_widget(Paragraph::new(Span::styled("◂", arrow(scroll > 0))), left);
+        f.render_widget(Paragraph::new(Span::styled("▸", arrow(!end))), right);
+        click::add(left, Click::TabScroll(false));
+        click::add(right, Click::TabScroll(true));
+    }
     (
         Rect {
-            y: area.y + 1,
-            height: area.height - 1,
+            y: area.y + layout.rows,
+            height: area.height - layout.rows,
             ..area
         },
         hits,
+        layout.scroll,
     )
 }
 
@@ -431,7 +560,7 @@ mod scrollbar_tests {
 
 #[cfg(test)]
 mod tab_strip_tests {
-    use super::{TabLabel, tab_strip};
+    use super::{StripOptions, TabLabel, tab_strip};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
@@ -454,7 +583,16 @@ mod tab_strip_tests {
         let mut term = Terminal::new(TestBackend::new(60, 3)).unwrap();
         let mut hits = Vec::new();
         term.draw(|f| {
-            hits = tab_strip(f, Rect::new(2, 0, 58, 3), &tabs, Some(0), true, &theme).1;
+            hits = tab_strip(
+                f,
+                Rect::new(2, 0, 58, 3),
+                &tabs,
+                Some(0),
+                true,
+                &theme,
+                StripOptions::default(),
+            )
+            .1;
         })
         .unwrap();
         let buf = term.backend().buffer().clone();
@@ -468,5 +606,55 @@ mod tab_strip_tests {
         assert_eq!(at(hits[0].label.0 + 1), "●");
         assert_eq!(at(hits[1].label.0 + 1), "Δ");
         assert!(hits[0].label.1 <= hits[1].label.0, "no overlap: {hits:?}");
+    }
+}
+
+#[cfg(test)]
+mod strip_layout_tests {
+    use super::{StripLayout, StripOptions, layout_strip};
+
+    fn layout(widths: &[u16], room: u16, wrap: bool, scroll: u16, show: Option<usize>) -> StripLayout {
+        let opts = StripOptions {
+            wrap,
+            reserve: 0,
+            scroll,
+            show,
+        };
+        layout_strip(widths, room, opts)
+    }
+
+    #[test]
+    fn tabs_that_fit_sit_side_by_side() {
+        let l = layout(&[10, 12, 8], 40, false, 5, Some(2));
+        assert_eq!(l.places, vec![(0, 0), (0, 10), (0, 22)]);
+        assert_eq!((l.rows, l.overflow, l.scroll), (1, false, 0));
+    }
+
+    #[test]
+    fn one_row_scrolls_within_limits_and_to_a_tab_shown() {
+        // 50 columns of tabs in 22: 20 between the arrows.
+        let w = [10; 5];
+        let l = layout(&w, 22, false, 0, None);
+        assert!(l.overflow);
+        assert_eq!(l.scroll, 0);
+        assert_eq!(layout(&w, 22, false, 99, None).scroll, 30, "no further than the end");
+        // The last tab shown: its end at the right edge.
+        assert_eq!(layout(&w, 22, false, 0, Some(4)).scroll, 30);
+        // A tab at the left of the view: its start at the left edge.
+        assert_eq!(layout(&w, 22, false, 30, Some(1)).scroll, 10);
+        // Already in view: no scrolling.
+        assert_eq!(layout(&w, 22, false, 12, Some(2)).scroll, 12);
+        // Wider than the view: its start.
+        assert_eq!(layout(&[5, 40, 5], 22, false, 0, Some(1)).scroll, 5);
+    }
+
+    #[test]
+    fn wrapping_fills_rows_in_order() {
+        let l = layout(&[10, 10, 10, 25, 5], 30, true, 7, Some(4));
+        assert_eq!(l.places, vec![(0, 0), (0, 10), (0, 20), (1, 0), (1, 25)]);
+        assert_eq!((l.rows, l.overflow, l.scroll), (2, false, 0));
+        // A tab wider than the room gets a row of its own.
+        let l = layout(&[40, 5], 30, true, 0, None);
+        assert_eq!(l.places, vec![(0, 0), (1, 0)]);
     }
 }

@@ -8,7 +8,7 @@
 |---|---|---|
 | Appearance | **Look**: Follow herdr, then every look | `Ctrl-T` (looks only) |
 | | **Fill background**: paint the look's own background where it would show the terminal's | |
-| Viewer | Line numbers, Wrap Markdown, Wrap code | `Shift-L`, `w` |
+| Viewer | Line numbers, Wrap Markdown, Wrap code; Tabs in several rows (off: one row that scrolls; [12](12-tabs-and-layout.md#file-tabs)) | `Shift-L`, `w` |
 | Diff | Unified diffs, Collapse unchanged lines, Ignore whitespace (for diffs opened from now on) | `u`, `z`, `i` in a diff |
 | Project tree | Show ignored files | `Alt-I` |
 | Commit window | Group changes by folder | `g` there |

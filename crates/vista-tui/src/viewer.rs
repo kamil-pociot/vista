@@ -153,6 +153,10 @@ pub struct Loaded {
 pub struct Viewer {
     pub tabs: Vec<Tab>,
     pub active: Option<usize>,
+    /// Columns of the tab row scrolled out at the left (one row of tabs).
+    pub strip_scroll: u16,
+    /// The tab last scrolled into view: another one active scrolls again.
+    pub strip_shown: Option<u64>,
     next_id: u64,
     clock: u64,
 }
@@ -184,6 +188,8 @@ impl Viewer {
         Viewer {
             tabs: Vec::new(),
             active: None,
+            strip_scroll: 0,
+            strip_shown: None,
             next_id: 1,
             clock: 0,
         }
