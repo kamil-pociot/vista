@@ -435,6 +435,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 ### Tabs that don't fit ✅
 - [x] File tabs that don't fit no longer disappear: one row that scrolls (wheel or sideways scroll over it, `◂` `▸` at its ends, clickable), keeping a tab that becomes active in view; or, with Preferences › Viewer › Tabs in several rows (`[tabs] multiple_rows` in `state.toml`), rows that wrap, the file below them. Tabs no longer run under the File / Diff switch; a tab dragged onto another row moves there.
 - [x] Tests: `strip_layout_tests` units, `e2e_r1_tabs` (scrolling row, several rows).
+- [x] Version 0.4.1 (with the File / Diff switch).
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
