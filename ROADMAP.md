@@ -428,6 +428,10 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Tests: `keymap` (key names round trip, bind/unbind/reset over the config), `keymap_page`, `app` units, `e2e_r1_keymap` (3 PTY tests).
 - [x] Version 0.4.0 (with Go to Line:Column).
 
+### File | Diff switch ✅
+- [x] `File | Diff` at the right of the tab row for a changed file (and in diffs): switches the tab between the file and its diff against HEAD in place, at the same line; `d` does the same both ways. An already open tab of the other view comes to the front instead; history and review diffs open the file beside them.
+- [x] Tests: `e2e_m7_diff` (switch and `d` both ways in one tab at the same line; an existing diff or file tab reused).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

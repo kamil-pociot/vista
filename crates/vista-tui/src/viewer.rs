@@ -94,6 +94,9 @@ pub struct Tab {
     pub wrap: bool,
     /// After the next load, put the cursor on the first (true) or last change.
     pub land: Option<bool>,
+    /// After a diff loads, put the cursor on this working-tree line
+    /// (0-based), where the file's view was (`d`, the File / Diff switch).
+    pub land_line: Option<usize>,
     /// `wrap` has been set from the settings for this file's kind.
     wrap_known: bool,
     /// Screen rows per line while wrapping (set when drawing; `None` means
@@ -129,8 +132,8 @@ pub enum ViewerOutcome {
     OpenAt(usize),
     /// Show the diff of the next/previous changed file.
     DiffFile(bool),
-    /// Show the diff of this file against HEAD.
-    ShowDiff,
+    /// `d`: the file's diff against HEAD, or from a diff back to the file.
+    ToggleDiff,
     /// `w` switched long-line wrapping (on = wrap).
     Wrap(bool),
     /// Copy this text (the selection) to the clipboard.
@@ -323,6 +326,7 @@ impl Viewer {
             hscroll: 0,
             wrap: false,
             land: None,
+            land_line: None,
             wrap_known: false,
             row_heights: None,
             scroll_sub: None,
@@ -1149,6 +1153,9 @@ impl Tab {
         if self.search.as_ref().is_some_and(|s| s.editing) {
             return self.search_key(key);
         }
+        if key.code == KeyCode::Char('d') && key.modifiers.is_empty() {
+            return ViewerOutcome::ToggleDiff;
+        }
         if let Content::Diff(d) = &mut self.content {
             match crate::diffview::handle_key(d, key, self.cursor) {
                 DiffKey::Handled => {
@@ -1163,11 +1170,6 @@ impl Tab {
                 DiffKey::Info(m) => return ViewerOutcome::Info(m),
                 DiffKey::Unhandled => {}
             }
-        } else if key.code == KeyCode::Char('d')
-            && key.modifiers.is_empty()
-            && matches!(self.content, Content::Text { .. } | Content::Markdown { .. })
-        {
-            return ViewerOutcome::ShowDiff;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         if key.modifiers.contains(KeyModifiers::ALT) {

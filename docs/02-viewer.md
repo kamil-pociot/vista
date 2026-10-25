@@ -13,7 +13,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 - **Find in file:** `/`, then `n`/`N` (smart case).
 - **Go to Line:Column:** `Ctrl-G`, from any panel: `42`, `42:7` or `:7`; a column puts a caret there ([22](22-go-to-line.md)).
 - **Changes:** `]`/`[` jump between changes in the file. At the last change a popup offers the next changed file: press `]` again to open it on its first change ([07](07-diff-viewer.md#change-navigation-across-files)).
-- **Diff vs HEAD:** `d` opens the file's diff.
+- **Diff vs HEAD:** `d`, or the `File | Diff` switch at the right of the tab row (shown when the file has changes), turns the tab into the file's diff, at the same line; again, back to the file ([07](07-diff-viewer.md#file--diff-switch)).
 - **Safety:** files over 20 MB aren't loaded; binary files are shown as a hex dump.
 
 ## Text selection
@@ -37,7 +37,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 | `/`, `n`/`N` | find in file |
 | `Ctrl-G` | go to line and column ([22](22-go-to-line.md)) |
 | `]`/`[` | next / previous change |
-| `d` | diff vs HEAD |
+| `d` (`File \| Diff` switch) | diff vs HEAD, and back |
 | `e` | edit at the current line |
 | `m` | Markdown raw ⇄ rendered |
 | `Ctrl-L` | reveal in tree |

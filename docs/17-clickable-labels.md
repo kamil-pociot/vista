@@ -19,6 +19,7 @@ Everything on screen that names a window, an option or a key can be clicked. A c
 | Commit window | `[ ] Amend`, `Commit ^K`, `Commit & Push (P)` | `m`, `Ctrl-K`, `Ctrl-Alt-K` |
 | Confirm dialog | `y yes`, `n no` | `y`, `n` |
 | Diff viewer | `◂` `▸` (previous / next change), `(␣)`, `u unified  i whitespace  w wrap  z collapse  J/K file  ⏎ open  e edit` | `[` `]`, `Space`, those keys |
+| Tab row | `File`, `Diff` (when the file has changes) | `d` |
 | Find in file (`/`) | `n`, `N`, `Esc close` | those keys |
 | Preferences | `Settings` / `Keymap` at the top; a setting's row; a Keymap row or one of its keys; the hints; beside the page | shows that page; selects and changes it; selects it; their keys; closes it |
 | Go to Line:Column | `Enter go`, `Esc cancel`; beside the popup | those keys; cancels |

@@ -36,6 +36,8 @@ pub enum Click {
     PrefsPage(crate::prefs::Page),
     /// A row of the Keymap page (index into its rows), and one of its keys.
     KeymapRow(usize, Option<usize>),
+    /// The File / Diff switch: as `d` in the viewer.
+    DiffSwitch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

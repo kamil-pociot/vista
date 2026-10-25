@@ -1195,6 +1195,58 @@ impl App {
         self.focus = Focus::Main;
     }
 
+    /// Whether the file in front can switch between its view and its diff
+    /// against HEAD (the File / Diff switch): a changed file, or a diff.
+    pub fn diff_switch(&self) -> Option<bool> {
+        let t = self.viewer.active_tab().filter(|t| !t.editing)?;
+        match &t.diff {
+            Some(_) => Some(true),
+            None => self.status.change(&t.path).map(|_| false),
+        }
+    }
+
+    /// `d` and the File / Diff switch: from a file to its diff against HEAD
+    /// and back, keeping the line. The tab changes in place, unless the
+    /// other one is already open: then that tab comes to the front.
+    fn toggle_diff(&mut self) {
+        let Some(t) = self.viewer.active_tab() else { return };
+        let path = t.path.clone();
+        let Some(spec) = t.diff.clone() else {
+            // The top of the file: the first change instead, like a fresh diff.
+            let line = Some(t.cursor).filter(|l| t.has_cursor() && *l > 0);
+            let change = self.status.change(&path).cloned().unwrap_or(Change {
+                path,
+                status: vista_git::FileStatus::Modified,
+                orig_path: None,
+                staged: false,
+                unstaged: false,
+            });
+            self.open_diff(&change);
+            if let Some(t) = self.viewer.active_tab_mut()
+                && !matches!(t.content, Content::Diff(_))
+            {
+                t.land_line = line;
+            }
+            return;
+        };
+        let line = match &t.content {
+            Content::Diff(d) => d.new_line_at(t.cursor),
+            _ => None,
+        };
+        // History and review diffs stay; the file opens beside them.
+        if !spec.read_only() && self.viewer.position(&path).is_none() {
+            let ctx = self.load_ctx();
+            if let Some(t) = self.viewer.active_tab_mut() {
+                t.diff = None;
+                t.selection = None;
+                t.search = None;
+                t.caret = None;
+                crate::viewer::load(t, &ctx);
+            }
+        }
+        self.open_at(&path, line.map(|l| l + 1), false);
+    }
+
     // ----- review ---------------------------------------------------------------
 
     /// Shows a review ([`review_base`]): the Review panel, or the Commit
@@ -1829,7 +1881,15 @@ impl App {
                             t.content = Content::Diff(Box::new(d));
                             t.cursor = t.cursor.min(n.saturating_sub(1));
                             t.scroll = t.scroll.min(n.saturating_sub(1));
-                            if let Some(first) = t.land.take().or(fresh.then_some(true)) {
+                            // From the file's view: the same line, where it is shown.
+                            let row = t.land_line.take().and_then(|l| match &t.content {
+                                Content::Diff(d) => d.display_row_of(l, true),
+                                _ => None,
+                            });
+                            if let Some(row) = row {
+                                t.set_cursor(row);
+                                t.scroll = row.saturating_sub(t.view_height.max(1) / 2);
+                            } else if let Some(first) = t.land.take().or(fresh.then_some(true)) {
                                 t.land_on_change(first);
                             }
                         }
@@ -2109,16 +2169,8 @@ impl App {
                     self.copy_text(&text);
                     return;
                 }
-                ViewerOutcome::ShowDiff => {
-                    let path = tab.path.clone();
-                    let change = self.status.change(&path).cloned().unwrap_or(Change {
-                        path,
-                        status: vista_git::FileStatus::Modified,
-                        orig_path: None,
-                        staged: false,
-                        unstaged: false,
-                    });
-                    self.open_diff(&change);
+                ViewerOutcome::ToggleDiff => {
+                    self.toggle_diff();
                     return;
                 }
                 ViewerOutcome::Unhandled => {}
@@ -2823,6 +2875,7 @@ impl App {
                     self.change_pref(pref, true);
                 }
             }
+            Click::DiffSwitch => self.toggle_diff(),
             Click::PrefsPage(page) => {
                 if let Some(p) = self.prefs.as_mut() {
                     p.page = page;

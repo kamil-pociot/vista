@@ -3,7 +3,7 @@ source: crates/vista-tui/tests/render_m8_looks.rs
 expression: "commit_with_diff(&repo, look)"
 ---
   <root>   +                                                      Ctrl-P Go to File   Ctrl-F Find in Files   ⎇ main   ⚙
- 2: commit                           Δ diff.rs ×
+ 2: commit                           Δ diff.rs ×                                                                   d  File  Diff
  ␣ tick  r rollback  a add  g group  diff.rs  crates/fb-git/src                      1 of 1 in commit (␣)   [ ◂ change 1 of 1 ▸ ]
  ▾ [x] Changes  4 files              HEAD · c22c251 (read-only)                     Working tree
    [x] Cargo.lock                     1 pub fn diff() {}                         ☑   1 pub fn diff() -> usize { 0 }
@@ -34,7 +34,7 @@ expression: "commit_with_diff(&repo, look)"
  Ctrl-P files    Ctrl-F find in files    Alt-2 changes    Tab focus    ? help
 --- styles ---
   0: [0..1 fg=ui.text bg=ui.panel] [1..19 fg=ui.text.strong bg=ui.selection.inactive +bold] [19..20 fg=ui.text bg=ui.panel] [20..23 fg=ui.border.focused bg=ui.panel] [23..76 fg=ui.text bg=ui.panel] [76..82 fg=ui.header bg=ui.panel] [82..96 fg=ui.text bg=ui.panel] [96..102 fg=ui.header bg=ui.panel] [102..119 fg=ui.text bg=ui.panel] [119..121 fg=ui.header bg=ui.panel] [121..128 fg=ui.text bg=ui.panel] [128..129 fg=ui.header bg=ui.panel] [129..130 fg=ui.text bg=ui.panel]
-  1: [0..10 fg=ui.header bg=ui.bg] [36..47 fg=ui.border.focused bg=ui.bg +bold] [47..49 fg=ui.header bg=ui.bg]
+  1: [0..10 fg=ui.header bg=ui.bg] [36..47 fg=ui.border.focused bg=ui.bg +bold] [47..49 fg=ui.header bg=ui.bg] [113..123 fg=ui.header bg=ui.bg] [123..129 fg=ui.text.strong bg=ui.selection +bold]
   2: [0..36 fg=ui.header bg=ui.bg] [36..44 fg=ui.text.strong bg=ui.panel +bold] [44..63 fg=ui.header bg=ui.panel] [63..130 fg=ui.text bg=ui.panel]
   3: [0..3 fg=ui.header bg=ui.selection.inactive] [3..7 fg=ui.text bg=ui.selection.inactive] [7..14 fg=ui.header bg=ui.selection.inactive +bold] [14..23 fg=ui.header bg=ui.selection.inactive] [23..36 fg=ui.text bg=ui.selection.inactive] [36..81 fg=ui.header bg=ui.bg] [83..129 fg=ui.header bg=ui.bg]
   4: [7..17 fg=ui.border.focused bg=ui.bg] [36..40 fg=ui.text.strong bg=ui.bg] [40..43 fg=syntax.keyword bg=diff.modified] [43..44 fg=ui.text bg=diff.modified] [44..46 fg=syntax.keyword bg=diff.modified] [46..47 fg=ui.text bg=diff.modified] [47..51 fg=ui.border.focused bg=diff.modified] [51..53 fg=syntax.punctuation bg=diff.modified] [53..54 fg=ui.text bg=diff.modified] [54..56 fg=syntax.punctuation bg=diff.modified] [56..81 fg=ui.text bg=diff.modified] [81..83 fg=ui.text.strong bg=gutter.modified] [83..87 fg=ui.text.strong bg=ui.bg] [87..90 fg=syntax.keyword bg=diff.modified] [90..91 fg=ui.text bg=diff.modified] [91..93 fg=syntax.keyword bg=diff.modified] [93..94 fg=ui.text bg=diff.modified] [94..98 fg=ui.border.focused bg=diff.modified] [98..100 fg=syntax.punctuation bg=diff.modified] [100..101 fg=ui.text bg=diff.modified] [101..103 fg=syntax.punctuation bg=diff.word.modified] [103..104 fg=ui.text bg=diff.modified] [104..109 fg=syntax.keyword bg=diff.word.modified] [109..110 fg=ui.text bg=diff.modified] [110..111 fg=syntax.punctuation bg=diff.modified] [111..112 fg=ui.text bg=diff.modified] [112..113 fg=syntax.number bg=diff.word.modified] [113..114 fg=ui.text bg=diff.modified] [114..115 fg=syntax.punctuation bg=diff.modified] [115..129 fg=ui.text bg=diff.modified]

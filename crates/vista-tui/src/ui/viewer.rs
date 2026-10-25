@@ -55,6 +55,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         .collect();
     let (inner, hits) = chrome::tab_strip(f, area, &tabs, app.viewer.active, focused, &app.theme);
     app.tab_hits = hits;
+    if let Some(diff) = app.diff_switch() {
+        diff_switch(f, Rect { height: 1, ..area }, app, diff);
+    }
     app.areas.tabs = Some(Rect { height: 1, ..area });
     app.areas.viewer = Some(inner);
     if app.viewer.active.is_none() {
@@ -75,6 +78,45 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         };
         click::line(f, r, items, ratatui::layout::Alignment::Left, app.theme.bg("ui.panel"));
     }
+}
+
+/// `File | Diff` at the right of the tab strip: the view shown stands out,
+/// the other one switches to it (as `d` does).
+fn diff_switch(f: &mut Frame, row: Rect, app: &App, diff: bool) {
+    let t = &app.theme;
+    let toggle = Some(click::Click::DiffSwitch);
+    let shown = t.fg_bg("ui.text.strong", "ui.selection").add_modifier(Modifier::BOLD);
+    let other = t.fg("ui.dim");
+    let (file, diff) = if diff {
+        ((other, toggle), (shown, None))
+    } else {
+        ((shown, None), (other, toggle))
+    };
+    let items: Vec<click::Item> = vec![
+        (Span::styled("  d ", t.fg("ui.dim")), toggle),
+        (Span::styled(" File ", file.0), file.1),
+        (Span::styled(" Diff ", diff.0), diff.1),
+        (Span::raw(" "), None),
+    ];
+    let bg = match t.chrome.tabs {
+        vista_theme::Tabs::Underline => "ui.panel",
+        _ => "ui.bg",
+    };
+    // Its own background, over a tab title that runs that far.
+    let width = items.iter().map(|(s, _)| s.content.chars().count() as u16).sum::<u16>();
+    let r = Rect {
+        x: row.x + row.width.saturating_sub(width),
+        width: width.min(row.width),
+        ..row
+    };
+    f.render_widget(Block::new().style(t.bg(bg)), r);
+    click::line(
+        f,
+        r,
+        items,
+        ratatui::layout::Alignment::Right,
+        ratatui::style::Style::default(),
+    );
 }
 
 fn search_line(app: &App) -> Option<Vec<click::Item>> {

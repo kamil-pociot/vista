@@ -37,11 +37,11 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | Area | Keys |
 |---|---|
 | Project tree | arrows, `Enter` open, `Alt-Enter` edit, `Alt-I` ignored, `-` collapse all; typing starts a speed search (`↑↓` matches, `Enter` open, `Esc` end) |
-| Viewer | `w` wrap, `←`/`→` sideways, `/` `n` `N` find, `Ctrl-G` line:column, `m` raw/rendered, `d` diff, `e` edit; select with drag, double-click, `Shift-↑/↓`, `Ctrl-A`; `Ctrl-C`/`Cmd-C`/`y` copy (a mouse selection is copied on release), `Esc` clear |
+| Viewer | `w` wrap, `←`/`→` sideways, `/` `n` `N` find, `Ctrl-G` line:column, `m` raw/rendered, `d` diff ⇄ file (the `File \| Diff` switch), `e` edit; select with drag, double-click, `Shift-↑/↓`, `Ctrl-A`; `Ctrl-C`/`Cmd-C`/`y` copy (a mouse selection is copied on release), `Esc` clear |
 | Go to File | `Enter` view, `Alt-Enter` edit, `Tab` tabs, `Alt-I` ignored |
 | Find in Files | `Alt-C` case, `Alt-W` words, `Alt-X` regex, `Alt-S` scope, `Tab` mask, `Alt-↑↓` history, `Enter` open, `Alt-Enter` edit, `Alt-O` Find window |
 | Commit | `Space` tick, `Tab` message, `Ctrl-K` commit, `m` amend, `P` commit & push, `r` rollback, `a` add, `g` group, `Enter` diff |
-| Diff | `]`/`[` changes, `J`/`K` files, `Space` tick change, `u` unified, `i` whitespace, `z` collapse, `w` wrap, `Enter` open, `e` edit side by side |
+| Diff | `d` back to the file, `]`/`[` changes, `J`/`K` files, `Space` tick change, `u` unified, `i` whitespace, `z` collapse, `w` wrap, `Enter` open, `e` edit side by side |
 | Git window | `Tab`/`←→` lists, `Enter` diff, `a` all commits, `r` reload, `Esc` hide |
 | Projects popup | type to match, `Tab` complete folder, `Enter` open, `Ctrl-W` close project, `>` command |
 | Editor | everything goes to Neovim; `Ctrl-\` leaves, `Ctrl-G` Go to Line:Column |

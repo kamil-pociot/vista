@@ -120,3 +120,91 @@ fn next_file_open_line_and_live_updates() {
     vista.press("d");
     vista.expect_text("Δ diff.rs");
 }
+
+/// How many tabs show `name` (the tab strip is the second row).
+fn tabs_named(vista: &Vista, name: &str) -> usize {
+    vista.row_text(1).matches(&format!("{name} ×")).count()
+}
+
+/// Clicks `File` (or `Diff`) on the switch.
+fn click_switch(vista: &mut Vista, diff: bool) {
+    let (row, col) = vista.expect_text(" File  Diff ").position();
+    vista.click(col + if diff { 7 } else { 1 }, row);
+}
+
+#[test]
+fn the_file_diff_switch_goes_to_the_diff_and_back_in_the_same_tab() {
+    let long: String = (1..=100).map(|i| format!("line {i}\n")).collect();
+    let repo = Fixture::git()
+        .file("a.txt", long.clone())
+        .file("b.txt", "same\n")
+        .commit("init")
+        .modify(
+            "a.txt",
+            long.replace("line 10\n", "line ten\n")
+                .replace("line 60\n", "line sixty\n"),
+        )
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).size(150, 40).open("b.txt").start();
+    vista.expect_text("same");
+    // Unchanged: no switch.
+    vista.expect_no_text(" File  Diff ");
+    vista.click_text("a.txt");
+    vista.press("enter");
+    vista.expect_text("line 1");
+    vista.expect_text(" File  Diff ");
+    vista.press("ctrl+g");
+    vista.type_text("60");
+    vista.press("enter");
+    vista.expect_text("60:1");
+    // Diff: the same tab, at the same line.
+    click_switch(&mut vista, true);
+    vista.expect_text("Δ a.txt");
+    vista.expect_text("change 2 of 2");
+    vista.expect_text("60:1");
+    assert_eq!(tabs_named(&vista, "a.txt"), 1, "{}", vista.row_text(1));
+    // And back, still one tab.
+    click_switch(&mut vista, false);
+    vista.expect_no_text("Δ a.txt");
+    vista.expect_text("60:1");
+    assert_eq!(tabs_named(&vista, "a.txt"), 1, "{}", vista.row_text(1));
+    // `d` does the same, both ways.
+    vista.press("down");
+    vista.expect_text("61:1");
+    vista.press("d");
+    vista.expect_text("Δ a.txt");
+    vista.expect_text("change 2 of 2");
+    vista.expect_text("61:1");
+    vista.press("d");
+    vista.expect_no_text("Δ a.txt");
+    vista.expect_text("61:1");
+    assert_eq!(tabs_named(&vista, "a.txt"), 1, "{}", vista.row_text(1));
+}
+
+#[test]
+fn the_switch_goes_to_a_diff_already_open_in_its_own_tab() {
+    let repo = Fixture::rust_project().build();
+    let mut vista = Vista::launch(BIN, &repo).size(160, 44).start();
+    diff_of(&mut vista, "status.rs");
+    vista.expect_text("change 1 of");
+    // Enter opens the file beside the diff; the switch brings the diff back.
+    vista.press("enter");
+    vista.wait_until("the file's tab beside the diff", |s| {
+        s.contents()
+            .lines()
+            .nth(1)
+            .is_some_and(|l| l.matches("status.rs ×").count() == 2)
+    });
+    click_switch(&mut vista, true);
+    vista.expect_text("change 1 of");
+    assert_eq!(
+        tabs_named(&vista, "status.rs"),
+        2,
+        "no third tab: {}",
+        vista.row_text(1)
+    );
+    // From the diff, the file's own tab comes to the front.
+    vista.press("d");
+    vista.expect_text("use anyhow::Context;");
+    assert_eq!(tabs_named(&vista, "status.rs"), 2, "{}", vista.row_text(1));
+}
