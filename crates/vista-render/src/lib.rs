@@ -4,6 +4,7 @@
 pub mod filetype;
 pub mod highlight;
 pub mod markdown;
+pub mod mermaid;
 pub mod styled;
 
 pub use filetype::FileKind;

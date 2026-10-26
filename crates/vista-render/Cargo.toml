@@ -10,6 +10,10 @@ syntect = { version = "5.3", default-features = false, features = ["default-fanc
 two-face = { version = "0.5", default-features = false, features = ["syntect-default-fancy"] }
 pulldown-cmark = { version = "0.13", default-features = false }
 unicode-width = "0.2"
+# Mermaid diagrams, headless (no browser or Node): Unicode text and PNG.
+# Without ELK (EPL-2.0); Cytoscape layout as Mermaid's own default.
+merman = { version = "0.9.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "ascii", "png"] }
+serde_json = "1"
 
 [dev-dependencies]
 proptest.workspace = true

@@ -30,6 +30,9 @@ pub struct MdLine {
     /// The source line (1-based) this row starts, for line numbers: set on
     /// the first row of each block (and every row of a code block).
     pub src_line: Option<usize>,
+    /// On the first row of a Mermaid diagram shown as text or source: its
+    /// source, for the picture to be made (it then takes the rows instead).
+    pub diagram: Option<String>,
 }
 
 impl MdLine {
@@ -39,6 +42,7 @@ impl MdLine {
             fill: None,
             image: None,
             src_line: None,
+            diagram: None,
         }
     }
 }
@@ -207,6 +211,40 @@ impl<'a> Renderer<'a> {
         self.emit(MdLine::text(line));
     }
 
+    /// A ```` ```mermaid ```` block: the picture when `image_rows` has one
+    /// for it, else the diagram drawn as text, else (types text can't draw,
+    /// invalid sources) the source. The first row of the last two carries
+    /// the source so the picture can be made.
+    fn mermaid_block(&mut self, code: &str) {
+        let key = crate::mermaid::key(code);
+        let first = self.out.len();
+        if (self.image_rows)(&key).is_some_and(|r| r > 0) {
+            self.image_block(key, "Mermaid diagram".into());
+        } else {
+            let avail = self.width.saturating_sub(line_width(&self.prefix(true)) + 2);
+            match crate::mermaid::text(code, avail) {
+                Ok(lines) => {
+                    self.pending_line = None;
+                    for (k, l) in lines.into_iter().enumerate() {
+                        let mut line = self.prefix(true);
+                        line.push(StyledSpan::new(format!("  {l}"), TokStyle::fg("ui.text")));
+                        self.emit(MdLine {
+                            src_line: (k == 0).then_some(self.code_line),
+                            ..MdLine::text(line)
+                        });
+                    }
+                }
+                Err(_) => self.code_block("mermaid", code),
+            }
+            if let Some(row) = self.out.get_mut(first) {
+                row.diagram = Some(code.to_string());
+            }
+        }
+        if let Some(row) = self.out.get_mut(first) {
+            row.src_line = Some(self.code_line);
+        }
+    }
+
     fn code_block(&mut self, lang: &str, code: &str) {
         let lines = if lang.is_empty() {
             crate::highlight::plain_lines(code)
@@ -220,10 +258,9 @@ impl<'a> Renderer<'a> {
             let avail = self.width.saturating_sub(line_width(&line));
             line.extend(slice_cols(&l, 0, avail));
             self.emit(MdLine {
-                line,
-                fill: Some("ui.panel.alt"),
-                image: None,
                 src_line: Some(self.code_line + k),
+                fill: Some("ui.panel.alt"),
+                ..MdLine::text(line)
             });
         }
     }
@@ -238,15 +275,13 @@ impl<'a> Renderer<'a> {
                         line.push(StyledSpan::new(format!("[image: {alt}]"), TokStyle::fg("ui.dim")));
                     }
                     self.emit(MdLine {
-                        line,
-                        fill: None,
-                        src_line: None,
                         image: Some(ImageSlot {
                             src: src.clone(),
                             alt: alt.clone(),
                             row,
                             rows,
                         }),
+                        ..MdLine::text(line)
                     });
                 }
             }
@@ -527,7 +562,11 @@ impl<'a> Renderer<'a> {
             }
             TagEnd::CodeBlock => {
                 if let Some((lang, code)) = self.code.take() {
-                    self.code_block(&lang, &code);
+                    if crate::mermaid::is_mermaid(&lang) {
+                        self.mermaid_block(&code);
+                    } else {
+                        self.code_block(&lang, &code);
+                    }
                 }
             }
             TagEnd::List(_) => {
@@ -863,5 +902,48 @@ mod tests {
                 assert!(line_width(&l.line) <= w.max(10), "width {w}: {:?}", line_text(&l.line));
             }
         }
+    }
+
+    const SEQUENCE: &str = "# Flow\n\n```mermaid\nsequenceDiagram\n  User->>vista: open README.md\n```\n\nafter\n";
+
+    #[test]
+    fn mermaid_blocks_draw_as_text_until_there_is_a_picture() {
+        let lines = md(SEQUENCE, 60);
+        let t = texts(&lines);
+        let first = lines.iter().position(|l| l.diagram.is_some()).unwrap();
+        assert!(t[first].contains('┌'), "{t:?}");
+        assert!(t.iter().any(|l| l.contains("open README.md")), "{t:?}");
+        assert!(
+            !t.iter().any(|l| l.contains("sequenceDiagram")),
+            "the source isn't shown: {t:?}"
+        );
+        assert_eq!(lines[first].src_line, Some(4), "the line after the fence");
+        assert_eq!(
+            lines[first].diagram.as_deref(),
+            Some("sequenceDiagram\n  User->>vista: open README.md\n")
+        );
+        assert!(t.contains(&"after".to_string()));
+    }
+
+    #[test]
+    fn mermaid_blocks_take_the_picture_once_it_is_made() {
+        let key = crate::mermaid::key("sequenceDiagram\n  User->>vista: open README.md\n");
+        let rows = |src: &str| (src == key).then_some(6);
+        let lines = render(SEQUENCE, 60, Highlighter::global(), &rows);
+        let slots: Vec<&ImageSlot> = lines.iter().filter_map(|l| l.image.as_ref()).collect();
+        assert_eq!(slots.len(), 6);
+        assert!(slots.iter().all(|s| s.src == key && s.rows == 6));
+        assert!(lines.iter().all(|l| l.diagram.is_none()), "nothing left to make");
+        let first = lines.iter().position(|l| l.image.is_some()).unwrap();
+        assert_eq!(lines[first].src_line, Some(4));
+    }
+
+    #[test]
+    fn mermaid_without_a_text_form_shows_its_source() {
+        let lines = md("```mermaid\npie title Pets\n  \"Dogs\" : 3\n```\n", 60);
+        let t = texts(&lines);
+        assert!(t[0].contains("pie title Pets"), "{t:?}");
+        assert_eq!(lines[0].fill, Some("ui.panel.alt"), "as a code block");
+        assert!(lines[0].diagram.is_some(), "a picture can still be made");
     }
 }

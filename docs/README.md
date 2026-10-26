@@ -27,5 +27,6 @@ vista is a lean, keyboard-driven terminal replacement for the parts of IntelliJ 
 | 22 | [Go to Line:Column](22-go-to-line.md) | `Ctrl-G` from any panel: `42`, `42:7`, `:7`; a column caret; diffs, rendered Markdown and Neovim |
 | 23 | [Keymap](23-keymap.md) | Preferences' second page: every action's keys, added by pressing them, removed, reset; applied at once |
 | 24 | [Repositories inside the project](24-nested-repositories.md) | Clones in ignored or untracked folders: colours from their own repository, changes and commits per repository |
+| 25 | [Mermaid diagrams](25-mermaid-diagrams.md) | ` ```mermaid ` blocks in Markdown as pictures (kitty graphics) or box-drawing text, no browser needed |
 
 See also: [`../README.md`](../README.md) (install and quick reference), [`../ROADMAP.md`](../ROADMAP.md) (research, decisions, milestones), [`../AGENTS.md`](../AGENTS.md) (working on the code).

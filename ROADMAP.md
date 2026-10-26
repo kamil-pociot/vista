@@ -447,6 +447,10 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Tests: `app` unit (project tabs), `e2e_r1_tabs` (file tabs).
 - [x] Version 0.5.0 (with repositories inside the project).
 
+### Mermaid diagrams ✅
+- [x] ` ```mermaid ` blocks in Markdown through merman (Rust, no browser): a PNG picture with kitty graphics (made in the background, in Mermaid's dark or default theme on the look's background, cached per diagram and look), else Unicode box-drawing text, else the source. Minimum Rust 1.95 (merman's).
+- [x] Tests: `mermaid` and `markdown` units, `e2e_r1_mermaid` (2 PTY tests).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

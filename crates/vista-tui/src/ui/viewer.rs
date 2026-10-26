@@ -213,12 +213,13 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
                 _ => 0,
             };
             let width = area.width.saturating_sub(2 + gutter);
-            let images_on = picker.is_some();
+            let pictures = MdPictures::new(&base, t, picker.as_ref());
             let wide = !tab.wrap;
             if let Content::Markdown { source, rendered, .. } = &mut tab.content
                 && rendered.as_ref().is_none_or(|(w, wd, _)| *w != width || *wd != wide)
             {
-                let rows = |src: &str| md_image_rows(&base, src, width, font, images_on);
+                let max_rows = area.height.saturating_sub(2);
+                let rows = |src: &str| pictures.rows(md_images, src, width, font, max_rows);
                 let tables = if wide {
                     markdown::Tables::Wide
                 } else {
@@ -231,7 +232,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
                 ));
                 crate::viewer::refresh_search(tab);
             }
-            draw_markdown(f, area, gutter, tab, t, &base, md_images, picker.as_ref(), tx);
+            draw_markdown(f, area, gutter, tab, t, &pictures, md_images, picker.as_ref(), tx);
         }
         Content::Image { info, state } => {
             let header = Rect { height: 1, ..area };
@@ -380,18 +381,76 @@ fn draw_image(f: &mut Frame, area: Rect, proto: &mut StatefulProtocol) {
     f.render_stateful_widget(StatefulImage::<StatefulProtocol>::default(), area, proto);
 }
 
-/// Rows to reserve for a Markdown image (`None`: show a text placeholder).
-fn md_image_rows(base: &Path, src: &str, width: u16, font: (u16, u16), images_on: bool) -> Option<u16> {
-    if !images_on || src.contains("://") {
-        return None;
+/// How a Markdown document draws its images and diagrams.
+struct MdPictures<'a> {
+    base: &'a Path,
+    /// Images are on (not `off`).
+    images: bool,
+    /// Mermaid diagrams as pictures: only with real pixels (kitty graphics);
+    /// in half-blocks their text is unreadable, so they stay text.
+    diagrams: bool,
+    /// The look's background, which diagrams are drawn on (part of their key).
+    background: String,
+    dark: bool,
+}
+
+impl MdPictures<'_> {
+    fn new<'a>(
+        base: &'a Path,
+        t: &vista_theme::Theme,
+        picker: Option<&ratatui_image::picker::Picker>,
+    ) -> MdPictures<'a> {
+        let bg = t.color("ui.bg");
+        MdPictures {
+            base,
+            images: picker.is_some(),
+            diagrams: picker.is_some_and(|p| p.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks),
+            background: bg.to_hex(),
+            dark: bg.luminance() < 0.4,
+        }
     }
-    let path = base.join(src);
-    let (w, h) = image::image_dimensions(&path).ok()?;
-    let (fw, fh) = (font.0.max(1) as f64, font.1.max(1) as f64);
-    let max_px_w = width.saturating_sub(2) as f64 * fw;
-    let scale = (max_px_w / w as f64).min(1.0);
-    let rows = ((h as f64 * scale) / fh).ceil() as u16;
-    Some(rows.clamp(1, 20))
+
+    /// Where a picture is cached: the image file beside the document, or the
+    /// Mermaid diagram as drawn on this look's background.
+    fn path(&self, src: &str) -> PathBuf {
+        if src.starts_with("mermaid:") {
+            PathBuf::from(format!("{src}@{}", self.background))
+        } else {
+            self.base.join(src)
+        }
+    }
+
+    /// Rows to reserve for a picture (`None`: show a text placeholder, or a
+    /// diagram's text). A diagram has rows once its picture is made, fitting
+    /// in `max_rows` so it can be shown whole.
+    fn rows(
+        &self,
+        images: &crate::viewer::MdImages,
+        src: &str,
+        width: u16,
+        font: (u16, u16),
+        max_rows: u16,
+    ) -> Option<u16> {
+        let (fw, fh) = (font.0.max(1) as f64, font.1.max(1) as f64);
+        let max_px_w = width.saturating_sub(2) as f64 * fw;
+        if src.starts_with("mermaid:") {
+            if !self.diagrams {
+                return None;
+            }
+            // Made at twice its size for sharpness: its natural size is half.
+            let (w, h) = images.sizes.get(&self.path(src))?;
+            let (w, h) = (*w as f64 / 2.0, *h as f64 / 2.0);
+            let scale = (max_px_w / w).min(1.0);
+            return Some((((h * scale) / fh).ceil() as u16).clamp(1, max_rows.max(4)));
+        }
+        if !self.images || src.contains("://") {
+            return None;
+        }
+        let (w, h) = image::image_dimensions(self.path(src)).ok()?;
+        let scale = (max_px_w / w as f64).min(1.0);
+        let rows = ((h as f64 * scale) / fh).ceil() as u16;
+        Some(rows.clamp(1, 20))
+    }
 }
 
 fn gutter_width(total: usize) -> usize {
@@ -563,7 +622,7 @@ fn draw_markdown(
     gutter: u16,
     tab: &mut Tab,
     t: &vista_theme::Theme,
-    base: &Path,
+    pictures: &MdPictures,
     images: &mut crate::viewer::MdImages,
     picker: Option<&ratatui_image::picker::Picker>,
     tx: &crate::event::EventTx,
@@ -630,7 +689,7 @@ fn draw_markdown(
             let fits = (y + slot.rows) <= area.y + area.height;
             if fits {
                 image_rects.push((
-                    base.join(&slot.src),
+                    pictures.path(&slot.src),
                     Rect {
                         x: text_area.x,
                         y,
@@ -684,6 +743,25 @@ fn draw_markdown(
                 });
             }
             None => {}
+        }
+    }
+    // Diagrams shown as text get their picture made in the background (the
+    // first takes about a second); the document is laid out again when it
+    // arrives.
+    if pictures.diagrams {
+        for src in rows.iter().filter_map(|r| r.diagram.as_deref()) {
+            let path = pictures.path(&vista_render::mermaid::key(src));
+            if images.entries.contains_key(&path) {
+                continue;
+            }
+            images.entries.insert(path.clone(), ImageState::Loading);
+            let (tx, src, dark, bg) = (tx.clone(), src.to_string(), pictures.dark, pictures.background.clone());
+            std::thread::spawn(move || {
+                let res = vista_render::mermaid::png(&src, dark, &bg)
+                    .and_then(|png| image::load_from_memory(&png).map_err(|e| e.to_string()))
+                    .map(Box::new);
+                let _ = tx.send(crate::event::AppEvent::MdImageDecoded { path, image: res });
+            });
         }
     }
 }

@@ -1230,10 +1230,12 @@ impl Tab {
     }
 }
 
-/// Decoded Markdown images, shared by all Markdown tabs.
+/// Decoded Markdown images and Mermaid diagrams, shared by all Markdown tabs.
 #[derive(Default)]
 pub struct MdImages {
     pub entries: HashMap<PathBuf, ImageState>,
+    /// Pixel size of each decoded picture (diagrams have no file to ask).
+    pub sizes: HashMap<PathBuf, (u32, u32)>,
 }
 
 #[cfg(test)]

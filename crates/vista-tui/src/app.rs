@@ -2052,6 +2052,17 @@ impl App {
                 }
             }
             AppEvent::MdImageDecoded { path, image } => {
+                if let Ok(img) = &image {
+                    self.md_images.sizes.insert(path.clone(), (img.width(), img.height()));
+                    // A diagram's picture takes the place of its text: lay the documents out again.
+                    if path.to_string_lossy().starts_with("mermaid:") {
+                        for t in &mut self.viewer.tabs {
+                            if let Content::Markdown { rendered, .. } = &mut t.content {
+                                *rendered = None;
+                            }
+                        }
+                    }
+                }
                 let state = match (&self.picker, image) {
                     (Some(p), Ok(img)) => ImageState::Ready(Box::new(p.new_resize_protocol(*img))),
                     (_, Err(e)) => ImageState::Failed(e),
