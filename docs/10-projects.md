@@ -4,7 +4,7 @@ Several projects can be open at once, shown as tabs at the left of the top bar.
 
 ## What it does
 
-- **Tabs:** click one to switch, its `×` to close it, `+` to add one. Drag a tab left or right to reorder; the order is remembered.
+- **Tabs:** click one to switch, its `×` (or the middle button anywhere on it) to close it, `+` to add one. Drag a tab left or right to reorder; the order is remembered.
 - `Alt-.` / `Alt-,` step through open projects.
 - **Projects popup** (`Ctrl-O`):
   - Type a few letters: open and recent projects match, and so do folders next to them (`lms` finds `~/Repositories/lms-context` when another project lives in `~/Repositories`).
@@ -23,7 +23,7 @@ Several projects can be open at once, shown as tabs at the left of the top bar.
 | `Alt-.` / `Alt-,` | next / previous project |
 | `Tab` (popup) | complete the folder |
 | `Ctrl-W` (popup) | close the selected project |
-| click / `×` / drag | switch / close / reorder |
+| click / `×` or middle click / drag | switch / close / reorder |
 
 ## Code and tests
 

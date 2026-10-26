@@ -2350,6 +2350,16 @@ impl App {
             }
             _ => {}
         }
+        // The middle button closes a project tab, as in a browser.
+        if let MouseEventKind::Down(MouseButton::Middle) = m.kind
+            && m.row == self.areas.top.y
+            && let Some(h) = self.project_hits.iter().find(|h| (h.x.0..h.x.1).contains(&m.column))
+        {
+            if let crate::projects::TabTarget::Project(i) = h.target {
+                self.ws_request = Some(crate::projects::WsRequest::Close(i));
+            }
+            return;
+        }
         if let MouseEventKind::Down(MouseButton::Left) = m.kind {
             // Help closes on any click, as on any key.
             if self.show_help {
@@ -2611,6 +2621,12 @@ impl App {
                         self.drag_row = m.row;
                     }
                     None => {}
+                }
+            }
+            // The middle button closes a file tab, as in a browser.
+            MouseEventKind::Down(MouseButton::Middle) if inside(self.areas.tabs) => {
+                if let Some((i, _)) = self.tab_at(m.column, m.row) {
+                    self.close_tab(i);
                 }
             }
             MouseEventKind::Down(MouseButton::Left)
@@ -3429,6 +3445,35 @@ mod tests {
         let plus = app.project_hits.last().unwrap().x.0;
         assert_eq!(click(&mut app, plus + 1), None);
         assert!(app.projects_popup.is_some(), "+ opens the Projects popup");
+    }
+
+    #[test]
+    fn middle_clicking_a_project_tab_closes_it() {
+        use crate::projects::WsRequest;
+        let (t, mut app) = app();
+        app.projects = crate::projects::ProjectsBar {
+            open: vec![
+                ("alpha".into(), t.path().join("a")),
+                ("beta".into(), t.path().join("b")),
+            ],
+            active: 1,
+            recent: vec![],
+        };
+        crate::testing::render(&mut app, 120, 30);
+        let middle = |app: &mut App, col: u16| {
+            app.handle_mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Middle),
+                column: col,
+                row: 0,
+                modifiers: ratatui::crossterm::event::KeyModifiers::NONE,
+            });
+            app.ws_request.take()
+        };
+        // On the label, not only on the ×.
+        assert_eq!(middle(&mut app, 2), Some(WsRequest::Close(0)), "{:?}", app.project_hits);
+        let plus = app.project_hits.last().unwrap().x.0;
+        assert_eq!(middle(&mut app, plus + 1), None);
+        assert!(app.projects_popup.is_none(), "the middle button doesn't open the popup");
     }
 
     #[test]

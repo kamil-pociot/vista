@@ -59,6 +59,29 @@ fn clicking_x_closes_that_tab_and_the_label_switches_to_it() {
     vista.expect_text("No file open");
 }
 
+#[test]
+fn middle_clicking_a_tab_closes_it() {
+    let repo = Fixture::git()
+        .file("alpha.txt", "first file\n")
+        .file("beta.txt", "second file\n")
+        .commit("init")
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).start();
+    vista.expect_text("alpha.txt");
+    open(&mut vista, "alpha", "first file");
+    open(&mut vista, "beta", "second file");
+
+    // Anywhere on the label, not just the ×; the active tab stays.
+    let (row, col) = vista.expect_text_in("alpha.txt ×", 30..200).position();
+    vista.middle_click(col + 1, row);
+    vista.expect_no_text("alpha.txt ×");
+    vista.expect_text("second file");
+
+    let (row, col) = vista.expect_text_in("beta.txt ×", 30..200).position();
+    vista.middle_click(col + 1, row);
+    vista.expect_text("No file open");
+}
+
 /// Tab labels on screen row `row`, left to right.
 fn order(vista: &Vista, row: u16, names: &[&str]) -> Vec<String> {
     let line = vista.row_text(row);

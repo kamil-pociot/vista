@@ -12,7 +12,7 @@
 
 - Up to 12 tabs; the least recently used one closes when a 13th opens.
 - `Alt-←` / `Alt-→` switch, `Ctrl-W` closes, a click selects.
-- Each tab has an `×` to close it.
+- Each tab has an `×` to close it; a middle click anywhere on a tab closes it too.
 - Drag a tab left or right to move it. A tab only moves in the direction the mouse is moving, so tabs of different widths don't swap back and forth. With tabs in several rows, dragging onto another row moves it there too.
 - **Tabs that don't fit**, as in IntelliJ: by default they stay on **one row that scrolls**. `◂` and `▸` at its ends show that tabs are hidden (bright while there is more that way) and scroll it when clicked; the wheel (or a sideways scroll) over the row scrolls it too. A tab that becomes the active one (opened, `Alt-←`/`Alt-→`, a file opened from anywhere) scrolls into view; after that the wheel can scroll it away again.
 - **Tabs in several rows** (Preferences › Viewer, remembered as `[tabs] multiple_rows` in `state.toml`): tabs that don't fit wrap onto more rows, and the file shows below them.
@@ -36,4 +36,4 @@ On macOS, set Ghostty's `macos-option-as-alt = true` so `Alt-…` shortcuts reac
 - `vista-tui/src/app.rs` (focus, routing), `workspace.rs` (top bar), `viewer.rs` (`move_tab`), `projects.rs` (`drag_moves`), `keymap.rs`, `ui/chrome.rs`.
 - `ui/chrome.rs` (`layout_strip`: one scrolling row or several rows; `tab_strip`), `ui/viewer.rs` (keeping the active tab in view), `App::scroll_tabs`.
 - Unit: `strip_layout_tests` (fitting, scroll limits and the tab shown, wrapping), `tab_strip_tests`.
-- E2e: `e2e_r1_tabs.rs` (`×`, dragging file and project tabs, a row that scrolls with the wheel and ◂ ▸ and follows the active tab, tabs in several rows), `e2e_r1_resize.rs`, `e2e_m0_shell.rs` (help, focus, quit).
+- E2e: `e2e_r1_tabs.rs` (`×`, middle click, dragging file and project tabs, a row that scrolls with the wheel and ◂ ▸ and follows the active tab, tabs in several rows), `e2e_r1_resize.rs`, `e2e_m0_shell.rs` (help, focus, quit).

@@ -363,6 +363,12 @@ impl Vista {
         self.send_raw(&keys::mouse(0, col, row, false));
     }
 
+    pub fn middle_click(&mut self, col: u16, row: u16) {
+        self.record(format!("middle-click ({col}, {row})"));
+        self.send_raw(&keys::mouse(1, col, row, true));
+        self.send_raw(&keys::mouse(1, col, row, false));
+    }
+
     /// Presses the left button at `from`, moves to `to` holding it, releases.
     pub fn drag(&mut self, from: (u16, u16), to: (u16, u16)) {
         self.record(format!("drag ({}, {}) → ({}, {})", from.0, from.1, to.0, to.1));
