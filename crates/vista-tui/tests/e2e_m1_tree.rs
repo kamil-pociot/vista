@@ -123,6 +123,8 @@ fn changes_on_disk_leave_a_scrolled_view_where_it_is() {
     }
     vista.expect_text("file40.txt");
     vista.expect_no_text("file01.txt");
+    // All the wheel events handled (file40 shows before the last of them).
+    vista.settle(std::time::Duration::from_millis(300));
     let top = vista.row_text(2);
     // Files change (a build running in the terminal): the tree refreshes,
     // colours change, and a new file appears above the view.
