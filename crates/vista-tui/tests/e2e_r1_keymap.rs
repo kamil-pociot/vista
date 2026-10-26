@@ -14,6 +14,22 @@ fn state(repo: &Repo) -> String {
     std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap_or_default()
 }
 
+/// Waits (like the screen locators, 8 s) for `state.toml` to contain
+/// `text`, or with `has` false, not to: the screen can show a change a
+/// moment before it's saved, and a key already on screen proves nothing.
+fn expect_state(repo: &Repo, text: &str, has: bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    while state(repo).contains(text) != has {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "state.toml {} {text:?}:\n{}",
+            if has { "lacks" } else { "still has" },
+            state(repo)
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 fn open_prefs(vista: &mut Vista) {
     let (row, col) = vista.expect_text("⚙").position();
     vista.click(col, row);
@@ -49,14 +65,14 @@ fn keys_are_added_taken_removed_and_reset() {
     vista.expect_text(" Alt-G ");
     vista.expect_text("goto-line · changed; r resets it to Ctrl-G");
     vista.expect_text("Go to Line:Column").to_have_fg("ui.accent");
-    assert!(state(&repo).contains("\"alt+g\" = \"goto-line\""), "{}", state(&repo));
+    expect_state(&repo, "\"alt+g\" = \"goto-line\"", true);
     // A key another action has: asked first, then taken from it.
     vista.press("enter");
     vista.press("ctrl+p");
     vista.expect_text("Ctrl-P runs Go to File. Enter: use it for Go to Line:Column instead");
     vista.press("enter");
     vista.expect_text("Ctrl-P ");
-    assert!(state(&repo).contains("\"ctrl+p\" = \"goto-line\""), "{}", state(&repo));
+    expect_state(&repo, "\"ctrl+p\" = \"goto-line\"", true);
     // Applied at once: the top bar's hint and the keys themselves.
     vista.press("esc");
     vista.press("esc");
@@ -76,7 +92,7 @@ fn keys_are_added_taken_removed_and_reset() {
     vista.press("delete");
     vista.expect_text("Ctrl-G   Ctrl-P   │");
     vista.expect_no_text("Alt-G");
-    assert!(!state(&repo).contains("alt+g"), "{}", state(&repo));
+    expect_state(&repo, "alt+g", false);
     vista.press("r");
     vista.expect_text("goto-line · default");
     // Ctrl-P goes back to Go to File too.
@@ -89,7 +105,7 @@ fn keys_are_added_taken_removed_and_reset() {
         vista.row_text(row)
     );
     vista.expect_text("Ctrl-P Go to File");
-    assert!(!state(&repo).contains("[keys]"), "{}", state(&repo));
+    expect_state(&repo, "[keys]", false);
 }
 
 #[test]
@@ -108,7 +124,7 @@ fn removed_keys_stay_removed_after_a_restart_and_reset_all_asks() {
     vista.expect_no_text("[Line] [:column]:");
     vista.press("ctrl+q");
     vista.expect_exit();
-    assert!(state(&repo).contains("\"ctrl+g\" = \"none\""), "{}", state(&repo));
+    expect_state(&repo, "\"ctrl+g\" = \"none\"", true);
 
     let mut vista = Vista::launch(BIN, &repo).size(150, 44).open("a.txt").start();
     vista.expect_text("line 1");
@@ -122,7 +138,7 @@ fn removed_keys_stay_removed_after_a_restart_and_reset_all_asks() {
     vista.expect_text("Reset every key to its default");
     vista.press("enter");
     vista.expect_no_text("Reset every key");
-    assert!(!state(&repo).contains("[keys]"), "{}", state(&repo));
+    expect_state(&repo, "[keys]", false);
     vista.press("esc");
     vista.press("ctrl+g");
     vista.expect_text("[Line] [:column]:");
@@ -144,7 +160,7 @@ fn the_keymap_page_is_reached_by_click_and_rows_click() {
     vista.press("delete");
     vista.expect_text("goto-file · changed; r resets it to Ctrl-P, Ctrl-Shift-N");
     assert!(!vista.row_text(row).contains("Ctrl-Shift-N"), "{}", vista.row_text(row));
-    assert!(state(&repo).contains("\"ctrl+shift+n\" = \"none\""), "{}", state(&repo));
+    expect_state(&repo, "\"ctrl+shift+n\" = \"none\"", true);
     // Back to Settings with its tab.
     let (row, col) = vista.expect_text(" Settings ").position();
     vista.click(col + 1, row);
