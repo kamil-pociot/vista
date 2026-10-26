@@ -176,6 +176,26 @@ impl Fixture {
         self.run(&["add", "--", rel])
     }
 
+    /// A repository of its own at `rel` (a clone inside the project),
+    /// with the same test identity.
+    pub fn nested_repo(self, rel: &str) -> Fixture {
+        let mut f = self.run(&["init", "-q", "-b", "main", rel]);
+        for (key, value) in [
+            ("user.name", "Vista Test"),
+            ("user.email", "test@vista.invalid"),
+            ("commit.gpgsign", "false"),
+        ] {
+            f = f.run(&["-C", rel, "config", key, value]);
+        }
+        f
+    }
+
+    /// `git add -A && git commit -m msg` in the nested repository at `rel`.
+    pub fn commit_in(self, rel: &str, msg: &str) -> Fixture {
+        self.run(&["-C", rel, "add", "-A"])
+            .run(&["-C", rel, "commit", "-q", "-m", msg])
+    }
+
     /// Any git command.
     pub fn run(mut self, args: &[&str]) -> Fixture {
         self.ops.push(Op::Git(args.iter().map(|s| s.to_string()).collect()));

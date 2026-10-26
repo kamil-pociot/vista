@@ -38,9 +38,10 @@ pub enum AppEvent {
         generation: u64,
         event: vista_search::FindEvent,
     },
-    /// A commit finished (or failed with git's / the hooks' output).
+    /// A commit finished — one per repository with ticked files — or
+    /// failed with git's / the hooks' output.
     CommitDone {
-        result: Box<Result<vista_git::write::CommitResult, String>>,
+        result: Box<Result<Vec<(vista_git::Git, vista_git::write::CommitResult)>, String>>,
         files: usize,
         push: bool,
     },

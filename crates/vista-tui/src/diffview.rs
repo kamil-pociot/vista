@@ -376,7 +376,9 @@ pub fn load(git: Option<&vista_git::Git>, path: &Path, spec: &DiffSpec, images_e
             );
             (old, new, r.short.clone(), sides)
         }
+        // A local change: against HEAD of the repository the file is in.
         (None, None) => {
+            let git = git.for_path(path);
             let head = git
                 .run(&["rev-parse", "--short", "HEAD"])
                 .map(|s| s.trim().to_string())

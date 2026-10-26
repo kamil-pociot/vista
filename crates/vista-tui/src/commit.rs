@@ -32,15 +32,54 @@ impl Group {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Row {
     Group(Group),
-    /// A folder (group-by-directory mode), relative path.
+    /// A repository's part of a group, when changes come from more than
+    /// one (repositories cloned inside the project): its top level.
+    Repo {
+        group: Group,
+        top: PathBuf,
+    },
+    /// A folder (group-by-directory mode), relative to the repository's
+    /// row (or the project).
     Dir {
         group: Group,
         rel: String,
+        depth: usize,
     },
     File {
         change: Change,
         depth: usize,
     },
+}
+
+impl Row {
+    /// Screen column of the row's checkbox; rows that fold have their
+    /// arrow just before it.
+    pub fn checkbox_col(&self) -> usize {
+        match self {
+            Row::Group(_) => 3,
+            Row::Repo { .. } => 5,
+            Row::Dir { depth, .. } | Row::File { depth, .. } => 1 + depth * 2,
+        }
+    }
+}
+
+/// A row that folds.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Fold {
+    Group(Group),
+    Repo(Group, PathBuf),
+}
+
+/// What a repository's row is called: its path in the project, or (for
+/// the project's own repository) its folder's name.
+pub fn repo_label(top: &Path, root: &Path) -> String {
+    match top.strip_prefix(root) {
+        Ok(rel) if !rel.as_os_str().is_empty() => rel.to_string_lossy().into_owned(),
+        _ => top
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| top.display().to_string()),
+    }
 }
 
 /// A tiny multi-line text editor for the commit message.
@@ -170,7 +209,9 @@ pub struct CommitView {
     /// Paths seen before (so new tracked changes default to ticked once).
     known: HashSet<PathBuf>,
     pub by_dir: bool,
-    pub collapsed: HashSet<Group>,
+    /// Changes come from more than one repository: each gets a row.
+    pub by_repo: bool,
+    pub collapsed: HashSet<Fold>,
     pub message: TextArea,
     pub editing_message: bool,
     pub amend: bool,
@@ -199,46 +240,34 @@ impl CommitView {
         self.included.retain(|p| present.contains(p));
         self.excluded.retain(|p, _| present.contains(p));
         self.known.retain(|p| present.contains(p));
+        let top = |c: &Change| status.repo(&c.path).toplevel.clone();
+        self.by_repo = changes.iter().any(|c| status.repo(&c.path).toplevel != status.toplevel);
         let mut rows = Vec::new();
         for group in [Group::Changes, Group::Unversioned] {
-            let items: Vec<&&Change> = changes.iter().filter(|c| Group::of(c) == group).collect();
+            let items: Vec<&Change> = changes.iter().copied().filter(|c| Group::of(c) == group).collect();
             if items.is_empty() {
                 continue;
             }
             rows.push(Row::Group(group));
-            if self.collapsed.contains(&group) {
+            if self.collapsed.contains(&Fold::Group(group)) {
                 continue;
             }
-            if self.by_dir {
-                let mut dirs: BTreeMap<String, Vec<&Change>> = BTreeMap::new();
-                for c in &items {
-                    let rel = c.path.strip_prefix(root).unwrap_or(&c.path);
-                    let dir = rel
-                        .parent()
-                        .map(|d| d.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    dirs.entry(dir).or_default().push(c);
-                }
-                for (dir, files) in dirs {
-                    let depth = if dir.is_empty() {
-                        1
-                    } else {
-                        rows.push(Row::Dir { group, rel: dir });
-                        2
-                    };
-                    for c in files {
-                        rows.push(Row::File {
-                            change: c.clone(),
-                            depth,
-                        });
-                    }
-                }
-            } else {
-                for c in items {
-                    rows.push(Row::File {
-                        change: (*c).clone(),
-                        depth: 1,
-                    });
+            if !self.by_repo {
+                self.push_files(&mut rows, group, &items, root, 1);
+                continue;
+            }
+            // The project's repository first, then the nested ones by path.
+            let mut repos: BTreeMap<(bool, PathBuf), Vec<&Change>> = BTreeMap::new();
+            for c in items {
+                let t = top(c);
+                repos.entry((t != status.toplevel, t)).or_default().push(c);
+            }
+            for ((_, t), files) in repos {
+                let folded = self.collapsed.contains(&Fold::Repo(group, t.clone()));
+                rows.push(Row::Repo { group, top: t.clone() });
+                if !folded {
+                    let base = if t.starts_with(root) { &t } else { root };
+                    self.push_files(&mut rows, group, &files, base, 2);
                 }
             }
         }
@@ -254,6 +283,79 @@ impl CommitView {
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
     }
 
+    /// File rows (under folders when grouping by folder, paths relative to
+    /// `base`) at `depth`.
+    fn push_files(&self, rows: &mut Vec<Row>, group: Group, files: &[&Change], base: &Path, depth: usize) {
+        if !self.by_dir {
+            rows.extend(files.iter().map(|c| Row::File {
+                change: (*c).clone(),
+                depth,
+            }));
+            return;
+        }
+        let mut dirs: BTreeMap<String, Vec<&Change>> = BTreeMap::new();
+        for c in files {
+            let rel = c.path.strip_prefix(base).unwrap_or(&c.path);
+            let dir = rel
+                .parent()
+                .map(|d| d.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            dirs.entry(dir).or_default().push(c);
+        }
+        for (dir, files) in dirs {
+            let d = if dir.is_empty() {
+                depth
+            } else {
+                rows.push(Row::Dir { group, rel: dir, depth });
+                depth + 1
+            };
+            for c in files {
+                rows.push(Row::File {
+                    change: c.clone(),
+                    depth: d,
+                });
+            }
+        }
+    }
+
+    /// What a file's folder is shown relative to: its repository's row,
+    /// or the project.
+    pub fn base<'a>(&self, path: &Path, all: &'a StatusSnapshot, root: &'a Path) -> &'a Path {
+        let top = &all.repo(path).toplevel;
+        if self.by_repo && top.starts_with(root) {
+            top
+        } else {
+            root
+        }
+    }
+
+    /// Whether a group or repository row is folded.
+    pub fn is_folded(&self, row: &Row) -> bool {
+        Self::fold_of(row).is_some_and(|f| self.collapsed.contains(&f))
+    }
+
+    fn fold_of(row: &Row) -> Option<Fold> {
+        match row {
+            Row::Group(g) => Some(Fold::Group(*g)),
+            Row::Repo { group, top } => Some(Fold::Repo(*group, top.clone())),
+            _ => None,
+        }
+    }
+
+    /// Folds (`Some(true)`), unfolds or flips (`None`) the selected group
+    /// or repository.
+    fn fold(&mut self, fold: Option<bool>, all: &StatusSnapshot, root: &Path) {
+        let Some(f) = self.rows.get(self.selected).and_then(Self::fold_of) else {
+            return;
+        };
+        if fold.unwrap_or(!self.collapsed.contains(&f)) {
+            self.collapsed.insert(f);
+        } else {
+            self.collapsed.remove(&f);
+        }
+        self.rebuild(all, root);
+    }
+
     pub fn selected_change(&self) -> Option<&Change> {
         match self.rows.get(self.selected) {
             Some(Row::File { change, .. }) => Some(change),
@@ -261,20 +363,25 @@ impl CommitView {
         }
     }
 
-    /// Files under a row (a file, a folder or a whole group).
-    fn files_of(&self, i: usize, all: &StatusSnapshot) -> Vec<Change> {
+    /// Files under a row (a file, a folder, a repository or a whole
+    /// group; folded ones too).
+    pub fn files_of(&self, i: usize, all: &StatusSnapshot) -> Vec<Change> {
+        let in_group = |g: Group| {
+            all.changes()
+                .iter()
+                .filter(move |c| c.status != FileStatus::Ignored && Group::of(c) == g)
+        };
         match self.rows.get(i) {
             Some(Row::File { change, .. }) => vec![change.clone()],
-            Some(Row::Group(g)) => all
-                .changes()
-                .iter()
-                .filter(|c| c.status != FileStatus::Ignored && Group::of(c) == *g)
+            Some(Row::Group(g)) => in_group(*g).cloned().collect(),
+            Some(Row::Repo { group, top }) => in_group(*group)
+                .filter(|c| all.repo(&c.path).toplevel == *top)
                 .cloned()
                 .collect(),
-            Some(Row::Dir { .. }) => self.rows[i + 1..]
+            Some(Row::Dir { depth, .. }) => self.rows[i + 1..]
                 .iter()
                 .map_while(|r| match r {
-                    Row::File { change, depth: 2 } => Some(change.clone()),
+                    Row::File { change, depth: d } if d > depth => Some(change.clone()),
                     _ => None,
                 })
                 .collect(),
@@ -395,31 +502,13 @@ impl CommitView {
             KeyCode::End => self.move_by(self.rows.len() as isize),
             KeyCode::Char(' ') => self.toggle(self.selected, all),
             KeyCode::Tab | KeyCode::Char('c') => self.editing_message = true,
-            KeyCode::Left => {
-                if let Some(Row::Group(g)) = self.rows.get(self.selected) {
-                    self.collapsed.insert(*g);
-                    self.rebuild(all, root);
-                }
-            }
-            KeyCode::Right => {
-                if let Some(Row::Group(g)) = self.rows.get(self.selected) {
-                    self.collapsed.remove(g);
-                    self.rebuild(all, root);
-                }
-            }
+            KeyCode::Left => self.fold(Some(true), all, root),
+            KeyCode::Right => self.fold(Some(false), all, root),
             KeyCode::Enter => {
-                return match self.rows.get(self.selected) {
-                    Some(Row::File { change, .. }) => CommitOutcome::Show(change.clone()),
-                    Some(Row::Group(g)) => {
-                        let g = *g;
-                        if !self.collapsed.remove(&g) {
-                            self.collapsed.insert(g);
-                        }
-                        self.rebuild(all, root);
-                        CommitOutcome::Handled
-                    }
-                    _ => CommitOutcome::Handled,
-                };
+                if let Some(Row::File { change, .. }) = self.rows.get(self.selected) {
+                    return CommitOutcome::Show(change.clone());
+                }
+                self.fold(None, all, root);
             }
             KeyCode::Char('g') => {
                 self.by_dir = !self.by_dir;
@@ -528,7 +617,7 @@ mod tests {
         let dir = v
             .rows
             .iter()
-            .position(|r| matches!(r, Row::Dir { group: Group::Unversioned, rel } if rel == "src"))
+            .position(|r| matches!(r, Row::Dir { group: Group::Unversioned, rel, .. } if rel == "src"))
             .unwrap();
         v.selected = dir;
         v.handle_key(&key(KeyCode::Char(' ')), &st, Path::new("/r"));
@@ -627,6 +716,106 @@ mod tests {
         assert!(v.included.contains(a) && !v.is_partial(a));
         v.toggle(row, &st);
         assert!(!v.included.contains(a));
+    }
+
+    /// `snap()` plus a repository cloned at `/r/repos/foo`.
+    fn nested_snap() -> StatusSnapshot {
+        let parse = |top: &str, recs: &[&str]| {
+            let mut bytes = Vec::new();
+            for r in recs {
+                bytes.extend_from_slice(r.as_bytes());
+                bytes.push(0);
+            }
+            StatusSnapshot::parse(Path::new(top), &bytes)
+        };
+        let mut st = snap();
+        st.nest(vec![parse(
+            "/r/repos/foo",
+            &[
+                "1 .M N... 100644 100644 100644 a b lib/x.rs",
+                "1 .M N... 100644 100644 100644 a b y.rs",
+                "? todo.txt",
+            ],
+        )]);
+        st
+    }
+
+    #[test]
+    fn changes_are_split_by_repository() {
+        let st = nested_snap();
+        let root = Path::new("/r");
+        let mut v = CommitView::default();
+        v.rebuild(&st, root);
+        assert!(v.by_repo);
+        let foo = PathBuf::from("/r/repos/foo");
+        let repo = |g: Group, t: &Path| Row::Repo {
+            group: g,
+            top: t.to_path_buf(),
+        };
+        let at = |v: &CommitView, r: &Row| v.rows.iter().position(|x| x == r).unwrap();
+        // Changes › r (the project's repository) then repos/foo; the same for unversioned files.
+        assert_eq!(v.rows[0], Row::Group(Group::Changes));
+        assert_eq!(v.rows[1], repo(Group::Changes, root));
+        let foo_row = at(&v, &repo(Group::Changes, &foo));
+        assert!(matches!(&v.rows[foo_row + 1], Row::File { change, depth: 2 } if change.path == foo.join("lib/x.rs")));
+        assert!(at(&v, &repo(Group::Unversioned, &foo)) > at(&v, &repo(Group::Unversioned, root)));
+        assert_eq!(v.files_of(foo_row, &st).len(), 2);
+        assert_eq!(repo_label(&foo, root), "repos/foo");
+        assert_eq!(repo_label(root, root), "r");
+        assert_eq!(v.base(&foo.join("y.rs"), &st, root), foo);
+        assert_eq!(v.base(Path::new("/r/src/a.rs"), &st, root), root);
+
+        // Ticking a repository's row ticks just its files.
+        v.selected = foo_row;
+        v.handle_key(&key(KeyCode::Char(' ')), &st, root);
+        assert_eq!(v.tick_state(foo_row, &st), Some(false));
+        assert!(!v.included.contains(&foo.join("y.rs")));
+        assert!(v.included.contains(Path::new("/r/src/a.rs")));
+        assert_eq!(v.tick_state(0, &st), None, "the group is mixed");
+
+        // A repository folds on its own (and still ticks as a whole).
+        v.handle_key(&key(KeyCode::Left), &st, root);
+        assert!(v.is_folded(&v.rows[foo_row]));
+        assert!(
+            !v.rows
+                .iter()
+                .any(|r| matches!(r, Row::File { change, .. } if change.path == foo.join("y.rs")))
+        );
+        v.handle_key(&key(KeyCode::Char(' ')), &st, root);
+        assert!(v.included.contains(&foo.join("y.rs")));
+        v.handle_key(&key(KeyCode::Enter), &st, root);
+        assert!(!v.is_folded(&v.rows[foo_row]));
+
+        // Grouping by folder: folders relative to each repository, a level deeper.
+        v.handle_key(&key(KeyCode::Char('g')), &st, root);
+        let dir = v
+            .rows
+            .iter()
+            .position(|r| matches!(r, Row::Dir { group: Group::Changes, rel, depth: 2 } if rel == "lib"))
+            .unwrap();
+        assert!(matches!(&v.rows[dir + 1], Row::File { depth: 3, .. }));
+        assert_eq!(v.rows[dir].checkbox_col(), 5);
+        assert_eq!(v.files_of(dir, &st).len(), 1);
+    }
+
+    #[test]
+    fn repository_rows_only_when_a_nested_repository_has_changes() {
+        let mut v = CommitView::default();
+        v.rebuild(&snap(), Path::new("/r"));
+        assert!(!v.by_repo);
+        assert!(!v.rows.iter().any(|r| matches!(r, Row::Repo { .. })));
+        // Changes only in the nested one: its row says where they are.
+        let mut only_foo = StatusSnapshot::parse(Path::new("/r"), b"");
+        only_foo.nest(vec![StatusSnapshot::parse(Path::new("/r/repos/foo"), b"? todo.txt\0")]);
+        v.rebuild(&only_foo, Path::new("/r"));
+        assert!(v.by_repo);
+        assert_eq!(
+            v.rows[1],
+            Row::Repo {
+                group: Group::Unversioned,
+                top: PathBuf::from("/r/repos/foo")
+            }
+        );
     }
 
     #[test]

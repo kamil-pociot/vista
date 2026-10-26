@@ -12,6 +12,7 @@ The `2: Commit` tool window (`Alt-2`; `Ctrl-K` from anywhere) replaces the Proje
 - **Rollback** (`r`, asks first; added files are unstaged and kept on disk) and **add to VCS** (`a`) for unversioned files.
 - Hook output and errors (a failing pre-commit hook, a rejected push) are shown in the window.
 - `Enter` or a double-click opens the file's diff ([07](07-diff-viewer.md)).
+- **Repositories inside the project** (clones in an ignored `repos/` folder…) get a row each under the groups, with their branch; a commit goes to each repository with ticked files ([24](24-nested-repositories.md)).
 
 ## Partial commits
 
@@ -40,4 +41,4 @@ vista doesn't build a patch: it rebuilds the file from `HEAD` plus the ticked ch
 - Proptest: no exclusions gives the new text, all excluded gives the old text, excluding a change keeps exactly its old lines.
 - E2e: `e2e_m6_commit.rs` (counts, ticking, amend, hooks, rollback, add, empty message, push to a remote), `e2e_m9_partial.rs` (commit 1 of 3 changes; `git show HEAD:` holds exactly that change).
 
-See also: [20 · Review](20-review.md) (everything changed since a base, committed or not).
+See also: [20 · Review](20-review.md) (everything changed since a base, committed or not), [24 · Repositories inside the project](24-nested-repositories.md).

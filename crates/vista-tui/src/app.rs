@@ -794,8 +794,29 @@ impl App {
         }
     }
 
+    /// `items` split by the repository their path is in (repositories
+    /// cloned inside the project have their own), the project's first.
+    fn by_repo<T>(&self, items: Vec<T>, path: impl Fn(&T) -> &Path) -> Vec<(Git, Vec<T>)> {
+        let mut repos: std::collections::BTreeMap<(bool, PathBuf), Vec<T>> = Default::default();
+        for item in items {
+            let top = self.status.repo(path(&item)).toplevel.clone();
+            repos.entry((top != self.status.toplevel, top)).or_default().push(item);
+        }
+        repos
+            .into_iter()
+            .map(|((_, toplevel), items)| (Git { toplevel }, items))
+            .collect()
+    }
+
     fn set_status(&mut self, s: StatusSnapshot) {
-        let head_moved = s.branch.oid != self.status.branch.oid;
+        // Every repository's HEAD (and which repositories there are).
+        let heads = |s: &StatusSnapshot| {
+            std::iter::once(s)
+                .chain(s.nested())
+                .map(|r| (r.toplevel.clone(), r.branch.oid.clone()))
+                .collect::<Vec<_>>()
+        };
+        let head_moved = heads(&s) != heads(&self.status);
         self.status = s;
         self.project.rebuild(&self.status);
         self.commit.rebuild(&self.status, &self.root);
@@ -1066,18 +1087,31 @@ impl App {
                 });
             }
             CommitOutcome::Add(paths) => {
-                if let Some(git) = &self.git {
-                    match git.add(&paths) {
-                        Ok(()) => self.notify(format!("Added {} file(s) to VCS", paths.len()), MsgKind::Info),
+                if self.git.is_some() {
+                    let n = paths.len();
+                    let added = self
+                        .by_repo(paths, |p| p)
+                        .into_iter()
+                        .try_for_each(|(git, paths)| git.add(&paths));
+                    match added {
+                        Ok(()) => self.notify(format!("Added {n} file(s) to VCS"), MsgKind::Info),
                         Err(e) => self.notify(e.to_string(), MsgKind::Error),
                     }
                 }
                 self.request_status();
             }
             CommitOutcome::AmendToggled => {
+                // The last message of a repository with ticked files (the project's first).
+                let ticked = self.commit.included_changes(&self.status);
+                let git = self
+                    .by_repo(ticked, |c| &c.path)
+                    .into_iter()
+                    .next()
+                    .map(|(git, _)| git)
+                    .or_else(|| self.git.clone());
                 if self.commit.amend
                     && self.commit.message.text.trim().is_empty()
-                    && let Some(m) = self.git.as_ref().and_then(|g| g.last_message())
+                    && let Some(m) = git.and_then(|g| g.last_message())
                 {
                     self.commit.message.set(&m);
                 }
@@ -1106,7 +1140,7 @@ impl App {
                 (c, ex)
             })
             .collect();
-        let files = plan.clone();
+        let n = plan.len();
         let amend = self.commit.amend;
         if message.is_empty() {
             self.commit.output = Some((false, "Commit message is empty".into()));
@@ -1117,35 +1151,55 @@ impl App {
             self.commit.output = Some((false, "No files are ticked for the commit".into()));
             return;
         }
+        // One commit per repository the ticked files are in, with the same
+        // message (amending just the message: the project's repository).
+        let repos = if plan.is_empty() {
+            vec![(git, Vec::new())]
+        } else {
+            self.by_repo(plan, |(c, _)| &c.path)
+        };
         self.commit.busy = true;
         self.commit.output = None;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let n = files.len();
-            let files: Vec<CommitFile> = files
-                .iter()
-                .map(|(c, excluded)| {
-                    if excluded.is_empty() {
-                        return CommitFile::whole(c);
+            let mut done = Vec::new();
+            let mut failed = None;
+            for (git, files) in repos {
+                let files: Vec<CommitFile> = files
+                    .iter()
+                    .map(|(c, excluded)| {
+                        if excluded.is_empty() {
+                            return CommitFile::whole(c);
+                        }
+                        let head = c.orig_path.as_deref().unwrap_or(&c.path);
+                        let old = git
+                            .head_content(head)
+                            .map(|b| String::from_utf8_lossy(&b).into_owned())
+                            .unwrap_or_default();
+                        let new = std::fs::read(&c.path)
+                            .map(|b| String::from_utf8_lossy(&b).into_owned())
+                            .unwrap_or_default();
+                        CommitFile {
+                            path: c.path.clone(),
+                            orig_path: c.orig_path.clone(),
+                            content: vista_git::write::CommitContent::Blob(
+                                vista_diff::partial_content(&old, &new, excluded).into_bytes(),
+                            ),
+                        }
+                    })
+                    .collect();
+                match git.commit(&files, &message, amend) {
+                    Ok(r) => done.push((git, r)),
+                    Err(e) => {
+                        failed = Some(e.to_string());
+                        break;
                     }
-                    let head = c.orig_path.as_deref().unwrap_or(&c.path);
-                    let old = git
-                        .head_content(head)
-                        .map(|b| String::from_utf8_lossy(&b).into_owned())
-                        .unwrap_or_default();
-                    let new = std::fs::read(&c.path)
-                        .map(|b| String::from_utf8_lossy(&b).into_owned())
-                        .unwrap_or_default();
-                    CommitFile {
-                        path: c.path.clone(),
-                        orig_path: c.orig_path.clone(),
-                        content: vista_git::write::CommitContent::Blob(
-                            vista_diff::partial_content(&old, &new, excluded).into_bytes(),
-                        ),
-                    }
-                })
-                .collect();
-            let result = git.commit(&files, &message, amend).map_err(|e| e.to_string());
+                }
+            }
+            let result = match failed {
+                Some(e) => Err(e),
+                None => Ok(done),
+            };
             let _ = tx.send(AppEvent::CommitDone {
                 result: Box::new(result),
                 files: n,
@@ -1154,15 +1208,21 @@ impl App {
         });
     }
 
-    fn on_commit_done(&mut self, result: Result<CommitResult, String>, files: usize, push: bool) {
+    fn on_commit_done(&mut self, result: Result<Vec<(Git, CommitResult)>, String>, files: usize, push: bool) {
         self.commit.busy = false;
         match result {
-            Ok(r) => {
+            Ok(done) => {
+                let ids: Vec<&str> = done.iter().map(|(_, r)| r.id.as_str()).collect();
+                let subject = done.first().map(|(_, r)| r.subject.as_str()).unwrap_or_default();
+                let repos = if done.len() > 1 {
+                    format!(" in {} repositories", done.len())
+                } else {
+                    String::new()
+                };
                 let text = format!(
-                    "Committed {files} file{}: {} {}",
+                    "Committed {files} file{}{repos}: {} {subject}",
                     if files == 1 { "" } else { "s" },
-                    r.id,
-                    r.subject
+                    ids.join(", "),
                 );
                 self.notify(text.clone(), MsgKind::Info);
                 self.commit.output = Some((true, text));
@@ -1171,11 +1231,17 @@ impl App {
                 // Hunk ids change once committed; start fresh.
                 self.commit.excluded.clear();
                 self.commit.editing_message = false;
-                if push && let Some(git) = self.git.clone() {
+                if push {
                     self.commit.busy = true;
                     let tx = self.tx.clone();
                     std::thread::spawn(move || {
-                        let _ = tx.send(AppEvent::PushDone(git.push().map_err(|e| e.to_string())));
+                        // Each repository that got a commit; the first failure stops.
+                        let pushed = done
+                            .iter()
+                            .map(|(git, _)| git.push().map_err(|e| e.to_string()))
+                            .collect::<Result<Vec<_>, _>>()
+                            .map(|out| out.join("\n"));
+                        let _ = tx.send(AppEvent::PushDone(pushed));
                     });
                 }
             }
@@ -1662,13 +1728,18 @@ impl App {
     fn run_confirmed(&mut self, action: ConfirmAction) {
         match action {
             ConfirmAction::Rollback(files) => {
-                if let Some(git) = &self.git {
-                    match git.rollback(&files) {
-                        Ok(()) => self.notify(format!("Rolled back {} file(s)", files.len()), MsgKind::Info),
+                let paths: Vec<PathBuf> = files.iter().map(|c| c.path.clone()).collect();
+                if self.git.is_some() {
+                    let n = files.len();
+                    let rolled = self
+                        .by_repo(files, |c| &c.path)
+                        .into_iter()
+                        .try_for_each(|(git, files)| git.rollback(&files));
+                    match rolled {
+                        Ok(()) => self.notify(format!("Rolled back {n} file(s)"), MsgKind::Info),
                         Err(e) => self.notify(e.to_string(), MsgKind::Error),
                     }
                 }
-                let paths: Vec<PathBuf> = files.iter().map(|c| c.path.clone()).collect();
                 self.project.tree.refresh(&paths);
                 self.project.rebuild(&self.status);
                 let ctx = self.load_ctx();
@@ -2433,11 +2504,11 @@ impl App {
                 let row = (m.row - r.y) as usize;
                 let col = (m.column - r.x) as usize;
                 let i = self.commit.scroll + row;
-                let checkbox_at = match self.commit.rows.get(i) {
-                    Some(crate::commit::Row::File { depth, .. }) => 1 + depth * 2,
-                    Some(_) => 3,
-                    None => usize::MAX,
-                };
+                let checkbox_at = self
+                    .commit
+                    .rows
+                    .get(i)
+                    .map_or(usize::MAX, crate::commit::Row::checkbox_col);
                 let on_box = (checkbox_at..checkbox_at.saturating_add(3)).contains(&col);
                 self.commit.click(row, &self.status, on_box);
                 if !on_box && self.is_double_click(ClickList::Commit, i) {

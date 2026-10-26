@@ -50,3 +50,5 @@ A changed file's tab shows `d  File  Diff` at the right of the tab row; the view
 - Proptest: aligned rows rebuild both sides exactly, applying all hunks gives the new text, folding never loses rows, EOF-newline-only changes.
 - Snapshot: the mockup-A diff (`render_m7.rs`).
 - E2e: `e2e_m7_diff.rs` (navigation, word highlights, toggles, new/deleted/image files, next file, live update, open at line, the File / Diff switch and `d` both ways in one tab), `e2e_r1_feedback.rs` (sideways, wrap, cross-file changes, no wrap-around).
+
+See also: [24 · Repositories inside the project](24-nested-repositories.md) (a file in a clone diffs against its own HEAD).

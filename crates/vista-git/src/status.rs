@@ -1,5 +1,10 @@
 //! `git status` as a snapshot: per-file status, folder roll-up, ignored paths
 //! and branch info.
+//!
+//! Repositories cloned inside the project (in an ignored or untracked folder,
+//! like `repos/` holding other checkouts) get their own `git status`; their
+//! changes join the snapshot, and each path takes its status, ignore rules and
+//! branch from the repository it is actually in.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -87,10 +92,76 @@ impl BranchInfo {
 pub struct StatusSnapshot {
     pub toplevel: PathBuf,
     pub branch: BranchInfo,
+    /// Changes of this repository and of the nested ones, by path.
     changes: Vec<Change>,
     by_path: HashMap<PathBuf, usize>,
     ignored: HashSet<PathBuf>,
     dirs: HashMap<PathBuf, FileStatus>,
+    /// Folders git reports whole (ignored ones, untracked repositories):
+    /// where nested repositories can be.
+    folders: Vec<PathBuf>,
+    /// Repositories inside this one, flattened and sorted by path. Their
+    /// changes are in `changes`; each keeps its branch and ignored paths.
+    nested: Vec<StatusSnapshot>,
+}
+
+/// How many folders below an ignored folder a nested repository is looked
+/// for (`repos/` › `team/` › `app/.git`).
+const NESTED_DEPTH: usize = 3;
+
+/// How many repositories deep nesting goes (a clone inside a clone…).
+const NESTED_LEVELS: usize = 3;
+
+/// The git directory shared by all checkouts of the repository at `top`:
+/// `top/.git`, or for a linked worktree (a `.git` file saying
+/// `gitdir: <main>/.git/worktrees/<name>`) the main one's.
+fn common_git_dir(top: &Path) -> Option<PathBuf> {
+    let dot_git = top.join(".git");
+    if dot_git.is_dir() {
+        return dot_git.canonicalize().ok();
+    }
+    let text = std::fs::read_to_string(&dot_git).ok()?;
+    let dir = top.join(text.strip_prefix("gitdir:")?.trim()).canonicalize().ok()?;
+    match dir.parent() {
+        Some(p) if p.file_name().is_some_and(|n| n == "worktrees") => p.parent().map(Path::to_path_buf),
+        _ => Some(dir),
+    }
+}
+
+/// The repositories cloned in `folders` (git's ignored and untracked
+/// folders) of the repository at `top`: a folder with a `.git`, or one
+/// below it. Not followed: symlinks, `.git`, `node_modules` and caches
+/// (a `CACHEDIR.TAG`, like Cargo's `target/`): big, and never clones.
+/// Worktrees of `top`'s own repository (`.claude/worktrees/…`) are other
+/// checkouts of the same project, not repositories of their own.
+fn find_nested(top: &Path, folders: &[PathBuf]) -> Vec<PathBuf> {
+    fn walk(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
+        if dir.join(".git").exists() {
+            // Its own status finds the repositories inside it.
+            found.push(dir.to_path_buf());
+            return;
+        }
+        if depth == 0 || dir.join("CACHEDIR.TAG").exists() {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for e in entries.flatten() {
+            let skip = e.file_name() == ".git" || e.file_name() == "node_modules";
+            if !skip && e.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(&e.path(), depth - 1, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for f in folders {
+        walk(f, NESTED_DEPTH, &mut found);
+    }
+    if let Some(own) = common_git_dir(top) {
+        found.retain(|d| common_git_dir(d).is_none_or(|c| c != own));
+    }
+    found.sort();
+    found.dedup();
+    found
 }
 
 fn classify(xy: &[u8]) -> FileStatus {
@@ -107,8 +178,47 @@ fn classify(xy: &[u8]) -> FileStatus {
 }
 
 impl StatusSnapshot {
-    /// Runs `git status` for the whole repository.
+    /// Runs `git status` for the whole repository, and for the
+    /// repositories cloned inside it.
     pub fn load(git: &Git) -> Result<StatusSnapshot, GitError> {
+        // With GIT_DIR set every git command sees that one repository.
+        let levels = if std::env::var_os("GIT_DIR").is_some() {
+            0
+        } else {
+            NESTED_LEVELS
+        };
+        StatusSnapshot::load_nested(git, levels)
+    }
+
+    fn load_nested(git: &Git, levels: usize) -> Result<StatusSnapshot, GitError> {
+        let mut snap = StatusSnapshot::load_one(git)?;
+        if levels == 0 {
+            return Ok(snap);
+        }
+        let tops = find_nested(&git.toplevel, &snap.folders);
+        // In parallel: a git process each.
+        let nested: Vec<StatusSnapshot> = std::thread::scope(|s| {
+            let jobs: Vec<_> = tops
+                .into_iter()
+                .map(|toplevel| s.spawn(move || StatusSnapshot::load_nested(&Git { toplevel }, levels - 1)))
+                .collect();
+            jobs.into_iter()
+                .filter_map(|j| match j.join() {
+                    Ok(Ok(snap)) => Some(snap),
+                    Ok(Err(e)) => {
+                        tracing::warn!("nested repository left out: {e}");
+                        None
+                    }
+                    Err(_) => None,
+                })
+                .collect()
+        });
+        snap.nest(nested);
+        Ok(snap)
+    }
+
+    /// `git status` of this repository alone.
+    fn load_one(git: &Git) -> Result<StatusSnapshot, GitError> {
         let out = git.run_bytes(&[
             "status",
             "--porcelain=v2",
@@ -188,8 +298,17 @@ impl StatusSnapshot {
                         push(abs(fields[10]), FileStatus::Conflicted, None, b"UU");
                     }
                 }
-                Some(b'?') => push(abs(&rec[2..]), FileStatus::Unversioned, None, b".."),
+                Some(b'?') => {
+                    // With every untracked file listed, a folder is a repository.
+                    if rec.ends_with(b"/") {
+                        snap.folders.push(abs(&rec[2..]));
+                    }
+                    push(abs(&rec[2..]), FileStatus::Unversioned, None, b"..");
+                }
                 Some(b'!') => {
+                    if rec.ends_with(b"/") {
+                        snap.folders.push(abs(&rec[2..]));
+                    }
                     snap.ignored.insert(abs(&rec[2..]));
                 }
                 _ => {}
@@ -206,6 +325,44 @@ impl StatusSnapshot {
         snap
     }
 
+    /// Takes in the snapshots of repositories inside this one: their
+    /// changes join this one's, and what this repository says about them
+    /// (`? vendor/lib/`) goes.
+    pub fn nest(&mut self, nested: Vec<StatusSnapshot>) {
+        let mut theirs = Vec::new();
+        for mut n in nested {
+            theirs.append(&mut n.changes);
+            n.by_path.clear();
+            n.dirs.clear();
+            self.nested.append(&mut n.nested);
+            self.nested.push(n);
+        }
+        self.nested.sort_by(|a, b| a.toplevel.cmp(&b.toplevel));
+        let mut changes = std::mem::take(&mut self.changes);
+        changes.retain(|c| self.repo(&c.path).toplevel == self.toplevel);
+        changes.append(&mut theirs);
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
+        self.by_path = changes.iter().enumerate().map(|(i, c)| (c.path.clone(), i)).collect();
+        // A folder rolls up every change inside it, whichever repository.
+        self.dirs = rollup(&self.toplevel, &changes);
+        self.changes = changes;
+    }
+
+    /// The repository `path` is in: the innermost nested one holding it,
+    /// or this one. Its `toplevel` and `branch` describe it.
+    pub fn repo(&self, path: &Path) -> &StatusSnapshot {
+        self.nested
+            .iter()
+            .filter(|n| path.starts_with(&n.toplevel))
+            .max_by_key(|n| n.toplevel.components().count())
+            .unwrap_or(self)
+    }
+
+    /// The repositories inside this one, sorted by path.
+    pub fn nested(&self) -> &[StatusSnapshot] {
+        &self.nested
+    }
+
     pub fn changes(&self) -> &[Change] {
         &self.changes
     }
@@ -214,14 +371,16 @@ impl StatusSnapshot {
         self.by_path.get(path).map(|i| &self.changes[*i])
     }
 
-    /// Whether `path` or any ancestor is git-ignored.
+    /// Whether `path` or any ancestor is git-ignored, by the repository it
+    /// is in. Folders holding nested repositories are not: they lead to them.
     pub fn is_ignored(&self, path: &Path) -> bool {
-        if self.ignored.is_empty() {
+        let repo = self.repo(path);
+        if repo.ignored.is_empty() || self.nested.iter().any(|n| n.toplevel.starts_with(path)) {
             return false;
         }
         path.ancestors()
-            .take_while(|p| p.starts_with(&self.toplevel) && *p != self.toplevel)
-            .any(|p| self.ignored.contains(p))
+            .take_while(|p| p.starts_with(&repo.toplevel) && *p != repo.toplevel)
+            .any(|p| repo.ignored.contains(p))
     }
 
     /// Status of a file: its change, or `Ignored`.
@@ -357,6 +516,96 @@ mod tests {
         assert!(s.is_ignored(&top().join("node_modules/a/b.js")));
         assert!(!s.is_ignored(&top().join("src")));
         assert_eq!(s.dir_status(&top().join("node_modules")), Some(FileStatus::Ignored));
+    }
+
+    fn parse_at(toplevel: &Path, records: &[&str]) -> StatusSnapshot {
+        let mut bytes = Vec::new();
+        for r in records {
+            bytes.extend_from_slice(r.as_bytes());
+            bytes.push(0);
+        }
+        StatusSnapshot::parse(toplevel, &bytes)
+    }
+
+    #[test]
+    fn nested_repositories_keep_their_own_status() {
+        let mut s = parse(&[
+            "# branch.head main",
+            "1 .M N... 100644 100644 100644 a b src/a.rs",
+            "! repos/",
+            "! debug.log",
+            "? vendor/lib/",
+        ]);
+        assert_eq!(s.folders, vec![top().join("repos"), top().join("vendor/lib")]);
+        let foo = parse_at(
+            &top().join("repos/foo"),
+            &[
+                "# branch.head dev",
+                "1 .M N... 100644 100644 100644 a b x.rs",
+                "? new.txt",
+                "! build/",
+            ],
+        );
+        let lib = parse_at(&top().join("vendor/lib"), &["# branch.head main", "? z.txt"]);
+        s.nest(vec![lib, foo]);
+
+        let st = |p: &str| s.file_status(&top().join(p));
+        assert_eq!(st("src/a.rs"), Some(FileStatus::Modified));
+        assert_eq!(
+            st("repos/foo/x.rs"),
+            Some(FileStatus::Modified),
+            "not ignored: its own repo"
+        );
+        assert_eq!(st("repos/foo/new.txt"), Some(FileStatus::Unversioned));
+        assert_eq!(
+            st("repos/foo/build/out.o"),
+            Some(FileStatus::Ignored),
+            "the nested repo's ignores"
+        );
+        assert_eq!(st("repos/foo/README.md"), None);
+        assert_eq!(
+            st("repos/notes.txt"),
+            Some(FileStatus::Ignored),
+            "beside the clones: still ignored"
+        );
+        assert_eq!(st("debug.log"), Some(FileStatus::Ignored));
+        // The outer repository's `? vendor/lib/` gave way to the repository itself.
+        assert!(s.change(&top().join("vendor/lib")).is_none());
+        assert_eq!(st("vendor/lib/z.txt"), Some(FileStatus::Unversioned));
+        assert_eq!(s.changes().len(), 4);
+
+        // The folder holding clones stays visible, and rolls up their changes.
+        assert!(!s.is_ignored(&top().join("repos")));
+        assert!(!s.is_ignored(&top().join("repos/foo")));
+        assert_eq!(s.dir_status(&top().join("repos")), Some(FileStatus::Modified));
+        assert_eq!(s.dir_status(&top().join("repos/foo")), Some(FileStatus::Modified));
+        assert_eq!(s.dir_status(&top().join("vendor/lib")), Some(FileStatus::Unversioned));
+
+        // Which repository a path is in, with its branch.
+        assert_eq!(s.repo(&top().join("src/a.rs")).toplevel, top());
+        let foo = s.repo(&top().join("repos/foo/x.rs"));
+        assert_eq!(foo.toplevel, top().join("repos/foo"));
+        assert_eq!(foo.branch.label(), "dev");
+        assert_eq!(s.repo(&top().join("repos/foo")).toplevel, top().join("repos/foo"));
+        let tops: Vec<_> = s.nested().iter().map(|n| n.toplevel.clone()).collect();
+        assert_eq!(tops, vec![top().join("repos/foo"), top().join("vendor/lib")]);
+    }
+
+    #[test]
+    fn nesting_flattens_repositories_inside_nested_ones() {
+        let mut inner = parse_at(&top().join("a"), &["! deps/"]);
+        inner.nest(vec![parse_at(&top().join("a/deps/b"), &["? b.txt"])]);
+        let mut s = parse(&["! a/"]);
+        s.nest(vec![inner]);
+        assert_eq!(s.nested().len(), 2);
+        assert_eq!(s.repo(&top().join("a/deps/b/b.txt")).toplevel, top().join("a/deps/b"));
+        assert_eq!(s.repo(&top().join("a/x")).toplevel, top().join("a"));
+        assert_eq!(
+            s.file_status(&top().join("a/deps/b/b.txt")),
+            Some(FileStatus::Unversioned)
+        );
+        assert!(!s.is_ignored(&top().join("a/deps")), "leads to b");
+        assert!(s.is_ignored(&top().join("a/deps/other")));
     }
 
     #[test]

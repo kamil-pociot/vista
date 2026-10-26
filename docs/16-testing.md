@@ -59,6 +59,7 @@ VISTA_PERF_REPO=~/some/repo cargo test --release --test perf -- --ignored --noca
 | Go to File | `e2e_m4_goto.rs` |
 | Find in Files | `e2e_m5_find.rs` |
 | Commit, partial commits | `e2e_m6_commit.rs`, `e2e_m9_partial.rs` |
+| Repositories inside the project | `e2e_r1_nested_repos.rs` |
 | Diff | `e2e_m7_diff.rs`, `e2e_r1_feedback.rs` |
 | Looks | `e2e_m8_looks.rs` |
 | Git history | `e2e_r1_history.rs` |

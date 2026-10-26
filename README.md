@@ -85,6 +85,10 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 
 `vista --review <rev>` (say, `--review main` on a feature branch) shows the **Review** panel on the left: every file changed since `rev`, committed or not, plus new files, under `Review · 3 files since abc1234 · 1 commit`. `Enter` opens a file as a read-only diff, base ⇄ working tree (`Δ name ⇠ abc1234`); `]`/`[` and `J`/`K` step through the review's files. The list and diffs follow changes on disk; the base stays. `Esc` goes back to the tree, `Alt-R` brings the review back. A base that's `HEAD` opens the Commit window instead ([docs](docs/20-review.md)).
 
+### Repositories inside the project
+
+Other repositories cloned into the project (say, a `repos/` folder in `.gitignore` holding checkouts of related projects, or an untracked `vendor/lib`) are found and treated as their own: their files are coloured by their own `git status` and `.gitignore` instead of showing as ignored, the Commit window shows each repository's changes under its own row (with its branch), and `Ctrl-K` commits each repository's ticked files there, with the same message. Diffs and gutter markers compare with HEAD of the file's repository ([docs](docs/24-nested-repositories.md)).
+
 ### Preferences
 
 `Ctrl-,` or the `⚙` at the right of the top bar opens **Preferences**: the look (including Follow herdr), Fill background, line numbers, wrapping, diff, tree, Commit-window, Find and mouse settings, changed in place and remembered ([docs](docs/19-preferences.md)). Its last row opens `~/.config/vista/config.toml` (written with every default the first time) for key bindings and the rest.

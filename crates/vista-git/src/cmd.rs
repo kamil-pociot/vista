@@ -52,6 +52,23 @@ impl Git {
         Ok(Git { toplevel })
     }
 
+    /// The repository `path` belongs to: one cloned inside this one (the
+    /// nearest folder below the top level with a `.git`), or this one.
+    /// With `GIT_DIR` set there is only this one.
+    pub fn for_path(&self, path: &Path) -> Git {
+        if std::env::var_os("GIT_DIR").is_none()
+            && let Some(top) = path
+                .ancestors()
+                .take_while(|a| a.starts_with(&self.toplevel) && *a != self.toplevel)
+                .find(|a| a.join(".git").exists())
+        {
+            return Git {
+                toplevel: top.to_path_buf(),
+            };
+        }
+        self.clone()
+    }
+
     fn command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new("git");
         cmd.current_dir(&self.toplevel)

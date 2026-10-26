@@ -437,6 +437,15 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Tests: `strip_layout_tests` units, `e2e_r1_tabs` (scrolling row, several rows).
 - [x] Version 0.4.1 (with the File / Diff switch).
 
+### Repositories inside the project ✅
+- [x] Clones in ignored or untracked folders (up to three folders down, not in `node_modules` or `CACHEDIR.TAG` caches; not the project's own worktrees) get their own `git status`, run in parallel and merged: each path's colour, ignore rules and branch come from its own repository; folders holding clones stay visible.
+- [x] Commit window: a row per repository (path, branch, count) when changes come from more than one, ticking and folding as a whole; one commit per repository with ticked files, the same message; push, amend, rollback and add per repository. Diffs and gutter markers against the file's own HEAD (`Git::for_path`).
+- [x] Tests: `status` and `commit` units, `vista-git/tests/nested_repos.rs`, `e2e_r1_nested_repos` (3 PTY tests).
+
+### Middle click closes tabs ✅
+- [x] A middle click on a file tab or a project tab closes it, anywhere on the label.
+- [x] Tests: `app` unit (project tabs), `e2e_r1_tabs` (file tabs).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

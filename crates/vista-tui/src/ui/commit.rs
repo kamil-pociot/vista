@@ -58,35 +58,40 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     for (i, row) in cv.rows.iter().enumerate().skip(cv.scroll).take(list.height as usize) {
         let mut spans = Vec::new();
         match row {
-            Row::Group(g) => {
-                let n = app
-                    .status
-                    .changes()
-                    .iter()
-                    .filter(|c| {
-                        (c.status == vista_git::FileStatus::Unversioned) == (*g == crate::commit::Group::Unversioned)
-                    })
-                    .filter(|c| c.status != vista_git::FileStatus::Ignored)
-                    .count();
-                let arrow = if cv.collapsed.contains(g) { "▸ " } else { "▾ " };
-                spans.push(Span::styled(format!(" {arrow}"), t.fg("ui.dim")));
+            Row::Group(_) | Row::Repo { .. } => {
+                let n = cv.files_of(i, &app.status).len();
+                let arrow = if cv.is_folded(row) { "▸ " } else { "▾ " };
+                let indent = " ".repeat(row.checkbox_col() - 2);
+                spans.push(Span::styled(format!("{indent}{arrow}"), t.fg("ui.dim")));
                 spans.push(Span::styled(checkbox(cv.tick_state(i, &app.status)), t.fg("ui.text")));
-                spans.push(Span::styled(
-                    g.label().to_string(),
-                    t.fg("ui.header").add_modifier(Modifier::BOLD),
-                ));
+                match row {
+                    Row::Repo { top, .. } => {
+                        spans.push(Span::styled(
+                            crate::commit::repo_label(top, &app.root),
+                            t.fg("ui.text").add_modifier(Modifier::BOLD),
+                        ));
+                        let branch = app.status.repo(top).branch.label();
+                        spans.push(Span::styled(format!("  {branch}"), t.fg("ui.dim")));
+                    }
+                    Row::Group(g) => spans.push(Span::styled(
+                        g.label().to_string(),
+                        t.fg("ui.header").add_modifier(Modifier::BOLD),
+                    )),
+                    _ => {}
+                }
                 spans.push(Span::styled(
                     format!("  {n} file{}", if n == 1 { "" } else { "s" }),
                     t.fg("ui.dim"),
                 ));
             }
             Row::Dir { rel, .. } => {
-                spans.push(Span::styled("   ", t.fg("ui.dim")));
+                spans.push(Span::raw(" ".repeat(row.checkbox_col())));
                 spans.push(Span::styled(checkbox(cv.tick_state(i, &app.status)), t.fg("ui.text")));
                 spans.push(Span::styled(rel.clone(), t.fg("ui.dim")));
             }
             Row::File { change, depth } => {
-                let rel = change.path.strip_prefix(&app.root).unwrap_or(&change.path);
+                let base = cv.base(&change.path, &app.status, &app.root);
+                let rel = change.path.strip_prefix(base).unwrap_or(&change.path);
                 let name = rel
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -105,7 +110,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                 }
                 spans.push(Span::styled(name, name_style));
                 if let Some(orig) = &change.orig_path {
-                    let o = orig.strip_prefix(&app.root).unwrap_or(orig);
+                    let o = orig.strip_prefix(base).unwrap_or(orig);
                     spans.push(Span::styled(format!(" ← {}", o.display()), t.fg("ui.dim")));
                 }
                 let used: usize = spans.iter().map(|s| s.content.width()).sum();

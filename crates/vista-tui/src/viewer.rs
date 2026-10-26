@@ -532,6 +532,7 @@ pub fn load(tab: &mut Tab, ctx: &LoadCtx) {
                     .as_ref()
                     .map(|g| {
                         let old = g
+                            .for_path(&path)
                             .head_content(&path)
                             .map(|b| String::from_utf8_lossy(&b).into_owned())
                             .unwrap_or_default();
