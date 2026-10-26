@@ -216,6 +216,8 @@ pub struct App {
     pub buttons: Vec<crate::ui::click::Button>,
     /// The Preferences page, when open (Ctrl-,).
     pub prefs: Option<crate::prefs::PrefsPage>,
+    /// The picture viewer, when open (a click on a picture, or `v`).
+    pub picture: Option<crate::picture::PictureView>,
     /// The review (one per project), shown in the Review panel.
     pub review: Option<crate::review::ReviewView>,
     pub project: ProjectView,
@@ -387,6 +389,7 @@ impl App {
             areas: Default::default(),
             buttons: Vec::new(),
             prefs: None,
+            picture: None,
             review: None,
             project,
             git,
@@ -1765,6 +1768,90 @@ impl App {
         self.request_review();
     }
 
+    /// Opens the picture viewer on a picture of the Markdown tab in front
+    /// (`src` as in the document, or a Mermaid diagram's key), or with
+    /// `None` on the image the tab shows.
+    pub fn open_picture(&mut self, src: Option<String>) {
+        use crate::picture::{PictureView, Source};
+        if self.picker.is_none() {
+            self.notify("Images are off ([images] protocol = \"off\")", MsgKind::Info);
+            return;
+        }
+        let Some(tab) = self.viewer.active_tab() else { return };
+        let (title, source) = match (&tab.content, src) {
+            (Content::Image { .. }, _) => (file_name(&tab.path), Source::File(tab.path.clone())),
+            (Content::Markdown { .. }, Some(src)) if src.starts_with("mermaid:") => {
+                let Some(code) = self.md_images.diagrams.get(&src) else {
+                    return;
+                };
+                let bg = self.theme.color("ui.bg");
+                let source = Source::Diagram {
+                    src: code.clone(),
+                    dark: bg.luminance() < 0.4,
+                    background: bg,
+                };
+                ("Mermaid diagram".to_string(), source)
+            }
+            (Content::Markdown { .. }, Some(src)) => {
+                let path = tab
+                    .path
+                    .parent()
+                    .map(|d| d.join(&src))
+                    .unwrap_or_else(|| PathBuf::from(&src));
+                (file_name(&path), Source::File(path))
+            }
+            _ => return,
+        };
+        let mut v = PictureView::new(title, source);
+        v.load(&self.tx);
+        self.picture = Some(v);
+    }
+
+    /// The picture at a screen position in the viewer: `Some(Some(src))` in
+    /// Markdown, `Some(None)` for an image tab's image.
+    fn picture_at(&self, pos: Position) -> Option<Option<String>> {
+        let tab = self
+            .viewer
+            .active_tab()
+            .filter(|t| !t.editing && self.picker.is_some())?;
+        match &tab.content {
+            Content::Image { .. } => Some(None),
+            Content::Markdown { raw: false, .. } => {
+                let layout = tab.layout.borrow();
+                let (_, src) = layout.pictures.iter().find(|(r, _)| r.contains(pos))?;
+                Some(Some(src.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    fn on_picture(&mut self, ev: crate::picture::PictureEvent) {
+        use crate::picture::PictureEvent;
+        let Some(v) = self.picture.as_mut() else { return };
+        match ev {
+            PictureEvent::Loaded { generation, picture } if generation == v.generation => {
+                v.picture = Some(picture);
+                v.request_frame(&self.tx);
+            }
+            PictureEvent::Frame { generation, key, image } if generation == v.generation => {
+                v.busy = false;
+                if let Some(p) = &self.picker {
+                    let (fw, fh) = (v.font.0.max(1) as u32, v.font.1.max(1) as u32);
+                    let cells = ratatui::layout::Size::new(
+                        image.width().div_ceil(fw) as u16,
+                        image.height().div_ceil(fh) as u16,
+                    );
+                    if let Ok(proto) = p.new_protocol(*image, cells, ratatui_image::Resize::Fit(None)) {
+                        v.frame = Some((key, proto));
+                    }
+                }
+                // The view may have moved on while this one was drawn.
+                v.request_frame(&self.tx);
+            }
+            _ => {}
+        }
+    }
+
     pub fn load_ctx(&self) -> LoadCtx {
         LoadCtx {
             tx: self.tx.clone(),
@@ -2051,24 +2138,21 @@ impl App {
                     *state = proto;
                 }
             }
+            AppEvent::Picture(ev) => self.on_picture(ev),
             AppEvent::MdImageDecoded { path, image } => {
-                if let Ok(img) = &image {
-                    self.md_images.sizes.insert(path.clone(), (img.width(), img.height()));
-                    // A diagram's picture takes the place of its text: lay the documents out again.
-                    if path.to_string_lossy().starts_with("mermaid:") {
-                        for t in &mut self.viewer.tabs {
-                            if let Content::Markdown { rendered, .. } = &mut t.content {
-                                *rendered = None;
-                            }
+                // A diagram's picture takes the place of its text: lay the documents out again.
+                if image.is_ok() && path.to_string_lossy().starts_with("mermaid:") {
+                    for t in &mut self.viewer.tabs {
+                        if let Content::Markdown { rendered, .. } = &mut t.content {
+                            *rendered = None;
                         }
                     }
                 }
-                let state = match (&self.picker, image) {
-                    (Some(p), Ok(img)) => ImageState::Ready(Box::new(p.new_resize_protocol(*img))),
-                    (_, Err(e)) => ImageState::Failed(e),
-                    (None, _) => ImageState::Disabled,
+                let picture = match image {
+                    Ok(image) => crate::viewer::MdPicture::Ready { image, sliced: None },
+                    Err(e) => crate::viewer::MdPicture::Failed(e),
                 };
-                self.md_images.entries.insert(path, state);
+                self.md_images.entries.insert(path, picture);
             }
         }
     }
@@ -2114,6 +2198,12 @@ impl App {
         if self.show_help {
             // Any key closes help; the key itself is consumed.
             self.show_help = false;
+            return;
+        }
+        if let Some(v) = self.picture.as_mut() {
+            if !v.handle_key(&key) {
+                self.picture = None;
+            }
             return;
         }
         if let Some(p) = self.prefs.as_mut() {
@@ -2266,6 +2356,10 @@ impl App {
                     self.toggle_diff();
                     return;
                 }
+                ViewerOutcome::ViewPicture(src) => {
+                    self.open_picture(src);
+                    return;
+                }
                 ViewerOutcome::Unhandled => {}
             }
         }
@@ -2350,6 +2444,10 @@ impl App {
 
     pub fn handle_mouse(&mut self, m: MouseEvent) {
         self.sync_keymap();
+        if let Some(v) = self.picture.as_mut() {
+            v.handle_mouse(&m);
+            return;
+        }
         let pos = Position::new(m.column, m.row);
         // Dragging in the viewer extends the selection (scrolling at the edges).
         if self.selecting {
@@ -2710,6 +2808,12 @@ impl App {
                 if let Some((i, _)) = self.tab_at(m.column, m.row) {
                     self.close_tab(i);
                 }
+            }
+            // A click on a picture (in Markdown, or an image tab) opens it full screen.
+            MouseEventKind::Down(MouseButton::Left) if inside(viewer) && self.picture_at(pos).is_some() => {
+                self.focus = Focus::Main;
+                let src = self.picture_at(pos).flatten();
+                self.open_picture(src);
             }
             MouseEventKind::Down(MouseButton::Left)
                 if inside(viewer) && self.viewer.active_tab().is_some_and(|t| t.selectable()) =>
@@ -3372,6 +3476,12 @@ impl App {
 
 /// The image encoder for a configured protocol, without querying the
 /// terminal (`auto` is resolved by [`crate::run`] once the terminal is up).
+fn file_name(p: &Path) -> String {
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| p.display().to_string())
+}
+
 pub fn default_picker(protocol: ImageProtocol) -> Option<Picker> {
     use ratatui_image::picker::ProtocolType;
     match protocol {

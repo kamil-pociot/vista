@@ -1017,6 +1017,7 @@ checksum = "457e789b3d1202543297a350643cf459f836cade38934e7a4cf6a39e7cde2905"
 dependencies = [
  "fontconfig-parser",
  "log",
+ "memmap2",
  "slotmap",
  "tinyvec",
  "ttf-parser",
@@ -1807,7 +1808,6 @@ dependencies = [
  "merman-ascii",
  "merman-core",
  "merman-editor-core",
- "merman-export",
  "merman-render",
  "serde_json",
  "thiserror 2.0.21",
@@ -1876,26 +1876,6 @@ dependencies = [
  "merman-analysis",
  "merman-core",
  "serde",
-]
-
-[[package]]
-name = "merman-export"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c7ea50ba3935bdbdc95133e8e9f96610ab6ce04d88f08e27fadcb915cc70d5c"
-dependencies = [
- "cssparser 0.38.0",
- "data-url",
- "merman-core",
- "merman-render",
- "quick-xml",
- "resvg",
- "svgtypes",
- "thiserror 2.0.21",
- "tiny-skia",
- "ttf-parser",
- "unicase",
- "usvg",
 ]
 
 [[package]]
@@ -3170,15 +3150,12 @@ version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9be183ad6a216aa96f33e4c8033b0988b8b3ea6fd2359d19af5bac4643fd8e81"
 dependencies = [
- "gif",
- "image-webp",
  "log",
  "pico-args",
  "rgb",
  "svgtypes",
  "tiny-skia",
  "usvg",
- "zune-jpeg",
 ]
 
 [[package]]
@@ -4343,6 +4320,7 @@ dependencies = [
  "merman",
  "proptest",
  "pulldown-cmark",
+ "resvg",
  "serde_json",
  "syntect",
  "two-face",

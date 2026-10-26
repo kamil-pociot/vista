@@ -19,7 +19,8 @@ use crate::app::{App, Focus};
 use crate::style::{ThemeStyle, styled_line};
 use crate::ui::chrome::{self, TabLabel};
 use crate::ui::click;
-use crate::viewer::{Content, ImageState, Tab};
+use crate::viewer::{Content, ImageState, MdPicture, Tab};
+use ratatui_image::sliced::{SignedPosition, SlicedImage, SlicedProtocol};
 
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     let focused = app.focus == Focus::Main;
@@ -218,8 +219,7 @@ fn draw_active(f: &mut Frame, area: Rect, app: &mut App) {
             if let Content::Markdown { source, rendered, .. } = &mut tab.content
                 && rendered.as_ref().is_none_or(|(w, wd, _)| *w != width || *wd != wide)
             {
-                let max_rows = area.height.saturating_sub(2);
-                let rows = |src: &str| pictures.rows(md_images, src, width, font, max_rows);
+                let rows = |src: &str| pictures.rows(md_images, src, width, font);
                 let tables = if wide {
                     markdown::Tables::Wide
                 } else {
@@ -390,7 +390,7 @@ struct MdPictures<'a> {
     /// in half-blocks their text is unreadable, so they stay text.
     diagrams: bool,
     /// The look's background, which diagrams are drawn on (part of their key).
-    background: String,
+    background: vista_theme::Rgb,
     dark: bool,
 }
 
@@ -405,7 +405,7 @@ impl MdPictures<'_> {
             base,
             images: picker.is_some(),
             diagrams: picker.is_some_and(|p| p.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks),
-            background: bg.to_hex(),
+            background: bg,
             dark: bg.luminance() < 0.4,
         }
     }
@@ -414,23 +414,16 @@ impl MdPictures<'_> {
     /// Mermaid diagram as drawn on this look's background.
     fn path(&self, src: &str) -> PathBuf {
         if src.starts_with("mermaid:") {
-            PathBuf::from(format!("{src}@{}", self.background))
+            PathBuf::from(format!("{src}@{}", self.background.to_hex()))
         } else {
             self.base.join(src)
         }
     }
 
     /// Rows to reserve for a picture (`None`: show a text placeholder, or a
-    /// diagram's text). A diagram has rows once its picture is made, fitting
-    /// in `max_rows` so it can be shown whole.
-    fn rows(
-        &self,
-        images: &crate::viewer::MdImages,
-        src: &str,
-        width: u16,
-        font: (u16, u16),
-        max_rows: u16,
-    ) -> Option<u16> {
+    /// diagram's text). A diagram has rows once its picture is made, at its
+    /// natural size or narrower (taller than the pane is fine: it scrolls).
+    fn rows(&self, images: &crate::viewer::MdImages, src: &str, width: u16, font: (u16, u16)) -> Option<u16> {
         let (fw, fh) = (font.0.max(1) as f64, font.1.max(1) as f64);
         let max_px_w = width.saturating_sub(2) as f64 * fw;
         if src.starts_with("mermaid:") {
@@ -438,10 +431,10 @@ impl MdPictures<'_> {
                 return None;
             }
             // Made at twice its size for sharpness: its natural size is half.
-            let (w, h) = images.sizes.get(&self.path(src))?;
-            let (w, h) = (*w as f64 / 2.0, *h as f64 / 2.0);
+            let (w, h) = images.size(&self.path(src))?;
+            let (w, h) = (w as f64 / 2.0, h as f64 / 2.0);
             let scale = (max_px_w / w).min(1.0);
-            return Some((((h * scale) / fh).ceil() as u16).clamp(1, max_rows.max(4)));
+            return Some((((h * scale) / fh).ceil() as u16).clamp(1, 400));
         }
         if !self.images || src.contains("://") {
             return None;
@@ -606,6 +599,7 @@ fn draw_code(f: &mut Frame, area: Rect, tab: &mut Tab, t: &vista_theme::Theme, f
         x: area.x + gw as u16,
         y: area.y,
         height: area.height,
+        pictures: Vec::new(),
     };
 }
 
@@ -654,7 +648,8 @@ fn draw_markdown(
     let hscroll = tab.hscroll;
     let mut out: Vec<Line> = Vec::new();
     let mut nums: Vec<Line> = Vec::new();
-    let mut image_rects: Vec<(PathBuf, Rect)> = Vec::new();
+    // Pictures in view: (src, first row relative to the view, rows).
+    let mut slots: Vec<(String, i16, u16)> = Vec::new();
     let mut row_map = Vec::new();
     for (i, row) in rows.iter().enumerate().skip(tab.scroll).take(area.height as usize) {
         row_map.push((i, hscroll));
@@ -681,23 +676,13 @@ fn draw_markdown(
                 .push(Span::raw(" ".repeat((text_area.width as usize).saturating_sub(used))));
             line = line.style(t.bg(fill));
         }
+        // A picture starts here, or above the view and shows from its middle.
         if let Some(slot) = &row.image
-            && slot.row == 0
+            && (slot.row == 0 || i == tab.scroll)
             && hscroll == 0
         {
-            let y = area.y + (i - tab.scroll) as u16;
-            let fits = (y + slot.rows) <= area.y + area.height;
-            if fits {
-                image_rects.push((
-                    pictures.path(&slot.src),
-                    Rect {
-                        x: text_area.x,
-                        y,
-                        width: text_area.width,
-                        height: slot.rows,
-                    },
-                ));
-            }
+            let top = (i - tab.scroll) as i16 - slot.row as i16;
+            slots.push((slot.src.clone(), top, slot.rows));
         }
         out.push(line);
     }
@@ -707,6 +692,7 @@ fn draw_markdown(
         x: text_area.x,
         y: area.y,
         height: area.height,
+        pictures: Vec::new(),
     };
     if gutter > 0 {
         f.render_widget(
@@ -727,15 +713,40 @@ fn draw_markdown(
         };
         crate::ui::chrome::scrollbar(f, bar, t, rows.len(), tab.scroll);
     }
-    for (path, rect) in image_rects {
+    let text_column = Rect {
+        y: area.y,
+        height: area.height,
+        ..text_area
+    };
+    for (src, top, height) in slots {
+        let path = pictures.path(&src);
+        let size = ratatui::layout::Size::new(text_area.width, height);
+        let y0 = top.max(0) as u16;
+        let y1 = (top + height as i16).clamp(0, area.height as i16) as u16;
+        let visible = Rect {
+            y: area.y + y0,
+            height: y1.saturating_sub(y0),
+            ..text_column
+        };
         match images.entries.get_mut(&path) {
-            Some(ImageState::Ready(proto)) => {
-                f.render_widget(Block::new().style(t.bg("ui.bg")), rect);
-                draw_image(f, rect, proto);
+            Some(MdPicture::Ready { image, sliced }) => {
+                // Encoded once per size; a resize encodes again.
+                if sliced.as_ref().is_none_or(|(s, _)| *s != size)
+                    && let Some(p) = picker
+                {
+                    *sliced = SlicedProtocol::new(p, (**image).clone(), Some(size))
+                        .ok()
+                        .map(|proto| (size, proto));
+                }
+                if let Some((_, proto)) = sliced {
+                    f.render_widget(Block::new().style(t.bg("ui.bg")), visible);
+                    f.render_widget(SlicedImage::new(proto, SignedPosition { x: 0, y: top }), text_column);
+                    tab.layout.borrow_mut().pictures.push((visible, src));
+                }
             }
             Some(_) => {}
-            None if picker.is_some() => {
-                images.entries.insert(path.clone(), ImageState::Loading);
+            None if picker.is_some() && !src.starts_with("mermaid:") => {
+                images.entries.insert(path.clone(), MdPicture::Loading);
                 let tx = tx.clone();
                 std::thread::spawn(move || {
                     let res = image::open(&path).map(Box::new).map_err(|e| e.to_string());
@@ -750,16 +761,22 @@ fn draw_markdown(
     // arrives.
     if pictures.diagrams {
         for src in rows.iter().filter_map(|r| r.diagram.as_deref()) {
-            let path = pictures.path(&vista_render::mermaid::key(src));
+            let key = vista_render::mermaid::key(src);
+            let path = pictures.path(&key);
+            images.diagrams.entry(key).or_insert_with(|| src.to_string());
             if images.entries.contains_key(&path) {
                 continue;
             }
-            images.entries.insert(path.clone(), ImageState::Loading);
-            let (tx, src, dark, bg) = (tx.clone(), src.to_string(), pictures.dark, pictures.background.clone());
+            images.entries.insert(path.clone(), MdPicture::Loading);
+            let (tx, src, dark, bg) = (tx.clone(), src.to_string(), pictures.dark, pictures.background);
             std::thread::spawn(move || {
-                let res = vista_render::mermaid::png(&src, dark, &bg)
-                    .and_then(|png| image::load_from_memory(&png).map_err(|e| e.to_string()))
-                    .map(Box::new);
+                // Twice its size, for sharp lines and text.
+                let res = vista_render::mermaid::Diagram::new(&src, dark)
+                    .and_then(|d| {
+                        let (w, h, px) = d.draw_all(2.0, 2400, (bg.0, bg.1, bg.2));
+                        image::RgbaImage::from_raw(w, h, px).ok_or_else(|| "empty diagram".to_string())
+                    })
+                    .map(|img| Box::new(image::DynamicImage::ImageRgba8(img)));
                 let _ = tx.send(crate::event::AppEvent::MdImageDecoded { path, image: res });
             });
         }

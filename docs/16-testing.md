@@ -56,6 +56,7 @@ VISTA_PERF_REPO=~/some/repo cargo test --release --test perf -- --ignored --noca
 | Tree | `e2e_m1_tree.rs`, `e2e_r1_reveal.rs`, `e2e_r1_resize.rs` |
 | Viewer, Markdown, images | `e2e_m2_viewer.rs`, `e2e_r1_feedback.rs`, `e2e_r1_settings.rs`, `e2e_r1_selection.rs` |
 | Mermaid diagrams | `e2e_r1_mermaid.rs` |
+| Picture viewer, pictures half in view | `e2e_r1_picture_viewer.rs`, `e2e_r1_mermaid.rs` |
 | Neovim | `e2e_m3_editor.rs`, `e2e_r1_diff_edit.rs` |
 | Go to File | `e2e_m4_goto.rs` |
 | Find in Files | `e2e_m5_find.rs` |

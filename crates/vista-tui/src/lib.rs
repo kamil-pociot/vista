@@ -13,6 +13,7 @@ pub mod goto_line;
 pub mod keymap;
 pub mod keymap_page;
 pub mod log;
+pub mod picture;
 pub mod prefs;
 pub mod probe;
 pub mod project;

@@ -15,7 +15,8 @@ Files ending in `.md`, `.markdown`, `.mdown`, `.mkd` or `.mdx` open rendered (pu
 
 ## Images
 
-- png, jpg, gif, webp, bmp, ico and tiff are shown fitted to the pane (`ratatui-image`).
+- png, jpg, gif, webp, bmp, ico and tiff are shown fitted to the pane (`ratatui-image`). In Markdown, an image scrolled half out of view shows the part in view.
+- **Click an image** (in Markdown, or an image file's tab), or press `v`, to open it full screen: zoom and move around ([26](26-picture-viewer.md)).
 - In terminals with the kitty graphics protocol (Ghostty, kitty, WezTerm) images are drawn as real pixels, with unicode placeholders so they survive scrolling and redraws. Other terminals get coloured half-blocks.
 - SVG is shown as source.
 - In diffs, changed images are shown side by side.
@@ -35,4 +36,4 @@ protocol = "auto"   # auto | kitty | halfblocks | off
 - Unit tests: table wrapping, rules, alignment, wide mode. Snapshots: rendered Markdown.
 - E2e: `e2e_m2_viewer.rs` (Markdown, kitty sequence emitted, half-blocks when forced), `e2e_r1_feedback.rs` (tables in both modes), `e2e_r1_settings.rs` (source line numbers).
 
-See also: [25 · Mermaid diagrams](25-mermaid-diagrams.md).
+See also: [25 · Mermaid diagrams](25-mermaid-diagrams.md), [26 · Picture viewer](26-picture-viewer.md).

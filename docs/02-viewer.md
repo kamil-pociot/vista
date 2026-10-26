@@ -40,6 +40,7 @@ Opening a file shows it read-only in the editor area. vista is "viewer first, wi
 | `d` (`File \| Diff` switch) | diff vs HEAD, and back |
 | `e` | edit at the current line |
 | `m` | Markdown raw ⇄ rendered |
+| `v`, click a picture | the picture full screen: Markdown's first picture in view, or an image tab's image ([26](26-picture-viewer.md)) |
 | `Ctrl-L` | reveal in tree |
 | drag, double-click, `Shift-↑/↓`, `Ctrl-A` | select |
 | `Ctrl-C`, `Cmd-C`, `y` / `Esc` | copy / clear selection (a mouse selection is copied on release) |

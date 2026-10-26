@@ -452,6 +452,11 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Tests: `mermaid` and `markdown` units, `e2e_r1_mermaid` (2 PTY tests).
 - [x] Version 0.6.0.
 
+### Picture viewer ✅
+- [x] Pictures in Markdown (images and diagrams) scroll like text: half out of view, the part in view is drawn (ratatui-image's `SlicedImage`).
+- [x] A click (or `v`) opens a picture full screen: zoom with `+`/`-` or the wheel around the mouse, move with arrows, `hjkl` or dragging, `0` fits, `Esc` closes; image tabs too. Diagrams are drawn from their vectors for each view (merman's resvg-safe SVG drawn by resvg), so they stay sharp; merman's own PNG export is no longer used.
+- [x] Tests: `picture` and `mermaid` units, `e2e_r1_picture_viewer` (2 PTY tests), `e2e_r1_mermaid` (2 more).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

@@ -141,6 +141,9 @@ pub enum ViewerOutcome {
     /// Tick/untick a change of this file for the commit.
     ToggleHunk(u64, Vec<u64>),
     Info(&'static str),
+    /// `v`: the picture viewer, on this Markdown picture (`src` as in the
+    /// document, or a diagram's key) or, with `None`, on the image shown.
+    ViewPicture(Option<String>),
 }
 
 /// Result of a background load.
@@ -419,6 +422,9 @@ pub struct TextLayout {
     pub x: u16,
     pub y: u16,
     pub height: u16,
+    /// Pictures on screen (Markdown): where, and their `src` (a path
+    /// relative to the document, or a Mermaid diagram's key).
+    pub pictures: Vec<(ratatui::layout::Rect, String)>,
 }
 
 /// What loading needs from the app.
@@ -1212,6 +1218,16 @@ impl Tab {
                     return ViewerOutcome::Unhandled;
                 }
             }
+            KeyCode::Char('v') if !ctrl => {
+                return match &self.content {
+                    Content::Image { .. } => ViewerOutcome::ViewPicture(None),
+                    Content::Markdown { raw: false, .. } => match self.layout.borrow().pictures.first() {
+                        Some((_, src)) => ViewerOutcome::ViewPicture(Some(src.clone())),
+                        None => ViewerOutcome::Info("No picture in view"),
+                    },
+                    _ => ViewerOutcome::Unhandled,
+                };
+            }
             KeyCode::Char('/') if !ctrl => {
                 if !self.content.is_textual() {
                     return ViewerOutcome::Unhandled;
@@ -1230,12 +1246,34 @@ impl Tab {
     }
 }
 
-/// Decoded Markdown images and Mermaid diagrams, shared by all Markdown tabs.
+/// A picture in Markdown: an image file or a Mermaid diagram.
+pub enum MdPicture {
+    Loading,
+    Failed(String),
+    Ready {
+        image: Box<image::DynamicImage>,
+        /// Encoded for the terminal at one size (in cells), in rows that can
+        /// be drawn partly when scrolled half out of view.
+        sliced: Option<(ratatui::layout::Size, ratatui_image::sliced::SlicedProtocol)>,
+    },
+}
+
+/// Markdown pictures, shared by all Markdown tabs.
 #[derive(Default)]
 pub struct MdImages {
-    pub entries: HashMap<PathBuf, ImageState>,
-    /// Pixel size of each decoded picture (diagrams have no file to ask).
-    pub sizes: HashMap<PathBuf, (u32, u32)>,
+    pub entries: HashMap<PathBuf, MdPicture>,
+    /// The source of each Mermaid diagram by its key (for the picture viewer).
+    pub diagrams: HashMap<String, String>,
+}
+
+impl MdImages {
+    /// Pixel size of a decoded picture.
+    pub fn size(&self, path: &Path) -> Option<(u32, u32)> {
+        match self.entries.get(path) {
+            Some(MdPicture::Ready { image, .. }) => Some((image.width(), image.height())),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ pub mod find;
 pub mod goto;
 pub mod help;
 pub mod log;
+pub mod picture;
 pub mod prefs;
 pub mod project;
 pub mod projects;
@@ -181,6 +182,11 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     app.sync_keymap();
     f.render_widget(Block::new().style(app.theme.base()), area);
     click::begin();
+    // The picture viewer has the whole screen.
+    if app.picture.is_some() {
+        picture::draw(f, area, app);
+        return;
+    }
     let mut areas = compute_areas(area, app);
     // Regions recorded while drawing (cleared first, kept at the end).
     app.areas.commit_list = None;

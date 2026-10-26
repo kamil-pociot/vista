@@ -59,6 +59,8 @@ pub enum AppEvent {
         path: std::path::PathBuf,
         image: Result<Box<image::DynamicImage>, String>,
     },
+    /// The picture viewer's source loaded, or a view drawn.
+    Picture(crate::picture::PictureEvent),
     /// A terminal tab has new output (clear the flag once drawn).
     TermOutput(std::sync::Arc<std::sync::atomic::AtomicBool>),
     /// A terminal tab's program ended.
