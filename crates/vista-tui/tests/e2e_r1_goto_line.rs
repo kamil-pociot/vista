@@ -48,7 +48,8 @@ fn goes_to_a_line_and_column_from_any_panel() {
     vista.press("enter");
     vista.expect_no_text("Go to Line:Column");
     vista.expect_text("150:6");
-    vista.expect_text("Z").to_have_bg("ui.selection");
+    // In the viewer: the project's random folder name can have a `Z` too.
+    vista.expect_text_in("Z", 40..120).to_have_bg("ui.selection");
     // The viewer has the focus now: keys move its cursor.
     vista.press("down");
     vista.expect_text("151:1");
