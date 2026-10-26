@@ -24,10 +24,22 @@ pub fn run(mut ws: Workspace) -> Result<()> {
     let (mut term, _guard) = terminal::setup(&shown_title)?;
     tracing::info!("terminal ready in {:?}", t.elapsed());
     if ws.active_app().config.images.protocol == vista_core::ImageProtocol::Auto {
-        // Must run before the input thread starts reading stdin.
-        match ratatui_image::picker::Picker::from_query_stdio() {
+        // Must run before the input thread starts reading stdin. Pictures
+        // go zlib-compressed where the terminal takes it: a retina screen's
+        // raw pixels are megabytes per picture, through a multiplexer
+        // (herdr) too, and diagrams' flat colours shrink to a fraction.
+        let options = ratatui_image::picker::cap_parser::QueryStdioOptions {
+            kitty_compression: true,
+            ..Default::default()
+        };
+        match ratatui_image::picker::Picker::from_query_stdio_with_options(options) {
             Ok(p) => {
-                tracing::info!("image protocol: {:?}, font {:?}", p.protocol_type(), p.font_size());
+                tracing::info!(
+                    "image protocol: {:?}, font {:?}, capabilities {:?}",
+                    p.protocol_type(),
+                    p.font_size(),
+                    p.capabilities()
+                );
                 ws.set_picker(Some(p));
             }
             Err(e) => tracing::warn!("image protocol query failed ({e}); using halfblocks"),

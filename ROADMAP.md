@@ -457,6 +457,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] A click (or `v`) opens a picture full screen: zoom with `+`/`-` or the wheel around the mouse, move with arrows, `hjkl` or dragging, `0` fits, `Esc` closes; image tabs too. Diagrams are drawn from their vectors for each view (merman's resvg-safe SVG drawn by resvg), so they stay sharp; merman's own PNG export is no longer used.
 - [x] Tests: `picture` and `mermaid` units, `e2e_r1_picture_viewer` (2 PTY tests), `e2e_r1_mermaid` (2 more).
 - [x] Version 0.6.1.
+- [x] Fix (after 0.6.1, found by hand in Ghostty in herdr): the viewer was blank and closing it could lose the document's diagrams. Its frames went out as raw pixels the size of the screen (16×34-pixel cells: tens of MB a frame) under a new image id each time. Now: PNG frames the terminal scales to the cells, one image id for all; inline pictures zlib-compressed where the terminal takes it. A manual check (`docs/manual-checks/pictures.md`) before releases that touch pictures.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

@@ -64,6 +64,21 @@ fn picture_rows(vista: &Vista) -> Vec<u16> {
         .collect()
 }
 
+/// Viewer frames sent since the output was last cleared: (image id, bytes),
+/// each a PNG (`f=100`) placed over a cell area (`c`, `r`).
+fn frames(vista: &Vista) -> Vec<(String, usize)> {
+    let raw = String::from_utf8_lossy(&vista.raw_output()).into_owned();
+    raw.split("\x1b_Gq=2,i=")
+        .skip(1)
+        .filter(|t| t.contains(",f=100,c="))
+        .map(|t| {
+            let id = t.split(',').next().unwrap().to_string();
+            // This chunk and the ones after it, up to the next transmission.
+            (id, t.len())
+        })
+        .collect()
+}
+
 fn wait_for_picture(vista: &mut Vista) -> Vec<u16> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
     loop {
@@ -110,10 +125,17 @@ fn a_click_opens_a_diagram_full_screen_to_zoom_and_move() {
     let rows = wait_for_picture(&mut vista);
     let row = *rows.first().expect("a picture");
     let col = vista.row_text(row).chars().position(|c| c == PLACEHOLDER).unwrap() as u16;
+    vista.clear_raw_output();
     vista.click(col + 2, row + 1);
     vista.expect_text("Mermaid diagram");
     vista.expect_text("Esc close");
     vista.expect_no_text("flow.md ×");
+    // The picture itself is on screen, not just the title row.
+    assert!(!wait_for_picture(&mut vista).is_empty(), "the diagram fills the screen");
+    // Sent as a PNG the terminal scales to cells, small enough for any link.
+    let sent = frames(&vista);
+    assert_eq!(sent.len(), 1, "one frame");
+    assert!(sent[0].1 < 200_000, "a compact frame: {} bytes", sent[0].1);
     let percent = |vista: &mut Vista| -> u32 {
         let top = vista.row_text(0);
         let word = top.split_whitespace().find(|w| w.ends_with('%')).expect("a zoom level");
@@ -121,8 +143,15 @@ fn a_click_opens_a_diagram_full_screen_to_zoom_and_move() {
     };
     vista.expect_text("%");
     let fit = percent(&mut vista);
+    vista.clear_raw_output();
     vista.press("+");
     vista.settle(std::time::Duration::from_millis(100));
+    // Each frame replaces the last in the terminal: the same image id.
+    let again = frames(&vista);
+    assert!(
+        !again.is_empty() && again.iter().all(|(id, _)| *id == sent[0].0),
+        "{again:?}"
+    );
     // (Shown rounded: within one.)
     assert!(percent(&mut vista).abs_diff((fit as f64 * 1.25).round() as u32) <= 1);
     // The wheel zooms too; `0` fits again.
@@ -134,6 +163,8 @@ fn a_click_opens_a_diagram_full_screen_to_zoom_and_move() {
     assert_eq!(percent(&mut vista), fit);
     vista.press("esc");
     vista.expect_text("flow.md ×");
+    // The document's own diagram is still there.
+    assert!(!wait_for_picture(&mut vista).is_empty(), "the inline diagram is back");
     // `v` opens the first picture in view without the mouse.
     vista.press("v");
     vista.expect_text("Mermaid diagram");

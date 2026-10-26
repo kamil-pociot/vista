@@ -12,6 +12,7 @@ pub mod goto;
 pub mod goto_line;
 pub mod keymap;
 pub mod keymap_page;
+pub mod kitty;
 pub mod log;
 pub mod picture;
 pub mod prefs;

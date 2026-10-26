@@ -18,7 +18,7 @@ Click a picture (an image or a [Mermaid diagram](25-mermaid-diagrams.md) in rend
 - **Move around** with the arrow keys or `h` `j` `k` `l`, by dragging with the mouse, or scrolling sideways. The view stops at the picture's edges.
 - `0` fits it again; `Esc` or `q` closes it.
 - **Diagrams stay sharp at any zoom**: each view is drawn from the diagram's vectors at the screen's resolution, not enlarged from a picture. Images are cropped and scaled: enlarged pixels stay crisp squares, reduced ones are smoothed.
-- Each view is drawn on a worker (a few milliseconds); the last one stays up meanwhile.
+- Each view is drawn on a worker (a few milliseconds); the last one stays up meanwhile. With kitty graphics a frame goes to the terminal as a PNG it scales to the screen's cells (tens of KB, where raw pixels for a retina screen would be tens of MB), always under the same image id, so each frame replaces the last in the terminal's memory and the document's own pictures are never pushed out.
 - `v` opens Markdown's first picture in view. With images off (`[images] protocol = "off"`) there's nothing to draw it with, and the status bar says so.
 
 Pictures in Markdown also scroll like text now: one half out of view shows the part in view, at the top or the bottom ([03](03-markdown-and-images.md)).
@@ -40,8 +40,10 @@ None of its own; it draws with the terminal's image protocol (`[images] protocol
 
 ## Code and tests
 
-- `vista-tui/src/picture.rs` (`PictureView`: loading, the visible `region` for a zoom and centre, zooming around a point, moving, the frame job), `ui/picture.rs` (drawing), `App::open_picture` / `picture_at` / `on_picture` in `app.rs` (opening on click or `v`, frames in), `Diagram::draw` in `vista-render/src/mermaid.rs` (any region of a diagram at any size). Markdown pictures are drawn with ratatui-image's `SlicedImage`, which shows rows of a picture when the rest is out of view (`draw_markdown` in `ui/viewer.rs`).
+- `vista-tui/src/kitty.rs` (the viewer's kitty graphics: PNG frames with their cell area, placeholders), `vista-tui/src/picture.rs` (`PictureView`: loading, the visible `region` for a zoom and centre, zooming around a point, moving, the frame job), `ui/picture.rs` (drawing), `App::open_picture` / `picture_at` / `on_picture` in `app.rs` (opening on click or `v`, frames in), `Diagram::draw` in `vista-render/src/mermaid.rs` (any region of a diagram at any size). Markdown pictures are drawn with ratatui-image's `SlicedImage`, which shows rows of a picture when the rest is out of view (`draw_markdown` in `ui/viewer.rs`).
 - Unit: the region at zoom 1 and zoomed, edges, zooming around the mouse, zoom limits, keys and dragging, cropping and scaling images (`picture`).
-- E2e: `e2e_r1_picture_viewer.rs` (an image half in view, cut at the bottom and the top; an image tab opened with `v` and by a click, zoomed, closed), `e2e_r1_mermaid.rs` (a diagram half in view; a diagram opened by a click and with `v`, zoomed with `+`, the wheel and `0`).
+- Unit: a PNG sent in chunks with its cell area, placeholders and sending once (`kitty`).
+- E2e: `e2e_r1_picture_viewer.rs` (an image half in view, cut at the bottom and the top; an image tab opened with `v` and by a click, zoomed, closed), `e2e_r1_mermaid.rs` (a diagram half in view; a diagram opened by a click and with `v`: its picture on screen, sent as one small PNG frame, zooming re-using the image id; zoomed with `+`, the wheel and `0`; the document's diagram still drawn after closing).
+- By hand, in a real terminal: [`manual-checks/pictures.md`](manual-checks/pictures.md).
 
 See also: [25 · Mermaid diagrams](25-mermaid-diagrams.md), [03 · Markdown and images](03-markdown-and-images.md).

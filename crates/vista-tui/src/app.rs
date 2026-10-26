@@ -218,6 +218,8 @@ pub struct App {
     pub prefs: Option<crate::prefs::PrefsPage>,
     /// The picture viewer, when open (a click on a picture, or `v`).
     pub picture: Option<crate::picture::PictureView>,
+    /// The kitty image id the picture viewer's frames go under (1..2^24).
+    picture_id: u32,
     /// The review (one per project), shown in the Review panel.
     pub review: Option<crate::review::ReviewView>,
     pub project: ProjectView,
@@ -390,6 +392,7 @@ impl App {
             buttons: Vec::new(),
             prefs: None,
             picture: None,
+            picture_id: kitty_image_id(),
             review: None,
             project,
             git,
@@ -1802,7 +1805,13 @@ impl App {
             }
             _ => return,
         };
-        let mut v = PictureView::new(title, source);
+        // One kitty image id for all of this project's viewer frames: each
+        // replaces the last in the terminal's memory.
+        let kitty = self
+            .picker
+            .as_ref()
+            .is_some_and(|p| p.protocol_type() == ratatui_image::picker::ProtocolType::Kitty);
+        let mut v = PictureView::new(title, source, kitty.then_some(self.picture_id));
         v.load(&self.tx);
         self.picture = Some(v);
     }
@@ -1833,17 +1842,27 @@ impl App {
                 v.picture = Some(picture);
                 v.request_frame(&self.tx);
             }
-            PictureEvent::Frame { generation, key, image } if generation == v.generation => {
+            PictureEvent::Frame {
+                generation,
+                key,
+                cells,
+                data,
+            } if generation == v.generation => {
                 v.busy = false;
-                if let Some(p) = &self.picker {
-                    let (fw, fh) = (v.font.0.max(1) as u32, v.font.1.max(1) as u32);
-                    let cells = ratatui::layout::Size::new(
-                        image.width().div_ceil(fw) as u16,
-                        image.height().div_ceil(fh) as u16,
-                    );
-                    if let Ok(proto) = p.new_protocol(*image, cells, ratatui_image::Resize::Fit(None)) {
-                        v.frame = Some((key, proto));
+                let frame = match (data, v.kitty_id, &self.picker) {
+                    (crate::picture::FrameData::Png(png), Some(id), _) => Some(crate::picture::ViewFrame::Kitty(
+                        crate::kitty::KittyFrame::new(&png, id, cells.0, cells.1),
+                    )),
+                    (crate::picture::FrameData::Pixels(image), _, Some(p)) => {
+                        let size = ratatui::layout::Size::new(cells.0, cells.1);
+                        p.new_protocol(*image, size, ratatui_image::Resize::Fit(None))
+                            .ok()
+                            .map(crate::picture::ViewFrame::Other)
                     }
+                    _ => None,
+                };
+                if let Some(frame) = frame {
+                    v.frame = Some((key, frame));
                 }
                 // The view may have moved on while this one was drawn.
                 v.request_frame(&self.tx);
@@ -3476,6 +3495,15 @@ impl App {
 
 /// The image encoder for a configured protocol, without querying the
 /// terminal (`auto` is resolved by [`crate::run`] once the terminal is up).
+/// A kitty image id unlikely to be anyone else's: 24 random bits (the
+/// placeholders' colour carries it), never 0.
+fn kitty_image_id() -> u32 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u32(std::process::id());
+    (h.finish() as u32 & 0xFF_FFFF).max(1)
+}
+
 fn file_name(p: &Path) -> String {
     p.file_name()
         .map(|n| n.to_string_lossy().into_owned())

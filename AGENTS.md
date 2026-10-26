@@ -25,6 +25,8 @@ VISTA_PERF_REPO=~/some/repo cargo test --release --test perf -- --ignored --noca
 
 A change is done when `fmt --check`, `clippy -D warnings` and the **whole** suite pass — run the suite twice; several bugs here only showed up as rare failures under load.
 
+The PTY tests see what vista sends, not what a terminal draws. A change to pictures (images, Mermaid diagrams, the picture viewer) isn't released until the owner has gone through [`docs/manual-checks/pictures.md`](docs/manual-checks/pictures.md) in their own terminal (Ghostty, in herdr).
+
 Requirements at run time: `git` on `PATH`; optional `nvim` 0.10+ (editing; tests skip Neovim cases without it, or with an older one such as Ubuntu's apt package).
 
 ## Where to work

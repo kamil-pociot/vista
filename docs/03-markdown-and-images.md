@@ -15,7 +15,7 @@ Files ending in `.md`, `.markdown`, `.mdown`, `.mkd` or `.mdx` open rendered (pu
 
 ## Images
 
-- png, jpg, gif, webp, bmp, ico and tiff are shown fitted to the pane (`ratatui-image`). In Markdown, an image scrolled half out of view shows the part in view.
+- png, jpg, gif, webp, bmp, ico and tiff are shown fitted to the pane (`ratatui-image`). In Markdown, an image scrolled half out of view shows the part in view. Where the terminal takes zlib-compressed kitty graphics (it's asked at start), pictures are sent compressed.
 - **Click an image** (in Markdown, or an image file's tab), or press `v`, to open it full screen: zoom and move around ([26](26-picture-viewer.md)).
 - In terminals with the kitty graphics protocol (Ghostty, kitty, WezTerm) images are drawn as real pixels, with unicode placeholders so they survive scrolling and redraws. Other terminals get coloured half-blocks.
 - SVG is shown as source.

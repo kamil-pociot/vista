@@ -48,6 +48,10 @@ VISTA_PERF_REPO=~/some/repo cargo test --release --test perf -- --ignored --noca
 - Run the whole suite more than once after a change; timing bugs show up as rare failures.
 - Undo a fix temporarily to confirm its test fails without it.
 
+## Manual checks
+
+The PTY harness checks what vista sends (for pictures, the kitty escape sequences and placeholder cells), not what a terminal makes of it. Checks to run by hand in a real terminal live in [`manual-checks/`](manual-checks/): [`pictures.md`](manual-checks/pictures.md) (diagrams and images: drawn, scrolled, opened full screen, zoomed, closed) goes before any release that touches pictures.
+
 ## Test files by feature
 
 | Feature | E2e files |

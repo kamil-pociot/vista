@@ -79,6 +79,10 @@ impl Picture {
     }
 }
 
+/// The most pixels a frame is drawn with: a retina screen has several
+/// times more, and the terminal scales the frame to its cells anyway.
+const MAX_FRAME_PIXELS: f64 = 4_000_000.0;
+
 /// What a frame shows: zoom, centre and view size (frames for other views
 /// are stale).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -86,6 +90,20 @@ pub struct FrameKey {
     pub zoom: f64,
     pub center: (f64, f64),
     pub view_px: (u32, u32),
+    pub font: (u16, u16),
+}
+
+/// A frame drawn on a worker: a PNG for kitty graphics (sent as it is), or
+/// pixels for ratatui-image's other protocols.
+pub enum FrameData {
+    Png(Vec<u8>),
+    Pixels(Box<DynamicImage>),
+}
+
+/// A frame on screen.
+pub enum ViewFrame {
+    Kitty(crate::kitty::KittyFrame),
+    Other(ratatui_image::protocol::Protocol),
 }
 
 /// Results from the viewer's workers.
@@ -97,7 +115,9 @@ pub enum PictureEvent {
     Frame {
         generation: u64,
         key: FrameKey,
-        image: Box<DynamicImage>,
+        /// The cells it fills.
+        cells: (u16, u16),
+        data: FrameData,
     },
 }
 
@@ -137,7 +157,10 @@ pub struct PictureView {
     pub view: Rect,
     pub font: (u16, u16),
     /// The frame on screen, encoded for the terminal.
-    pub frame: Option<(FrameKey, ratatui_image::protocol::Protocol)>,
+    pub frame: Option<(FrameKey, ViewFrame)>,
+    /// Frames go out as kitty graphics, all under this image id (each
+    /// replaces the one before in the terminal); `None`: other protocols.
+    pub kitty_id: Option<u32>,
     /// A frame is being drawn on a worker; another view was asked for meanwhile.
     pub busy: bool,
     pub generation: u64,
@@ -146,8 +169,9 @@ pub struct PictureView {
 }
 
 impl PictureView {
-    pub fn new(title: String, source: Source) -> PictureView {
+    pub fn new(title: String, source: Source, kitty_id: Option<u32>) -> PictureView {
         PictureView {
+            kitty_id,
             title,
             source,
             picture: None,
@@ -195,6 +219,7 @@ impl PictureView {
             zoom: self.zoom,
             center: self.center,
             view_px: self.view_px(),
+            font: self.font,
         }
     }
 
@@ -207,12 +232,28 @@ impl PictureView {
         }
         let Some(picture) = self.loaded().cloned() else { return };
         self.busy = true;
-        let (generation, tx) = (self.generation, tx.clone());
+        let (generation, tx, kitty) = (self.generation, tx.clone(), self.kitty_id.is_some());
         std::thread::spawn(move || {
             let view = (key.view_px.0 as f64, key.view_px.1 as f64);
             let (r, out) = region(picture.size(), view, key.zoom, key.center);
-            let image = Box::new(picture.draw(r, out));
-            let _ = tx.send(AppEvent::Picture(PictureEvent::Frame { generation, key, image }));
+            let (fw, fh) = (key.font.0.max(1) as u32, key.font.1.max(1) as u32);
+            let cells = (out.0.div_ceil(fw) as u16, out.1.div_ceil(fh) as u16);
+            let data = if kitty {
+                // Fewer pixels than the screen has where it's big: the terminal scales it.
+                let k = (MAX_FRAME_PIXELS / (out.0 as f64 * out.1 as f64)).sqrt().min(1.0);
+                let px = (((out.0 as f64 * k) as u32).max(1), ((out.1 as f64 * k) as u32).max(1));
+                let mut png = std::io::Cursor::new(Vec::new());
+                let _ = picture.draw(r, px).write_to(&mut png, image::ImageFormat::Png);
+                FrameData::Png(png.into_inner())
+            } else {
+                FrameData::Pixels(Box::new(picture.draw(r, out)))
+            };
+            let _ = tx.send(AppEvent::Picture(PictureEvent::Frame {
+                generation,
+                key,
+                cells,
+                data,
+            }));
         });
     }
 
@@ -337,7 +378,7 @@ mod tests {
     use super::*;
 
     fn view_of(size: (u32, u32)) -> PictureView {
-        let mut v = PictureView::new("t".into(), Source::File(PathBuf::from("x.png")));
+        let mut v = PictureView::new("t".into(), Source::File(PathBuf::from("x.png")), None);
         v.picture = Some(Ok(Arc::new(Picture::Bitmap(DynamicImage::new_rgba8(size.0, size.1)))));
         // 100×50 cells of 10×20 pixels: a 1000×1000 pixel view.
         v.view = Rect::new(0, 1, 100, 50);

@@ -9,6 +9,7 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 use ratatui_image::Image;
 
 use crate::app::App;
+use crate::picture::ViewFrame;
 use crate::style::ThemeStyle;
 
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
@@ -61,17 +62,25 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         Some(Err(e)) => message(f, &format!("Cannot show it: {e}"), "ui.error"),
         Some(Ok(_)) => {
             v.request_frame(tx);
-            if let Some((_, proto)) = &v.frame {
-                // The frame (the last one, while the next is drawn), centred.
-                let size = proto.size();
-                let (w, h) = (size.width.min(body.width), size.height.min(body.height));
+            // The frame (the last one, while the next is drawn), centred.
+            let size = match &v.frame {
+                Some((_, ViewFrame::Kitty(k))) => Some((k.cols, k.rows)),
+                Some((_, ViewFrame::Other(p))) => Some((p.size().width, p.size().height)),
+                None => None,
+            };
+            if let Some((w, h)) = size {
+                let (w, h) = (w.min(body.width), h.min(body.height));
                 let r = Rect {
                     x: body.x + (body.width - w) / 2,
                     y: body.y + (body.height - h) / 2,
                     width: w,
                     height: h,
                 };
-                f.render_widget(Image::new(proto), r);
+                match &mut v.frame {
+                    Some((_, ViewFrame::Kitty(k))) => k.render(r, f.buffer_mut()),
+                    Some((_, ViewFrame::Other(p))) => f.render_widget(Image::new(p), r),
+                    None => {}
+                }
             }
         }
     }
