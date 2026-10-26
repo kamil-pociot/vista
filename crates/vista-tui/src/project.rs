@@ -61,25 +61,43 @@ impl ProjectView {
         self.selected_row().map(|r| r.path.as_path())
     }
 
-    /// Recomputes visible rows, keeping the selection on the same path.
+    /// Recomputes visible rows, keeping the selection on the same path and
+    /// the view where it was. Rebuilds come with every git status and file
+    /// change (a build in the terminal makes many), so a view scrolled away
+    /// from the selection stays put: the same row stays at the top.
     pub fn rebuild(&mut self, status: &StatusSnapshot) {
         let keep_path = self.selected_path().map(Path::to_path_buf);
+        let top = self.rows.get(self.scroll).map(|r| r.path.clone());
+        let following = self.followed == Some(self.selected);
         let show_ignored = self.show_ignored;
         self.rows = self.tree.rows(&|p, _| show_ignored || !status.is_ignored(p));
+        // The row for `p`, or for its nearest visible ancestor.
+        let row_of = |rows: &[Row], p: &Path| p.ancestors().find_map(|a| rows.iter().position(|r| r.path == a));
+        let mut vanished = false;
         if let Some(p) = keep_path {
             if let Some(i) = self.rows.iter().position(|r| r.path == p) {
                 self.selected = i;
-            } else if let Some(i) = p
-                .ancestors()
-                .skip(1)
-                .find_map(|a| self.rows.iter().position(|r| r.path == a))
-            {
+            } else if let Some(i) = row_of(&self.rows, &p) {
                 // The selected entry vanished (deleted or hidden): select its nearest visible ancestor.
                 self.selected = i;
+                vanished = true;
             }
         }
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
-        self.scroll_into_view();
+        if let Some(i) = top.and_then(|p| row_of(&self.rows, &p)) {
+            self.scroll = i;
+        }
+        // Rows appearing above the selection move it down a row: still the
+        // one the view followed (drawing mustn't scroll to it again).
+        if following {
+            self.followed = Some(self.selected);
+        }
+        if vanished {
+            self.scroll_into_view();
+        } else {
+            let max_scroll = self.rows.len().saturating_sub(self.view_height.max(1));
+            self.scroll = self.scroll.min(max_scroll);
+        }
     }
 
     pub fn select_path(&mut self, path: &Path) -> bool {
@@ -352,6 +370,44 @@ mod tests {
         assert!(matches!(v.handle_key(&key(KeyCode::Enter), &st), Outcome::Open(p) if p.ends_with("README.md")));
         // Not a tree key (letters start a speed search; `?` is Help).
         assert_eq!(v.handle_key(&key(KeyCode::Char('?')), &st), Outcome::Unhandled);
+    }
+
+    #[test]
+    fn rebuilds_keep_a_view_scrolled_away_from_the_selection() {
+        let t = tempfile::tempdir().unwrap();
+        let r = t.path().canonicalize().unwrap().join("w");
+        std::fs::create_dir_all(&r).unwrap();
+        for i in 10..40 {
+            std::fs::write(r.join(format!("f{i}.txt")), "").unwrap();
+        }
+        let mut v = ProjectView::new(&r, true);
+        let st = StatusSnapshot::default();
+        v.view_height = 5;
+        v.follow_selection();
+        assert_eq!((v.selected, v.scroll), (0, 0));
+        // The wheel scrolls away from the selection (the root row).
+        v.scroll_by(12);
+        let top = v.rows[v.scroll].path.clone();
+        // A status refresh: nothing moves.
+        v.rebuild(&st);
+        v.follow_selection();
+        assert_eq!(v.scroll, 12);
+        // A file appears above the view (a build in the terminal): the same row stays on top.
+        std::fs::write(r.join("a.txt"), "").unwrap();
+        v.tree.refresh_all();
+        v.rebuild(&st);
+        v.follow_selection();
+        assert_eq!(v.rows[v.scroll].path, top);
+        assert_eq!(v.scroll, 13);
+        // The selected file goes: its folder is selected, and shown.
+        v.handle_key(&key(KeyCode::End), &st);
+        let last = v.selected_path().unwrap().to_path_buf();
+        v.scroll_by(-20);
+        std::fs::remove_file(&last).unwrap();
+        v.tree.refresh_all();
+        v.rebuild(&st);
+        assert_eq!(v.selected, 0, "the root folder");
+        assert_eq!(v.scroll, 0, "brought into view");
     }
 
     fn typed(v: &mut ProjectView, text: &str, st: &StatusSnapshot) {

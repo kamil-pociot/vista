@@ -106,6 +106,36 @@ fn mouse_selects_toggles_and_scrolls() {
 }
 
 #[test]
+fn changes_on_disk_leave_a_scrolled_view_where_it_is() {
+    let mut f = Fixture::git();
+    for i in 0..60 {
+        f = f.file(&format!("many/file{i:02}.txt"), "x");
+    }
+    let repo = f.commit("init").build();
+    let mut vista = Vista::launch(BIN, &repo).size(100, 24).start();
+    let (row, col) = vista.expect_text("▸ many").position();
+    vista.click(col, row);
+    vista.click_text("file01.txt");
+    vista.expect_text("file01.txt").to_have_bg("ui.selection");
+    // Scrolled well past the selected row with the wheel.
+    for _ in 0..10 {
+        vista.scroll_down(10, 10);
+    }
+    vista.expect_text("file40.txt");
+    vista.expect_no_text("file01.txt");
+    let top = vista.row_text(2);
+    // Files change (a build running in the terminal): the tree refreshes,
+    // colours change, and a new file appears above the view.
+    repo.write("many/file40.txt", "changed");
+    repo.write("many/file00a.txt", "new");
+    vista.expect_text("file40.txt").to_have_fg("git.modified");
+    vista.settle(std::time::Duration::from_millis(300));
+    // The view stays: same rows, not back at the selection.
+    vista.expect_no_text("file01.txt");
+    assert_eq!(vista.row_text(2).trim(), top.trim());
+}
+
+#[test]
 fn reflects_external_changes_without_a_keypress() {
     let repo = Fixture::rust_project().build();
     let mut vista = Vista::launch(BIN, &repo).start();
