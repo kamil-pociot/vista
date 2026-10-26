@@ -445,6 +445,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 ### Middle click closes tabs ✅
 - [x] A middle click on a file tab or a project tab closes it, anywhere on the label.
 - [x] Tests: `app` unit (project tabs), `e2e_r1_tabs` (file tabs).
+- [x] Version 0.5.0 (with repositories inside the project).
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

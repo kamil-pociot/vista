@@ -21,7 +21,7 @@ One JSON request on one line, one JSON response line back, then the connection c
 
 | Request | Effect | Response |
 |---|---|---|
-| `{"cmd":"status"}` | | `{"ok":true,"protocol":1,"version":"0.4.1","pid":123,"only":true,"projects":[{"root":"/abs/repo","active":true}],"herdr_pane":"w1:p3"}` |
+| `{"cmd":"status"}` | | `{"ok":true,"protocol":1,"version":"0.5.0","pid":123,"only":true,"projects":[{"root":"/abs/repo","active":true}],"herdr_pane":"w1:p3"}` |
 | `{"cmd":"open-project","root":"/abs"}` | shows that project, opening it if needed (as `Ctrl-O`, `Enter`) | `{"ok":true}` |
 | `{"cmd":"review","root":"/abs","base":"<rev>","label":"fix auth"}` | `open-project`, then the Review panel on `base` (`label` optional, `null` is none) | `{"ok":true,"files":3,"commits":1}`, or when `base` is `HEAD`, the Commit window and `{"ok":true,"commit_window":true}` |
 | `{"cmd":"commit","root":"/abs"}` | `open-project`, then the Commit window | `{"ok":true}` |
