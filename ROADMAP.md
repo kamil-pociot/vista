@@ -450,6 +450,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 ### Mermaid diagrams ✅
 - [x] ` ```mermaid ` blocks in Markdown through merman (Rust, no browser): a PNG picture with kitty graphics (made in the background, in Mermaid's dark or default theme on the look's background, cached per diagram and look), else Unicode box-drawing text, else the source. Minimum Rust 1.95 (merman's).
 - [x] Tests: `mermaid` and `markdown` units, `e2e_r1_mermaid` (2 PTY tests).
+- [x] Version 0.6.0.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
