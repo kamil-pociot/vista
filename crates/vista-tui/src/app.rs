@@ -258,6 +258,8 @@ pub struct App {
     pub project_hits: Vec<crate::projects::ProjectHit>,
     /// The divider between the tree and the editor is being dragged.
     dragging_divider: bool,
+    /// The bottom tool window's title row is being dragged (resizing it).
+    dragging_bottom: bool,
     /// The editor tab being dragged to a new place.
     dragging_tab: Option<usize>,
     /// The mouse column during a tab drag (its direction decides moves).
@@ -418,6 +420,7 @@ impl App {
             projects_popup: None,
             project_hits: Vec::new(),
             dragging_divider: false,
+            dragging_bottom: false,
             dragging_tab: None,
             drag_col: 0,
             drag_row: 0,
@@ -1457,6 +1460,8 @@ impl App {
                 | Action::ToggleFind
                 | Action::ToggleLog
                 | Action::ToggleTerminal
+                | Action::GrowBottom
+                | Action::ShrinkBottom
                 | Action::NextProject
                 | Action::PrevProject),
             ) => self.handle_action(a),
@@ -2448,6 +2453,27 @@ impl App {
     }
 
     /// Sets the tree / Commit panel width (kept within the window when drawn).
+    /// On the bottom tool window's title row, away from its clickable labels:
+    /// where a drag resizes it.
+    fn on_bottom_edge(&self, col: u16, row: u16) -> bool {
+        self.areas
+            .panel_bottom
+            .is_some_and(|p| p.y == row && (p.x..p.x + p.width).contains(&col))
+            && crate::ui::click::at(&self.buttons, col, row).is_none()
+    }
+
+    /// Sets the bottom tool window's height (kept within limits when drawn).
+    fn set_bottom_height(&mut self, height: u16, save: bool) {
+        let height = height.max(crate::ui::MIN_BOTTOM);
+        self.ui.borrow_mut().layout.bottom_height = Some(height);
+        if save {
+            match vista_core::UiState::update(&self.ui_path, |s| s.layout.bottom_height = Some(height)) {
+                Ok(merged) => *self.ui.borrow_mut() = merged,
+                Err(e) => self.notify(format!("cannot save settings: {e}"), MsgKind::Error),
+            }
+        }
+    }
+
     fn set_left_width(&mut self, width: u16, save: bool) {
         let width = width.max(crate::ui::MIN_LEFT);
         self.ui.borrow_mut().layout.left_width = Some(width);
@@ -2544,6 +2570,20 @@ impl App {
                 self.dragging_divider = false;
                 if let Some(left) = self.areas.left {
                     self.set_left_width(m.column.saturating_sub(left.x), true);
+                }
+                return;
+            }
+            // The bottom tool window's title row drags its top edge.
+            MouseEventKind::Down(MouseButton::Left) if self.on_bottom_edge(m.column, m.row) => {
+                self.dragging_bottom = true;
+                return;
+            }
+            MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) if self.dragging_bottom => {
+                let done = matches!(m.kind, MouseEventKind::Up(_));
+                self.dragging_bottom = !done;
+                if let Some(p) = self.areas.panel_bottom {
+                    // Its bottom edge stays; the top follows the mouse.
+                    self.set_bottom_height((p.y + p.height).saturating_sub(m.row), done);
                 }
                 return;
             }
@@ -3294,6 +3334,21 @@ impl App {
                     self.set_left_width(w, true);
                 }
                 None => self.notify("No tool window open (Alt-1, Alt-2)", MsgKind::Info),
+            },
+            Action::GrowBottom | Action::ShrinkBottom => match self.areas.panel_bottom {
+                Some(p) => {
+                    // From the stored height (key repeats can come between draws).
+                    let body = p.height + self.areas.main.height;
+                    let remembered = self.ui.borrow().layout.bottom_height;
+                    let current = crate::ui::bottom_height(remembered.or(Some(p.height)), body);
+                    let h = if action == Action::GrowBottom {
+                        current + 2
+                    } else {
+                        current.saturating_sub(2)
+                    };
+                    self.set_bottom_height(crate::ui::bottom_height(Some(h), body), true);
+                }
+                None => self.notify("No bottom tool window open (Alt-T, Alt-3, Alt-9)", MsgKind::Info),
             },
             Action::ToggleLineNumbers => {
                 let on = !self.line_numbers();

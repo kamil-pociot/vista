@@ -54,7 +54,7 @@ Settings changed in the app are saved to `state.toml` next to `config.toml` and 
 - Commit-window grouping;
 - showing ignored files;
 - Find in Files case, words and regex;
-- the left panel's width;
+- the left panel's width and the bottom tool window's height;
 - file tabs in several rows (`[tabs] multiple_rows`);
 - open projects and their order;
 - the look picked with `Ctrl-T`;

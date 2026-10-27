@@ -67,6 +67,10 @@ pub struct LayoutState {
     /// Width of the tree / Commit panel in columns (dragged or Ctrl-Shift-←/→).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub left_width: Option<u16>,
+    /// Height of the bottom tool window (Terminal, Find, Git) in rows
+    /// (its title row dragged, or Ctrl-Shift-↑/↓).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bottom_height: Option<u16>,
 }
 
 /// File tabs.

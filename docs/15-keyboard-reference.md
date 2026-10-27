@@ -24,6 +24,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | `Ctrl-Alt-↓` / `↑` | next / previous Find result |
 | `Ctrl-L` (`Alt-F1`) | reveal the open file in the tree |
 | `Ctrl-Shift-→` / `←` | widen / narrow the left panel |
+| `Ctrl-Shift-↑` / `↓` | taller / shorter bottom tool window (Terminal, Find, Git) |
 | `Shift-L` (`Alt-L`) | line numbers |
 | `Ctrl-R` (`F5`) | refresh |
 | `Ctrl-T` | next look |
@@ -48,7 +49,7 @@ Default shortcuts. `?` in the app shows the active key map, including your chang
 | Editor | everything goes to Neovim; `Ctrl-\` leaves, `Ctrl-G` Go to Line:Column |
 | Go to Line:Column | digits and `:`, `Enter` go, `Esc` cancel |
 | Preferences › Keymap | `Enter` add a key, `Delete` remove, `←`/`→` pick a key, `r` reset, `R` reset all, `/` filter, `Tab` Settings |
-| Terminal tool window | everything goes to the shell except `Ctrl-\` (leave) and the tool-window keys; `Shift-Enter` is sent as `Alt-Enter` |
+| Terminal tool window | everything goes to the shell except `Ctrl-\` (leave), the tool-window keys and `Ctrl-Shift-↑`/`↓` (resize); `Shift-PgUp` / `Shift-PgDn` or the wheel scroll back through the output, typing returns; `Shift-Enter` is sent as `Alt-Enter` |
 
 ## Action names
 

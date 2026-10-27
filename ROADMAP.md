@@ -461,6 +461,11 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Fix: a tree scrolled away from the selection no longer snaps back to it when files change (a build in the terminal).
 - [x] Version 0.6.2 (both fixes, checked by hand in Ghostty in herdr).
 
+### Terminal: scrolling back, a resizable bottom window ✅
+- [x] The wheel over the Terminal tool window, or `Shift-PgUp`/`Shift-PgDn`, scrolls back through its output (vt100's 2000-line scrollback), shown in its title row; typing returns. Programs that use the mouse keep the wheel; full-screen ones without it get arrow keys.
+- [x] The bottom tool window (Terminal, Find, Git) resizes: drag its title row, or `Ctrl-Shift-↑`/`↓` (`grow-bottom` / `shrink-bottom`, also from the shell); remembered as `[layout] bottom_height` in `state.toml`.
+- [x] Tests: `ui` unit (limits), `e2e_r1_terminal` (2 PTY tests).
+
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.
 - [ ] Turn literal and regex queries into required trigrams; scan only candidate files with the ripgrep engine, so results are identical to M5.

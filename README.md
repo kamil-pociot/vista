@@ -75,7 +75,7 @@ Several projects can be open at once, as tabs at the left of the top bar: click 
 
 ### Terminal tool window
 
-`Alt-T` opens a shell under the editor, in the project's folder (like IntelliJ's Terminal, which is `Alt-F12` there); each project keeps its own. While it has focus every key goes to the shell, except `Ctrl-\` (back to the editor) and the tool-window keys (`Alt-1`, `Alt-2`, `Alt-3`, `Alt-9`, `Alt-T`). `Alt-T` again hides it; if the shell exits, `Enter` starts a new one.
+`Alt-T` opens a shell under the editor, in the project's folder (like IntelliJ's Terminal, which is `Alt-F12` there); each project keeps its own. While it has focus every key goes to the shell, except `Ctrl-\` (back to the editor) and the tool-window keys (`Alt-1`, `Alt-2`, `Alt-3`, `Alt-9`, `Alt-T`). The wheel or `Shift-PgUp`/`Shift-PgDn` scroll back through its output (typing returns to the prompt); drag its title row or press `Ctrl-Shift-↑`/`↓` to make it taller or shorter (remembered, shared with the Find and Git windows). `Alt-T` again hides it; if the shell exits, `Enter` starts a new one.
 
 ### Git history
 

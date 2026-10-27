@@ -31,8 +31,8 @@ expression: "vista_tui::testing::text(&buf)"
                        │                Alt-H  History of the current file  │
                        │         Ctrl-Shift-→  Widen the left panel         │
                        │         Ctrl-Shift-←  Narrow the left panel        │
+                       │         Ctrl-Shift-↑  Taller bottom tool window    │
+                       │         Ctrl-Shift-↓  Shorter bottom tool window   │
                        │                Alt-.  Next project                 │
                        │                Alt-,  Previous project             │
-                       │       Alt-F1, Ctrl-L  Reveal current file in tree  │
-                       │                    -  Collapse all folders         │
  1: Project   2: Commit└ any key to close ──────────────────────────────────┘       Darcula Classic

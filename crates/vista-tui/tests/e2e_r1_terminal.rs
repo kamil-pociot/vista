@@ -61,3 +61,86 @@ fn shift_enter_reaches_the_program_as_esc_cr() {
         words.windows(2).any(|w| w == ["1b", "0d"])
     });
 }
+
+#[test]
+fn the_wheel_and_shift_page_keys_scroll_back_through_the_output() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo).env("SHELL", "/bin/sh").size(140, 36).start();
+    vista.expect_text("1: Project");
+    vista.press("alt+t");
+    vista.expect_text("T: Terminal");
+    vista.type_text("i=1; while [ $i -le 200 ]; do echo row-$i; i=$((i+1)); done");
+    vista.press("enter");
+    vista.expect_text("row-200");
+    vista.expect_no_text("row-150 ");
+    // The wheel over the shell: back through what scrolled off.
+    let (row, col) = vista.expect_text("row-200").position();
+    for _ in 0..10 {
+        vista.scroll_up(col, row);
+    }
+    vista.expect_text("lines back");
+    vista.expect_no_text("row-200");
+    vista.scroll_down(col, row);
+    vista.expect_text("lines back");
+    // Shift-PgUp further back; typing returns to the prompt and goes to the shell.
+    vista.press("shift+pageup");
+    vista.expect_text("lines back");
+    vista.type_text("echo bac");
+    vista.expect_no_text("lines back");
+    vista.type_text("k-at-the-bottom");
+    vista.press("enter");
+    vista.expect_text("back-at-the-bottom");
+    // Shift-PgDn after Shift-PgUp: back down to the live screen.
+    vista.press("shift+pageup");
+    vista.expect_text("lines back");
+    vista.press("shift+pagedown");
+    vista.expect_no_text("lines back");
+    vista.expect_text("back-at-the-bottom");
+}
+
+#[test]
+fn the_bottom_tool_window_resizes_and_remembers_its_height() {
+    let repo = repo();
+    let mut vista = Vista::launch(BIN, &repo).env("SHELL", "/bin/sh").size(140, 40).start();
+    vista.expect_text("1: Project");
+    vista.press("alt+t");
+    // Its title row (the status bar has a "T: Terminal" label too).
+    let title = "back to the editor";
+    let (row, _) = vista.expect_text(title).position();
+    // Dragged up by its title row (away from the labels on it).
+    vista.drag((70, row), (70, row - 8));
+    vista.settle(std::time::Duration::from_millis(100));
+    let (moved, _) = vista.expect_text(title).position();
+    assert_eq!(moved, row - 8, "the title row follows the mouse");
+    let state = || std::fs::read_to_string(repo.home().join(".config/vista/state.toml")).unwrap_or_default();
+    assert!(state().contains("bottom_height = "), "saved on release: {}", state());
+    // Ctrl-Shift-↓ / ↑ from the shell itself (the shell doesn't get them).
+    vista.press("ctrl+shift+down");
+    vista.wait_until("two rows shorter", |s| {
+        s.contents()
+            .lines()
+            .nth(moved as usize + 2)
+            .is_some_and(|l| l.contains(title))
+    });
+    vista.press("ctrl+shift+up");
+    vista.wait_until("back", |s| {
+        s.contents()
+            .lines()
+            .nth(moved as usize)
+            .is_some_and(|l| l.contains(title))
+    });
+    // Remembered: the next run opens it at that height. (Out of the shell
+    // first: it gets every other key.)
+    vista.press("ctrl+\\");
+    vista.press("ctrl+q");
+    vista.expect_exit();
+    let mut vista = Vista::launch(BIN, &repo)
+        .env("SHELL", "/bin/sh")
+        .size(140, 40)
+        .theme("")
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("alt+t");
+    let (again, _) = vista.expect_text(title).position();
+    assert_eq!(again, moved);
+}

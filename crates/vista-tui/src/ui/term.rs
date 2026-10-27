@@ -43,7 +43,7 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &TermTab, t: &Theme, focused: bool, 
             )),
             last,
         );
-    } else if focused && !screen.hide_cursor() {
+    } else if focused && !screen.hide_cursor() && screen.scrollback() == 0 {
         let (r, c) = screen.cursor_position();
         if r < area.height && c < area.width {
             f.set_cursor_position((area.x + c, area.y + r));
@@ -73,10 +73,20 @@ pub fn draw_panel(f: &mut Frame, area: Rect, app: &mut crate::app::App) {
         .style(t.bg("ui.panel")),
         header,
     );
-    f.render_widget(
-        Paragraph::new(Span::styled("Ctrl-\\ back to the editor ", t.fg("ui.dim"))).right_aligned(),
-        header,
-    );
+    // Scrolled back through the output: how far, and the way down.
+    let scrolled = app.shell.as_ref().map_or(0, |s| s.scrolled());
+    let hint = if scrolled > 0 {
+        Span::styled(
+            format!(
+                "↑ {scrolled} line{} back · Shift-PgDn or type to return ",
+                if scrolled == 1 { "" } else { "s" }
+            ),
+            t.fg("ui.accent"),
+        )
+    } else {
+        Span::styled("Ctrl-\\ back to the editor ", t.fg("ui.dim"))
+    };
+    f.render_widget(Paragraph::new(hint).right_aligned(), header);
     let body = Rect {
         y: area.y + 1,
         height: area.height.saturating_sub(1),

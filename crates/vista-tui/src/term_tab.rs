@@ -158,8 +158,34 @@ impl TermTab {
         let _ = self.child.wait();
     }
 
-    /// Sends a key as the terminal would.
+    /// Lines scrolled back into the output (0: the live screen).
+    pub fn scrolled(&self) -> usize {
+        self.screen().screen().scrollback()
+    }
+
+    /// Scrolls back (`delta` > 0) or forward through the output, within
+    /// what the scrollback holds.
+    pub fn scroll_by(&mut self, delta: isize) {
+        let mut p = self.screen();
+        let s = p.screen_mut();
+        let to = (s.scrollback() as isize + delta).max(0) as usize;
+        s.set_scrollback(to);
+    }
+
+    /// Back to the live screen (typing or pasting does it, as in terminals).
+    fn scroll_to_bottom(&mut self) {
+        self.screen().screen_mut().set_scrollback(0);
+    }
+
+    /// Sends a key as the terminal would. `Shift-PgUp` / `Shift-PgDn`
+    /// scroll through the output instead (a page, less a line).
     pub fn key(&mut self, key: &KeyEvent) {
+        if key.modifiers.contains(KeyModifiers::SHIFT) && matches!(key.code, KeyCode::PageUp | KeyCode::PageDown) {
+            let page = self.size.1.saturating_sub(1).max(1) as isize;
+            self.scroll_by(if key.code == KeyCode::PageUp { page } else { -page });
+            return;
+        }
+        self.scroll_to_bottom();
         let app_cursor = self.screen().screen().application_cursor();
         if let Some(bytes) = key_bytes(key, app_cursor) {
             self.write(&bytes);
@@ -168,6 +194,7 @@ impl TermTab {
 
     /// Sends pasted text (bracketed when the program asked for it).
     pub fn paste(&mut self, text: &str) {
+        self.scroll_to_bottom();
         let bracketed = self.screen().screen().bracketed_paste();
         let mut bytes = Vec::new();
         if bracketed {
@@ -181,12 +208,40 @@ impl TermTab {
     }
 
     /// Forwards a mouse event at (`col`, `row`) of the terminal, if the
-    /// program asked for mouse reporting.
+    /// program asked for mouse reporting. Otherwise the wheel scrolls
+    /// through the output, or, in a full-screen program (`less`, `man`),
+    /// sends arrow keys, as terminals do.
     pub fn mouse(&mut self, m: &MouseEvent, col: u16, row: u16) {
-        let (mode, encoding) = {
+        let (mode, encoding, alternate, app_cursor) = {
             let p = self.screen();
-            (p.screen().mouse_protocol_mode(), p.screen().mouse_protocol_encoding())
+            let s = p.screen();
+            (
+                s.mouse_protocol_mode(),
+                s.mouse_protocol_encoding(),
+                s.alternate_screen(),
+                s.application_cursor(),
+            )
         };
+        let wheel = match m.kind {
+            MouseEventKind::ScrollUp => Some(true),
+            MouseEventKind::ScrollDown => Some(false),
+            _ => None,
+        };
+        if let Some(up) = wheel
+            && mode == vt100::MouseProtocolMode::None
+        {
+            if alternate {
+                let key = KeyEvent::from(if up { KeyCode::Up } else { KeyCode::Down });
+                for _ in 0..WHEEL_LINES {
+                    if let Some(bytes) = key_bytes(&key, app_cursor) {
+                        self.write(&bytes);
+                    }
+                }
+            } else {
+                self.scroll_by(if up { WHEEL_LINES } else { -WHEEL_LINES });
+            }
+            return;
+        }
         if let Some(bytes) = mouse_bytes(m, col, row, mode, encoding) {
             self.write(&bytes);
         }
@@ -200,6 +255,9 @@ impl Drop for TermTab {
         }
     }
 }
+
+/// Lines a wheel step scrolls.
+const WHEEL_LINES: isize = 3;
 
 /// The bytes a terminal sends for `key` (xterm style).
 pub fn key_bytes(key: &KeyEvent, app_cursor: bool) -> Option<Vec<u8>> {

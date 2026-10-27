@@ -5,7 +5,7 @@
 - **Top bar:** project tabs, the branch with ahead/behind.
 - **Left panel:** `1: Project` (tree) or `2: Commit`; resizable.
 - **Editor area:** file tabs with the viewer, diff or Neovim.
-- **Bottom tool window** (one at a time): `3: Find`, `9: Git`, `T: Terminal`.
+- **Bottom tool window** (one at a time): `3: Find`, `9: Git`, `T: Terminal`; resizable: drag its title row, or `Ctrl-Shift-↑` / `↓`. The height is remembered.
 - **Status bar:** change counts, key hints and messages.
 
 ## File tabs
@@ -22,7 +22,7 @@
 ## Focus and mouse
 
 - `Tab` / `Shift-Tab` cycle focus between panels; `Alt-1`, `Alt-2`, `Alt-3`, `Alt-9`, `Alt-T` show, focus or hide tool windows. Labels such as `2: Commit` come from the key binding.
-- Mouse: click to focus and select, double-click to open from every list (one 500 ms detector), the wheel scrolls, shift+wheel or a trackpad scrolls sideways, drag the divider to resize, drag tabs to reorder, drag text to select. Tool-window names, hints, toggles and buttons can be clicked too: see [17 · Clickable labels and buttons](17-clickable-labels.md).
+- Mouse: click to focus and select, double-click to open from every list (one 500 ms detector), the wheel scrolls, shift+wheel or a trackpad scrolls sideways, drag the divider (or the bottom tool window's title row) to resize, drag tabs to reorder, drag text to select. Tool-window names, hints, toggles and buttons can be clicked too: see [17 · Clickable labels and buttons](17-clickable-labels.md).
 - `?` shows every shortcut, generated from the active key map.
 
 ## No F-keys needed
@@ -36,4 +36,4 @@ On macOS, set Ghostty's `macos-option-as-alt = true` so `Alt-…` shortcuts reac
 - `vista-tui/src/app.rs` (focus, routing), `workspace.rs` (top bar), `viewer.rs` (`move_tab`), `projects.rs` (`drag_moves`), `keymap.rs`, `ui/chrome.rs`.
 - `ui/chrome.rs` (`layout_strip`: one scrolling row or several rows; `tab_strip`), `ui/viewer.rs` (keeping the active tab in view), `App::scroll_tabs`.
 - Unit: `strip_layout_tests` (fitting, scroll limits and the tab shown, wrapping), `tab_strip_tests`.
-- E2e: `e2e_r1_tabs.rs` (`×`, middle click, dragging file and project tabs, a row that scrolls with the wheel and ◂ ▸ and follows the active tab, tabs in several rows), `e2e_r1_resize.rs`, `e2e_m0_shell.rs` (help, focus, quit).
+- E2e: `e2e_r1_tabs.rs` (`×`, middle click, dragging file and project tabs, a row that scrolls with the wheel and ◂ ▸ and follows the active tab, tabs in several rows), `e2e_r1_resize.rs`, `e2e_r1_terminal.rs` (the bottom window's height), `e2e_m0_shell.rs` (help, focus, quit).

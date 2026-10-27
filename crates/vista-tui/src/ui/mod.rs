@@ -30,6 +30,17 @@ use crate::style::ThemeStyle;
 pub const MIN_LEFT: u16 = 16;
 /// …and leaves the editor at least this much.
 pub const MIN_MAIN: u16 = 20;
+/// The bottom tool window is at least this tall (title and a few rows)…
+pub const MIN_BOTTOM: u16 = 4;
+/// …and leaves the editor at least this many rows.
+pub const MIN_MAIN_ROWS: u16 = 6;
+
+/// The bottom tool window's height in a body `body` rows tall: the
+/// remembered one (kept within limits), or about a third.
+pub fn bottom_height(remembered: Option<u16>, body: u16) -> u16 {
+    let max = body.saturating_sub(MIN_MAIN_ROWS).max(MIN_BOTTOM);
+    remembered.unwrap_or((body * 35 / 100).max(8)).clamp(MIN_BOTTOM, max)
+}
 
 /// Screen regions from the last draw, used for mouse hit-testing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -82,7 +93,7 @@ pub fn compute_areas(area: Rect, app: &App) -> Areas {
     let mut bottom_panel = None;
     let find = app.find_window.visible && !app.find_window.tabs.is_empty();
     if (find || app.log.visible || app.shell_visible) && body.height > 12 {
-        let h = (body.height * 35 / 100).max(8);
+        let h = bottom_height(app.ui.borrow().layout.bottom_height, body.height);
         bottom_panel = Some(Rect {
             y: body.y + body.height - h,
             height: h,
@@ -440,5 +451,21 @@ pub(crate) fn empty_state(f: &mut Frame, area: Rect, app: &App) {
             Alignment::Center,
             ratatui::style::Style::default(),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_bottom_window_keeps_within_limits() {
+        // About a third by default, at least 8 rows.
+        assert_eq!(bottom_height(None, 40), 14);
+        assert_eq!(bottom_height(None, 20), 8);
+        // Remembered, but never squeezing the editor or itself away.
+        assert_eq!(bottom_height(Some(20), 40), 20);
+        assert_eq!(bottom_height(Some(39), 40), 40 - MIN_MAIN_ROWS);
+        assert_eq!(bottom_height(Some(1), 40), MIN_BOTTOM);
     }
 }
