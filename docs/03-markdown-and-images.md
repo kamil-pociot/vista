@@ -7,6 +7,7 @@ Files ending in `.md`, `.markdown`, `.mdown`, `.mkd` or `.mdx` open rendered (pu
 - Headings, emphasis, lists, task lists, block quotes, links, inline images, fenced code with syntax highlighting.
 - **Mermaid diagrams** (` ```mermaid ` blocks) as pictures, or drawn with box-drawing text where the terminal has no kitty graphics ([25](25-mermaid-diagrams.md)).
 - **Tables show every value.** By default cells wrap to fit the width, with a rule between rows. `w` switches to full-width rows that scroll sideways. Nothing is cut to `…`.
+- **Code blocks show every line whole** the same way: long lines wrap at spaces, keeping their indentation (in a ```` ```diff ```` block, after the `+`/`-`), the rest of a line lined up under its start; `w` keeps each line on one row to scroll sideways.
 - **Line numbers** (`Shift-L`) show the source line each block comes from, so you can jump to it in the editor.
 - `m` switches between rendered and raw source (raw is highlighted as Markdown).
 - Markdown opens wrapped; that default is remembered separately from code.
@@ -33,7 +34,7 @@ protocol = "auto"   # auto | kitty | halfblocks | off
 ## Code and tests
 
 - `vista-render/src/markdown.rs` (`render_with`, `Tables::{Wrap, Wide}`, source-line mapping), `vista-tui/src/viewer.rs`, `ui/viewer.rs`.
-- Unit tests: table wrapping, rules, alignment, wide mode. Snapshots: rendered Markdown.
-- E2e: `e2e_m2_viewer.rs` (Markdown, kitty sequence emitted, half-blocks when forced), `e2e_r1_feedback.rs` (tables in both modes), `e2e_r1_settings.rs` (source line numbers).
+- Unit tests: table wrapping, rules, alignment, wide mode; code lines wrapped (indentation, diff markers, line numbers on first rows only) or kept whole. Snapshots: rendered Markdown.
+- E2e: `e2e_m2_viewer.rs` (Markdown, kitty sequence emitted, half-blocks when forced), `e2e_r1_feedback.rs` (tables and code blocks in both modes), `e2e_r1_settings.rs` (source line numbers).
 
 See also: [25 · Mermaid diagrams](25-mermaid-diagrams.md), [26 · Picture viewer](26-picture-viewer.md).

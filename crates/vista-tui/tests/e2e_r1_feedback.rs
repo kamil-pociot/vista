@@ -120,6 +120,28 @@ fn markdown_tables_wrap_cells_or_keep_full_width() {
 }
 
 #[test]
+fn markdown_code_blocks_wrap_or_scroll_sideways() {
+    let long = "-- Amazon Web Services (Frankfurt, UE): serwery, baza danych, pliki, logowanie, wysyłka e-maili i powiadomień oraz asystent-ai";
+    let repo = Fixture::git()
+        .file("README.md", format!("# Change\n\n```diff\n{long}\n+ short\n```\n"))
+        .commit("init")
+        .build();
+    let mut vista = Vista::launch(BIN, &repo).size(100, 30).open("README.md").start();
+    vista.expect_text("Change");
+    // Wrapped (default): the whole line, over two rows.
+    vista.expect_text("asystent-ai");
+    vista.expect_text("-- Amazon Web Services");
+    // Full width: one row, the end off to the right until scrolled to.
+    vista.press("w");
+    vista.expect_text("scroll sideways");
+    vista.expect_no_text("asystent-ai");
+    for _ in 0..40 {
+        vista.scroll_right(70, 10);
+    }
+    vista.expect_text("asystent-ai");
+}
+
+#[test]
 fn scrolling_stops_a_little_past_the_end() {
     let text: String = (1..=100).map(|i| format!("L{i:03}\n")).collect();
     let repo = Fixture::git().file("long.txt", text).commit("init").build();

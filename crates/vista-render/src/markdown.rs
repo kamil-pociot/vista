@@ -253,15 +253,24 @@ impl<'a> Renderer<'a> {
         };
         self.pending_line = None;
         for (k, l) in lines.into_iter().enumerate() {
-            let mut line = self.prefix(true);
-            line.push(StyledSpan::new("  ", TokStyle::default()));
-            let avail = self.width.saturating_sub(line_width(&line));
-            line.extend(slice_cols(&l, 0, avail));
-            self.emit(MdLine {
-                src_line: Some(self.code_line + k),
-                fill: Some("ui.panel.alt"),
-                ..MdLine::text(line)
-            });
+            let mut lead = self.prefix(true);
+            lead.push(StyledSpan::new("  ", TokStyle::default()));
+            let avail = self.width.saturating_sub(line_width(&lead));
+            // Wrapped like the text around it, or (wide layout) whole, to
+            // scroll sideways: never cut off.
+            let rows = match self.tables {
+                Tables::Wrap => wrap_code(&l, avail, lang == "diff"),
+                Tables::Wide => vec![l],
+            };
+            for (r, row) in rows.into_iter().enumerate() {
+                let mut line = lead.clone();
+                line.extend(row);
+                self.emit(MdLine {
+                    src_line: (r == 0).then_some(self.code_line + k),
+                    fill: Some("ui.panel.alt"),
+                    ..MdLine::text(line)
+                });
+            }
         }
     }
 
@@ -597,6 +606,41 @@ impl<'a> Renderer<'a> {
             _ => {}
         }
     }
+}
+
+/// Wraps a line of code into rows of at most `width` columns: at spaces,
+/// keeping its indentation, the rows after the first lined up under its
+/// first character. With `marker` (a diff), the first column is the `+` /
+/// `-` and the indentation is what follows it. (Words that don't fit are
+/// split.)
+pub fn wrap_code(line: &StyledLine, width: usize, marker: bool) -> Vec<StyledLine> {
+    let total = line_width(line);
+    if total <= width || width == 0 {
+        return vec![line.clone()];
+    }
+    let text: String = line.iter().map(|s| s.text.as_str()).collect();
+    let skip = usize::from(marker && !text.is_empty());
+    let indent = skip + text.chars().skip(skip).take_while(|c| *c == ' ').count();
+    // Deep indentation leaves no room to line up under: just split.
+    if indent * 2 > width {
+        return (0..total)
+            .step_by(width)
+            .map(|start| slice_cols(line, start, width))
+            .collect();
+    }
+    let head = slice_cols(line, 0, indent);
+    let body = slice_cols(line, indent, total - indent);
+    let pad = vec![StyledSpan::new(" ".repeat(indent), TokStyle::default())];
+    wrap_words(&body, width - indent)
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let mut out = if i == 0 { head.clone() } else { pad.clone() };
+            out.retain(|s| !s.text.is_empty());
+            out.extend(row);
+            out
+        })
+        .collect()
 }
 
 /// Word-wraps spans into rows of at most `width` columns, keeping styles.
@@ -945,5 +989,51 @@ mod tests {
         assert!(t[0].contains("pie title Pets"), "{t:?}");
         assert_eq!(lines[0].fill, Some("ui.panel.alt"), "as a code block");
         assert!(lines[0].diagram.is_some(), "a picture can still be made");
+    }
+
+    const DIFF: &str = "Before\n\n```diff\n-- Amazon Web Services (Frankfurt, UE): serwery, baza danych, pliki, logowanie\n+    indented line that is also far too long to fit in the narrow view\n short\n```\n";
+
+    #[test]
+    fn long_code_lines_wrap_with_the_text() {
+        let lines = md(DIFF, 40);
+        let code: Vec<&MdLine> = lines.iter().filter(|l| l.fill == Some("ui.panel.alt")).collect();
+        let t: Vec<String> = code.iter().map(|l| line_text(&l.line)).collect();
+        assert!(code.len() > 3, "wrapped onto more rows: {t:?}");
+        assert!(code.iter().all(|l| line_width(&l.line) <= 40), "{t:?}");
+        // Nothing is lost: every word of the first line is there.
+        let all = t.join(" ");
+        for w in ["Amazon", "Frankfurt,", "pliki,", "logowanie"] {
+            assert!(all.contains(w), "{w} missing: {t:?}");
+        }
+        // A line number on each source line's first row only.
+        let numbered: Vec<usize> = code.iter().filter_map(|l| l.src_line).collect();
+        assert_eq!(numbered, vec![4, 5, 6]);
+        // The indented line's later rows line up under its first character.
+        let first = t.iter().position(|l| l.contains("+    indented")).unwrap();
+        assert!(t[first + 1].starts_with("       "), "{:?}", t[first + 1]);
+        assert_eq!(t.last().unwrap().trim_end(), "   short");
+    }
+
+    #[test]
+    fn wide_layout_keeps_code_lines_whole_to_scroll_sideways() {
+        let lines = render_with(DIFF, 40, Tables::Wide, Highlighter::global(), &|_| None);
+        let code: Vec<String> = lines
+            .iter()
+            .filter(|l| l.fill == Some("ui.panel.alt"))
+            .map(|l| line_text(&l.line))
+            .collect();
+        assert_eq!(code.len(), 3, "one row each: {code:?}");
+        assert!(code[0].trim_end().ends_with("pliki, logowanie"), "{:?}", code[0]);
+        assert!(line_width(&lines.iter().find(|l| l.fill.is_some()).unwrap().line) > 40);
+    }
+
+    #[test]
+    fn wrapping_code_keeps_indentation_or_splits_deep_lines() {
+        let line = vec![StyledSpan::new("  let x = alpha + beta + gamma;", TokStyle::default())];
+        let rows: Vec<String> = wrap_code(&line, 16, false).iter().map(line_text).collect();
+        assert_eq!(rows, vec!["  let x = alpha", "  + beta +", "  gamma;"]);
+        let deep = vec![StyledSpan::new("          abcdefghij", TokStyle::default())];
+        let rows: Vec<String> = wrap_code(&deep, 8, false).iter().map(line_text).collect();
+        assert_eq!(rows.concat(), "          abcdefghij", "split, nothing dropped");
     }
 }
