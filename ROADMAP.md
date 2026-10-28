@@ -466,6 +466,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] The bottom tool window (Terminal, Find, Git) resizes: drag its title row, or `Ctrl-Shift-↑`/`↓` (`grow-bottom` / `shrink-bottom`, also from the shell); remembered as `[layout] bottom_height` in `state.toml`.
 - [x] Tests: `ui` unit (limits), `e2e_r1_terminal` (2 PTY tests).
 - [x] Version 0.6.3.
+- [x] Fix: long lines in Markdown code blocks wrap (keeping indentation; in diffs after the marker), or scroll sideways with `w`; they were cut off. Version 0.6.4.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

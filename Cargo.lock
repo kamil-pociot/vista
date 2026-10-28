@@ -4263,7 +4263,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vista-core"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4277,7 +4277,7 @@ dependencies = [
 
 [[package]]
 name = "vista-diff"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "proptest",
  "similar",
@@ -4285,7 +4285,7 @@ dependencies = [
 
 [[package]]
 name = "vista-e2e"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "portable-pty",
  "tempfile",
@@ -4295,7 +4295,7 @@ dependencies = [
 
 [[package]]
 name = "vista-git"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "proptest",
  "thiserror 2.0.21",
@@ -4305,7 +4305,7 @@ dependencies = [
 
 [[package]]
 name = "vista-nvim"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "rmpv",
  "tempfile",
@@ -4315,7 +4315,7 @@ dependencies = [
 
 [[package]]
 name = "vista-render"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "merman",
  "proptest",
@@ -4329,7 +4329,7 @@ dependencies = [
 
 [[package]]
 name = "vista-search"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "grep-matcher",
  "grep-regex",
@@ -4343,7 +4343,7 @@ dependencies = [
 
 [[package]]
 name = "vista-theme"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -4352,7 +4352,7 @@ dependencies = [
 
 [[package]]
 name = "vista-tui"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
