@@ -702,6 +702,13 @@ impl Locator<'_> {
         });
     }
 
+    pub fn not_to_have_bg(self, token: &str) {
+        let not = self.vista.theme.color(token);
+        self.check(&format!("not to have bg {token} ({not})"), move |c| {
+            rgb(c.bgcolor()) != Some(not)
+        });
+    }
+
     pub fn to_be_bold(self) {
         self.check("to be bold", |c| c.bold());
     }

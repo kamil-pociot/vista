@@ -166,6 +166,7 @@ enum ClickList {
     Goto,
     LogFiles,
     Viewer,
+    Terminal,
 }
 
 /// The active diff tab, as the side-by-side editor opens it.
@@ -1465,6 +1466,9 @@ impl App {
                 | Action::NextProject
                 | Action::PrevProject),
             ) => self.handle_action(a),
+            // Cmd-C (when the terminal passes it on) or Ctrl-Shift-C copies
+            // the selection; with none they go to the shell as usual.
+            _ if is_copy_key(key) && self.copy_shell_selection() => {}
             _ => match self.shell.as_mut() {
                 // The shell ended: Enter starts a new one.
                 Some(s) if s.exited.is_some() => {
@@ -2430,6 +2434,41 @@ impl App {
         }
     }
 
+    /// A mouse event over the Terminal tool window (drawn in `r`), or a
+    /// selection drag that left it: past the top or bottom it scrolls
+    /// through the output. A finished selection is copied (copy-on-select).
+    fn shell_mouse(&mut self, m: &MouseEvent, r: Rect) {
+        let double = matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.is_double_click(ClickList::Terminal, m.row as usize);
+        if matches!(m.kind, MouseEventKind::Drag(_)) {
+            self.last_click = None;
+        }
+        let Some(sh) = self.shell.as_mut() else { return };
+        if sh.selecting() && matches!(m.kind, MouseEventKind::Drag(_)) {
+            if m.row < r.y {
+                sh.scroll_by(1);
+            } else if m.row >= r.y + r.height {
+                sh.scroll_by(-1);
+            }
+        }
+        let col = m.column.saturating_sub(r.x).min(r.width);
+        let row = m.row.clamp(r.y, (r.y + r.height).saturating_sub(1)) - r.y;
+        if sh.mouse(m, col, row, double) == crate::term_tab::TermMouse::Selected && self.copy_on_select() {
+            self.copy_shell_selection();
+        }
+    }
+
+    /// Copies the terminal's selection, if there is one.
+    fn copy_shell_selection(&mut self) -> bool {
+        match self.shell.as_ref().and_then(|s| s.selected_text()) {
+            Some(text) => {
+                self.copy_text(&text);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// True when this click repeats the previous one on the same row soon enough.
     fn is_double_click(&mut self, list: ClickList, row: usize) -> bool {
         let now = Instant::now();
@@ -2494,6 +2533,14 @@ impl App {
             return;
         }
         let pos = Position::new(m.column, m.row);
+        // A selection in the terminal goes on when the drag leaves it.
+        if let Some(r) = self.areas.shell
+            && self.shell.as_ref().is_some_and(|s| s.selecting())
+            && !r.contains(pos)
+        {
+            self.shell_mouse(&m, r);
+            return;
+        }
         // Dragging in the viewer extends the selection (scrolling at the edges).
         if self.selecting {
             match m.kind {
@@ -2744,9 +2791,7 @@ impl App {
             if matches!(m.kind, MouseEventKind::Down(_)) {
                 self.focus = Focus::Bottom;
             }
-            if let Some(sh) = self.shell.as_mut() {
-                sh.mouse(&m, m.column - r.x, m.row - r.y);
-            }
+            self.shell_mouse(&m, r);
             return;
         }
         for (rect, files) in [(self.areas.log_commits, false), (self.areas.log_files, true)] {
@@ -3546,6 +3591,13 @@ impl App {
             Err(e) => self.notify(e.to_string(), MsgKind::Error),
         }
     }
+}
+
+/// Cmd-C, or Ctrl-Shift-C as Linux terminals copy (Ctrl-C itself is the shell's).
+fn is_copy_key(key: &KeyEvent) -> bool {
+    let c = matches!(key.code, KeyCode::Char('c' | 'C'));
+    let m = key.modifiers;
+    c && (m.contains(KeyModifiers::SUPER) || m.contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT))
 }
 
 /// The image encoder for a configured protocol, without querying the

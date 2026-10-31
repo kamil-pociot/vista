@@ -467,6 +467,7 @@ Agents now run in herdr beside vista, so vista's agent features were removed: te
 - [x] Tests: `ui` unit (limits), `e2e_r1_terminal` (2 PTY tests).
 - [x] Version 0.6.3.
 - [x] Fix: long lines in Markdown code blocks wrap (keeping indentation; in diffs after the marker), or scroll sideways with `w`; they were cut off. Version 0.6.4.
+- [x] Fix: text in the Terminal tool window can be selected — vista takes the mouse, so the outer terminal can't. Drag (Shift-drag in programs that use the mouse), double-click a word or path; copied on release, or with `Cmd-C` / `Ctrl-Shift-C`; typing clears it. Version 0.6.5.
 
 ### M10 — Trigram index for Find in Files *(deferred: only if a repo outgrows scanning)*
 - [ ] `vista-index`: a map from every 3-character sequence to the files containing it, kept in `~/Library/Caches/vista/<repo-id>/`. Built in the background, updated incrementally by the file watcher and on `HEAD` changes.

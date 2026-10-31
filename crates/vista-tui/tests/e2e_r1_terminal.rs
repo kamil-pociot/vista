@@ -1,12 +1,27 @@
 //! The Terminal tool window (Alt-T): a shell under the editor, in the
 //! project's folder.
 
+use std::path::Path;
+use std::time::{Duration, Instant};
+
 use vista_e2e::{Fixture, Repo, Vista};
 
 const BIN: &str = env!("CARGO_BIN_EXE_vista");
 
 fn repo() -> Repo {
     Fixture::git().file("alpha.txt", "in alpha\n").commit("init").build()
+}
+
+/// The clipboard, as vista wrote it (tests copy into a file).
+fn clipboard(path: &Path, want: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        let got = std::fs::read_to_string(path).unwrap_or_default();
+        if got == want || Instant::now() > deadline {
+            return got;
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    }
 }
 
 #[test]
@@ -143,4 +158,35 @@ fn the_bottom_tool_window_resizes_and_remembers_its_height() {
     vista.press("alt+t");
     let (again, _) = vista.expect_text(title).position();
     assert_eq!(again, moved);
+}
+
+#[test]
+fn dragging_over_the_output_selects_and_copies_it() {
+    let repo = repo();
+    let clip = repo.home().join("clipboard.txt");
+    let mut vista = Vista::launch(BIN, &repo)
+        .env("SHELL", "/bin/sh")
+        .env("VISTA_CLIPBOARD_FILE", &clip.display().to_string())
+        .size(140, 36)
+        .start();
+    vista.expect_text("1: Project");
+    vista.press("alt+t");
+    vista.expect_text("T: Terminal");
+    vista.type_text("echo picked-$((40+2)) /tmp/some-path.txt");
+    vista.press("enter");
+    // The drag highlights the text and copies it on release.
+    let (row, col) = vista.expect_text("picked-42").position();
+    vista.drag((col, row), (col + 9, row));
+    vista.expect_text("picked-42").to_have_bg("ui.selection");
+    assert_eq!(clipboard(&clip, "picked-42"), "picked-42");
+    vista.expect_text("Copied 9 characters");
+    // A double click takes a whole path.
+    let (row, col) = vista.expect_text("/tmp/some-path.txt").position();
+    vista.double_click(col + 6, row);
+    assert_eq!(clipboard(&clip, "/tmp/some-path.txt"), "/tmp/some-path.txt");
+    // Typing drops the selection and goes to the shell.
+    vista.type_text("echo done");
+    vista.press("enter");
+    vista.expect_text("done");
+    vista.expect_text("/tmp/some-path.txt").not_to_have_bg("ui.selection");
 }

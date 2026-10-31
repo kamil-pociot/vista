@@ -13,6 +13,7 @@ use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system}
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
 use crate::event::{AppEvent, EventTx, ProjectId};
+use crate::selection::Selection;
 
 pub struct TermTab {
     pub id: ProjectId,
@@ -25,6 +26,21 @@ pub struct TermTab {
     /// Set once the program ended (its exit status, for the tab).
     pub exited: Option<String>,
     size: (u16, u16),
+    /// Text selected with the mouse. Positions are (line, column), lines
+    /// counted from the oldest one in the scrollback, so the selection stays
+    /// on its text while output scrolls it up.
+    pub selection: Option<Selection>,
+    /// A mouse drag is extending the selection.
+    selecting: bool,
+}
+
+/// What a mouse event did to the selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TermMouse {
+    Nothing,
+    /// A selection was made (released after a drag, or a double click):
+    /// copied when copy-on-select is on.
+    Selected,
 }
 
 fn nz(n: u16) -> NonZeroU16 {
@@ -104,6 +120,8 @@ impl TermTab {
             child,
             exited: None,
             size: (cols, rows),
+            selection: None,
+            selecting: false,
         })
     }
 
@@ -186,6 +204,7 @@ impl TermTab {
             return;
         }
         self.scroll_to_bottom();
+        self.selection = None;
         let app_cursor = self.screen().screen().application_cursor();
         if let Some(bytes) = key_bytes(key, app_cursor) {
             self.write(&bytes);
@@ -195,6 +214,7 @@ impl TermTab {
     /// Sends pasted text (bracketed when the program asked for it).
     pub fn paste(&mut self, text: &str) {
         self.scroll_to_bottom();
+        self.selection = None;
         let bracketed = self.screen().screen().bracketed_paste();
         let mut bytes = Vec::new();
         if bracketed {
@@ -210,8 +230,10 @@ impl TermTab {
     /// Forwards a mouse event at (`col`, `row`) of the terminal, if the
     /// program asked for mouse reporting. Otherwise the wheel scrolls
     /// through the output, or, in a full-screen program (`less`, `man`),
-    /// sends arrow keys, as terminals do.
-    pub fn mouse(&mut self, m: &MouseEvent, col: u16, row: u16) {
+    /// sends arrow keys, as terminals do; and the left button selects text
+    /// (with Shift held, also in programs that use the mouse). `double`:
+    /// this press is the second of a double click (selects a word).
+    pub fn mouse(&mut self, m: &MouseEvent, col: u16, row: u16, double: bool) -> TermMouse {
         let (mode, encoding, alternate, app_cursor) = {
             let p = self.screen();
             let s = p.screen();
@@ -222,6 +244,16 @@ impl TermTab {
                 s.application_cursor(),
             )
         };
+        let shift = m.modifiers.contains(KeyModifiers::SHIFT);
+        let left = matches!(
+            m.kind,
+            MouseEventKind::Down(MouseButton::Left)
+                | MouseEventKind::Drag(MouseButton::Left)
+                | MouseEventKind::Up(MouseButton::Left)
+        );
+        if left && (mode == vt100::MouseProtocolMode::None || shift || self.selecting) {
+            return self.select_mouse(m.kind, col, row, double);
+        }
         let wheel = match m.kind {
             MouseEventKind::ScrollUp => Some(true),
             MouseEventKind::ScrollDown => Some(false),
@@ -240,12 +272,152 @@ impl TermTab {
             } else {
                 self.scroll_by(if up { WHEEL_LINES } else { -WHEEL_LINES });
             }
-            return;
+            return TermMouse::Nothing;
         }
         if let Some(bytes) = mouse_bytes(m, col, row, mode, encoding) {
             self.write(&bytes);
         }
+        TermMouse::Nothing
     }
+
+    /// The left button selecting: press starts (a double click takes the
+    /// word), drag extends, release ends (an empty selection is dropped).
+    fn select_mouse(&mut self, kind: MouseEventKind, col: u16, row: u16, double: bool) -> TermMouse {
+        let at = self.pos_at(col, row);
+        match kind {
+            MouseEventKind::Down(_) if double => {
+                self.selecting = false;
+                self.selection = self.word_at(at);
+                if self.selection.is_some() {
+                    return TermMouse::Selected;
+                }
+            }
+            MouseEventKind::Down(_) => {
+                self.selection = Some(Selection::at(at));
+                self.selecting = true;
+            }
+            MouseEventKind::Drag(_) if self.selecting => {
+                if let Some(sel) = self.selection.as_mut() {
+                    sel.head = at;
+                }
+            }
+            MouseEventKind::Up(_) if self.selecting => {
+                self.selecting = false;
+                if self.selection.is_some_and(|s| s.is_empty()) {
+                    self.selection = None;
+                } else if self.selection.is_some() {
+                    return TermMouse::Selected;
+                }
+            }
+            _ => {}
+        }
+        TermMouse::Nothing
+    }
+
+    /// A mouse drag is extending the selection (it goes on outside the window).
+    pub fn selecting(&self) -> bool {
+        self.selecting
+    }
+
+    /// The selection position of the cell at (`col`, `row`) on screen.
+    fn pos_at(&self, col: u16, row: u16) -> (usize, usize) {
+        let p = self.screen();
+        let s = p.screen();
+        (first_line(s) + usize::from(row), usize::from(col.min(self.size.0)))
+    }
+
+    /// The word (or path) around `at`; `None` on a blank.
+    fn word_at(&self, at: (usize, usize)) -> Option<Selection> {
+        let cells = self.line_cells(at.0)?;
+        let word = |c: &str| {
+            c.chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || "_-./~".contains(c))
+        };
+        if !cells.get(at.1).is_some_and(|c| word(c)) {
+            return None;
+        }
+        let mut start = at.1;
+        while start > 0 && word(&cells[start - 1]) {
+            start -= 1;
+        }
+        let mut end = at.1;
+        while end < cells.len() && word(&cells[end]) {
+            end += 1;
+        }
+        Some(Selection {
+            anchor: (at.0, start),
+            head: (at.0, end),
+        })
+    }
+
+    /// Line `line`'s cells: each one's text (`""` for the right half of a
+    /// wide character, `" "` for a blank), and whether it wraps onto the next.
+    fn line_cells(&self, line: usize) -> Option<Vec<String>> {
+        self.read_lines(line, line).into_iter().next().map(|(cells, _)| cells)
+    }
+
+    /// Lines `from..=to` (as selection positions count them): their cells
+    /// and whether each wraps onto the next. Lines in the scrollback are read
+    /// by scrolling back to them for a moment.
+    fn read_lines(&self, from: usize, to: usize) -> Vec<(Vec<String>, bool)> {
+        let mut p = self.screen();
+        let s = p.screen_mut();
+        let was = s.scrollback();
+        let kept = s.scrollback_len();
+        let (rows, cols) = (s.size().0.get(), s.size().1.get());
+        let mut out = Vec::new();
+        for line in from..=to {
+            // Scrolled back so `line` is the top row, or on the live screen.
+            let (back, row) = if line < kept {
+                (kept - line, 0)
+            } else {
+                (0, line - kept)
+            };
+            s.set_scrollback(back);
+            let Ok(row) = u16::try_from(row) else { break };
+            if row >= rows || s.scrollback() != back {
+                break;
+            }
+            let cells = (0..cols)
+                .map(|col| match s.cell(row, col) {
+                    Some(c) if c.is_wide_continuation() => String::new(),
+                    Some(c) if !c.contents().is_empty() => c.contents().to_string(),
+                    _ => " ".to_string(),
+                })
+                .collect();
+            out.push((cells, s.row_wrapped(row)));
+        }
+        s.set_scrollback(was);
+        out
+    }
+
+    /// The selected text: trailing blanks dropped, lines the terminal
+    /// wrapped joined back up.
+    pub fn selected_text(&self) -> Option<String> {
+        let sel = self.selection.filter(|s| !s.is_empty())?;
+        let ((l0, _), (l1, _)) = sel.ordered();
+        let mut out = String::new();
+        for (i, (cells, wrapped)) in self.read_lines(l0, l1).into_iter().enumerate() {
+            let (s, e) = sel.range_on(l0 + i, cells.len()).unwrap_or((0, 0));
+            let text: String = cells[s..e].concat();
+            let reaches_end = e == cells.len();
+            if wrapped && reaches_end && l0 + i < l1 {
+                out.push_str(&text);
+            } else {
+                out.push_str(text.trim_end());
+                if l0 + i < l1 {
+                    out.push('\n');
+                }
+            }
+        }
+        Some(out)
+    }
+}
+
+/// The selection line of the top row on screen (scrolled back or not).
+pub fn first_line(s: &vt100::Screen) -> usize {
+    s.scrollback_len() - s.scrollback()
 }
 
 impl Drop for TermTab {
@@ -443,10 +615,16 @@ mod tests {
     fn runs_a_program_and_round_trips_input() {
         let dir = tempfile::tempdir().unwrap();
         let (tx, rx) = crate::event::channel(7);
-        let mut t = TermTab::spawn(7, "cat", dir.path(), (40, 10), tx).unwrap();
-        t.write(b"hello\r");
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut t = TermTab::spawn(7, "echo ready; cat", dir.path(), (40, 10), tx).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut sent = false;
         while std::time::Instant::now() < deadline {
+            // Typed once `cat` runs: a login shell starting up (slowly, under
+            // load) can flush input that arrives before.
+            if !sent && t.screen().screen().contents().contains("ready") {
+                t.write(b"hello\r");
+                sent = true;
+            }
             if let Ok((_, AppEvent::TermOutput(pending))) = rx.recv_timeout(std::time::Duration::from_millis(200)) {
                 pending.store(false, Ordering::SeqCst);
             }
@@ -471,5 +649,63 @@ mod tests {
             )
         });
         assert!(ended);
+    }
+
+    #[test]
+    fn the_mouse_selects_text_that_stays_on_its_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = crate::event::channel(7);
+        // `cat` prints nothing unprompted: the screen is what the test feeds the parser.
+        let mut t = TermTab::spawn(7, "cat", dir.path(), (20, 6), tx).unwrap();
+        t.screen()
+            .process(b"\x1b[H\x1b[2Jone\r\ntwo words here\r\nabcdefghijklmnopqrstuvwxyz\r\n");
+        let ev = |kind, modifiers| MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers,
+        };
+        let none = KeyModifiers::NONE;
+        let (down, drag, up) = (
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        );
+        // Drag over "words" (the cell under the release isn't taken).
+        assert_eq!(t.mouse(&ev(down, none), 4, 1, false), TermMouse::Nothing);
+        t.mouse(&ev(drag, none), 9, 1, false);
+        assert_eq!(t.mouse(&ev(up, none), 9, 1, false), TermMouse::Selected);
+        assert_eq!(t.selected_text().as_deref(), Some("words"));
+        // Across lines: trailing blanks go, a wrapped line joins back up.
+        t.mouse(&ev(down, none), 0, 1, false);
+        t.mouse(&ev(drag, none), 6, 3, false);
+        t.mouse(&ev(up, none), 6, 3, false);
+        assert_eq!(
+            t.selected_text().as_deref(),
+            Some("two words here\nabcdefghijklmnopqrstuvwxyz")
+        );
+        // A click alone selects nothing; a double click takes the word.
+        t.mouse(&ev(down, none), 2, 0, false);
+        assert_eq!(t.mouse(&ev(up, none), 2, 0, false), TermMouse::Nothing);
+        assert!(t.selection.is_none());
+        assert_eq!(t.mouse(&ev(down, none), 5, 1, true), TermMouse::Selected);
+        assert_eq!(t.selected_text().as_deref(), Some("words"));
+        // Output scrolls it up into the scrollback: still the same text.
+        t.screen().process(b"more\r\nand more\r\n");
+        assert_eq!(t.selected_text().as_deref(), Some("words"));
+        // Typing drops it.
+        t.key(&KeyEvent::from(KeyCode::Char('x')));
+        assert!(t.selection.is_none());
+        // A program that uses the mouse gets the drag; with Shift, it selects.
+        t.screen().process(b"\x1b[?1002h");
+        t.mouse(&ev(down, none), 0, 0, false);
+        assert!(t.selection.is_none());
+        t.mouse(&ev(up, none), 0, 0, false);
+        let shift = KeyModifiers::SHIFT;
+        t.mouse(&ev(down, shift), 0, 0, false);
+        t.mouse(&ev(drag, shift), 3, 0, false);
+        assert_eq!(t.mouse(&ev(up, shift), 3, 0, false), TermMouse::Selected);
+        assert!(t.selected_text().is_some_and(|s| s.len() == 3));
+        t.kill();
     }
 }

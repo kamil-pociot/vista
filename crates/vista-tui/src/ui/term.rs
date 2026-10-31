@@ -13,8 +13,13 @@ use crate::term_tab::TermTab;
 pub fn draw(f: &mut Frame, area: Rect, tab: &TermTab, t: &Theme, focused: bool, on_exit: &str) {
     let parser = tab.screen();
     let screen = parser.screen();
+    let top = crate::term_tab::first_line(screen);
+    let selected = t.bg("ui.selection");
     let buf = f.buffer_mut();
     for row in 0..area.height {
+        let range = tab
+            .selection
+            .and_then(|s| s.range_on(top + usize::from(row), usize::from(area.width)));
         for col in 0..area.width {
             let Some(cell) = screen.cell(row, col) else { continue };
             // The right half of a wide character belongs to its left half.
@@ -25,9 +30,11 @@ pub fn draw(f: &mut Frame, area: Rect, tab: &TermTab, t: &Theme, focused: bool, 
                 "" => " ",
                 s => s,
             };
-            buf[(area.x + col, area.y + row)]
-                .set_symbol(symbol)
-                .set_style(crate::style::term_cell(t, cell));
+            let mut style = crate::style::term_cell(t, cell);
+            if range.is_some_and(|(s, e)| (s..e).contains(&usize::from(col))) {
+                style = style.patch(selected);
+            }
+            buf[(area.x + col, area.y + row)].set_symbol(symbol).set_style(style);
         }
     }
     if let Some(status) = &tab.exited {
